@@ -8,6 +8,11 @@ from PIL import Image
 # silently, ' " $ ` break shell quoting, CR/LF break sed addressing.
 UNSAFE_NAME_CHARS = re.compile(r'[&\\|\'"$`\r\n]')
 
+# O instalador do RustDesk (ui_interface.rs) recusa instalar se o nome do app nao
+# casar com [a-zA-Z0-9-]+. Com espaco ou acento o .exe abre, mas o botao Instalar
+# fecha o app sem nenhuma mensagem. Barramos aqui, antes de gastar 30 a 45 min de build.
+APP_NAME_ALLOWED = re.compile(r'^[A-Za-z0-9-]+$')
+
 class GenerateForm(forms.Form):
     sh_secret_field = forms.CharField(required=False)
     #Platform
@@ -128,7 +133,14 @@ class GenerateForm(forms.Form):
         return value
 
     def clean_appname(self):
-        return self._reject_unsafe_name_chars('appname')
+        value = self._reject_unsafe_name_chars('appname')
+        if value and not APP_NAME_ALLOWED.match(value):
+            raise forms.ValidationError(
+                "Use apenas letras (sem acento), numeros e hifen, sem espacos. "
+                "Exemplo: Nextec-Connect. O instalador do RustDesk recusa outros nomes. / "
+                "Only letters (no accents), digits and hyphen, no spaces. Example: Nextec-Connect."
+            )
+        return value
 
     def clean_compname(self):
         return self._reject_unsafe_name_chars('compname')

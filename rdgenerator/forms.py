@@ -142,5 +142,20 @@ class GenerateForm(forms.Form):
             )
         return value
 
+    def clean_serverPort(self):
+        # O workflow deriva todo o bloco de portas a partir deste valor (relay = +1, websocket = +2 e +3).
+        # 21117 (relay) no lugar de 21116 faz o app registrar no hbbr e ficar eternamente "nao esta pronto".
+        value = (self.cleaned_data.get('serverPort') or '').strip()
+        if not value:
+            return value
+        if not value.isdigit() or not (1 <= int(value) <= 65535):
+            raise forms.ValidationError("Use apenas o numero da porta do servidor de ID (padrao 21116). / Port must be a number (default 21116).")
+        if int(value) in (21117, 21118, 21119):
+            raise forms.ValidationError(
+                "21117 a 21119 sao as portas do relay e do websocket, nao a do servidor de ID. "
+                "Deixe em branco ou use 21116. / 21117-21119 are relay/websocket ports; use 21116 or leave blank."
+            )
+        return value
+
     def clean_compname(self):
         return self._reject_unsafe_name_chars('compname')

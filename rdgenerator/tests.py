@@ -146,3 +146,55 @@ class AutorizadosTests(TestCase):
         finally:
             del os.environ['NX_ALLOWED_EMAILS']
         self.assertEqual(r.status_code, 200)
+
+
+class ChaveTests(TestCase):
+    def _env(self, **kw):
+        import contextlib
+
+        @contextlib.contextmanager
+        def ctx():
+            old = {k: os.environ.get(k) for k in kw}
+            os.environ.update(kw)
+            try:
+                yield
+            finally:
+                for k, v in old.items():
+                    if v is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = v
+        return ctx()
+
+    def test_chave_do_arquivo_trava_o_campo(self):
+        import tempfile
+        d = tempfile.mkdtemp()
+        p = os.path.join(d, 'k.pub')
+        open(p, 'w').write('CHAVEPUBLICA=' + chr(10))
+        with self._env(NX_SERVER_HOST='remoto.exemplo', NX_KEY_FILE=p, NX_KEY=''):
+            from . import nextec
+            self.assertEqual(nextec.server_defaults()['key'], 'CHAVEPUBLICA=')
+            self.assertIn('key', nextec.locked_fields())
+
+    def test_arquivo_ilegivel_deixa_o_campo_editavel_e_obrigatorio(self):
+        import tempfile
+        d = tempfile.mkdtemp()  # um diretorio no lugar do arquivo (o que o Docker cria)
+        with self._env(NX_SERVER_HOST='remoto.exemplo', NX_KEY_FILE=d, NX_KEY=''):
+            from . import nextec
+            from .forms import GenerateForm
+            self.assertNotIn('key', nextec.server_defaults())
+            self.assertNotIn('key', nextec.locked_fields())
+            form = GenerateForm(initial=nextec.initial())
+            self.assertNotIn('readonly', form.fields['key'].widget.attrs)
+            r = nextec.apply({'key': ''})
+            self.assertEqual(r['key'], '')
+            bound = GenerateForm({'platform': 'windows', 'version': '1.5.0', 'exename': 'x', 'key': ''})
+            bound.is_valid()
+            self.assertIn('key', bound.errors)
+
+    def test_sem_servidor_nextec_nada_muda(self):
+        with self._env(NX_SERVER_HOST='', NX_KEY='', NX_KEY_FILE=''):
+            from .forms import GenerateForm
+            bound = GenerateForm({'platform': 'windows', 'version': '1.5.0', 'exename': 'x', 'key': ''})
+            bound.is_valid()
+            self.assertNotIn('key', bound.errors)

@@ -22,7 +22,7 @@
 
 **Estado atual:** após gerar, o operador baixa o MSI e o envia pela tela Atualizações do app no painel. A publicação direta ainda não existe.
 
-**Trabalho:** criar autorização de serviço restrita à publicação de MSI, exigir assinatura digital válida e conferência de hash no painel, permitir seleção de versão e grupo piloto pelo operador e registrar auditoria. Não armazenar token de administrador do painel no gerador nem colocar credencial de publicação no job que compila código externo.
+**Trabalho:** criar autorização de serviço restrita à publicação de MSI, exigir manifesto de release assinado por chave própria da Nextec e conferência de hash no cliente, permitir seleção de versão e grupo piloto pelo operador e registrar auditoria. A chave privada fica fora do painel, do gerador e do job que compila código externo; só a chave pública vai no atualizador. Não armazenar token de administrador do painel no gerador.
 
 ### Prioridade 2 — geração conjunta Windows e Linux
 
@@ -40,7 +40,7 @@
 
 **Estado atual:** `nextec/atualizacao/Instalar-Nextec.ps1` consulta a versão, confere SHA-256, instala MSI e cria uma tarefa diária como `SYSTEM`. Esse fluxo é executado por um script de instalação separado; os pacotes EXE/MSI gerados pelo RDGen ainda não carregam o agente nem registram essa tarefa. O script atual baixa MSI, então uma instalação feita pelo EXE também precisa da migração descrita acima.
 
-**Trabalho:** incluir um agente de atualização nos dois instaladores, registrar a tarefa com a identidade adequada, validar assinatura digital e hash, tratar máquina offline, falha, rollback e atualização simultânea. Separar três versões: versão do gerador, versão-base RustDesk e versão do cliente Nextec publicado no painel. Testar instalação limpa e atualização silenciosa em Windows antes de ativar rollout.
+**Trabalho:** incluir um agente de atualização nos dois instaladores, registrar a tarefa com a identidade adequada, validar assinatura assimétrica do manifesto e hash do MSI antes de executar, tratar máquina offline, falha, rollback e atualização simultânea. Como ainda não há certificado Authenticode, o primeiro instalador é distribuído sem assinatura do Windows e precisa ser obtido por canal confiável; o manifesto assinado protege as atualizações após a instalação. Separar três versões: versão do gerador, versão-base RustDesk e versão do cliente Nextec publicado no painel. Testar instalação limpa e atualização silenciosa em Windows antes de ativar rollout.
 
 ### Prioridade 1 — endurecer os padrões de configuração
 

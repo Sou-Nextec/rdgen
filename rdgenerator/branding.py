@@ -12,7 +12,7 @@ MAX_IMAGE_PIXELS = 16_000_000
 ASSETS = {
     'icon': {'filename': 'icon.png', 'format': 'PNG', 'label': 'Ícone do aplicativo', 'dimensions': 'PNG quadrado, até 2048 × 2048 px', 'max_side': 2048},
     'logo': {'filename': 'logo.png', 'format': 'PNG', 'label': 'Logo do aplicativo', 'dimensions': 'PNG, até 2048 × 2048 px', 'max_side': 2048},
-    'privacy': {'filename': 'privacy.png', 'format': 'PNG', 'label': 'Tela de privacidade', 'dimensions': 'PNG, até 1920 × 1080 px', 'max_side': 1920},
+    'privacy': {'filename': 'privacy.png', 'format': 'PNG', 'label': 'Tela de privacidade', 'dimensions': 'PNG, até 1920 × 1080 px', 'max_width': 1920, 'max_height': 1080},
 }
 
 
@@ -71,6 +71,10 @@ def save_upload(kind, uploaded):
                 raise ValueError(f"A imagem deve ter exatamente {width} × {height} px.")
             if 'max_side' in spec and max(source.size) > spec['max_side']:
                 raise ValueError(f"A imagem deve ter no máximo {spec['max_side']} px por lado.")
+            if ('max_width' in spec and source.width > spec['max_width']) or ('max_height' in spec and source.height > spec['max_height']):
+                max_width = spec.get('max_width', spec.get('max_side'))
+                max_height = spec.get('max_height', spec.get('max_side'))
+                raise ValueError(f'A imagem deve ter no máximo {max_width} × {max_height} px.')
             if kind == 'icon' and source.width != source.height:
                 raise ValueError('O ícone precisa ser quadrado.')
             source.load()

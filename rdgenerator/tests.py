@@ -198,3 +198,38 @@ class ChaveTests(TestCase):
             bound = GenerateForm({'platform': 'windows', 'version': '1.5.0', 'exename': 'x', 'key': ''})
             bound.is_valid()
             self.assertNotIn('key', bound.errors)
+
+
+class ModeloEChaveTests(TestCase):
+    def test_modelo_com_porta_recusada_nao_trava_o_formulario(self):
+        os.environ['NX_SERVER_HOST'] = 'remoto.exemplo'
+        os.environ['NX_KEY'] = 'CHAVEPUBLICA='
+        try:
+            from .forms import GenerateForm
+            form = GenerateForm({'platform': 'windows', 'version': '1.5.0', 'exename': 'x',
+                                 'direction': 'both', 'installation': 'installationY', 'settings': 'settingsY',
+                                 'theme': 'system', 'themeDorO': 'default', 'passApproveMode': 'password-click',
+                                 'permissionsDorO': 'default', 'permissionsType': 'custom',
+                                 'serverIP': 'outro.host', 'serverPort': '21117', 'key': 'ZZZ'})
+            self.assertTrue(form.is_valid(), form.errors)
+            self.assertEqual(form.cleaned_data['serverPort'], '')
+            self.assertEqual(form.cleaned_data['serverIP'], 'remoto.exemplo')
+            self.assertEqual(form.cleaned_data['key'], 'CHAVEPUBLICA=')
+        finally:
+            del os.environ['NX_SERVER_HOST']
+            del os.environ['NX_KEY']
+
+    def test_chave_aparece_como_senha_no_formulario(self):
+        os.environ['NX_SERVER_HOST'] = 'remoto.exemplo'
+        os.environ['NX_KEY'] = 'CHAVEPUBLICA='
+        try:
+            from django.test import override_settings
+            with override_settings(GHBEARER='t', GHUSER='u', ZIP_PASSWORD='senha-forte', SH_SECRET='outra-forte'):
+                html = self.client.get('/').content.decode()
+        finally:
+            del os.environ['NX_SERVER_HOST']
+            del os.environ['NX_KEY']
+        import re
+        campo = re.search(r'<input[^>]*name="key"[^>]*>', html).group(0)
+        self.assertIn('type="password"', campo)
+        self.assertIn('readonly', campo)

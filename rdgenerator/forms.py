@@ -43,7 +43,8 @@ class GenerateForm(forms.Form):
     serverIP = forms.CharField(label="Host", required=False)
     serverPort = forms.CharField(label="Port", required=False)
     apiServer = forms.CharField(label="API Server", required=False)
-    key = forms.CharField(label="Key", required=False)
+    # mascarada como senha: nao aparece em captura de tela (e o navegador nao tenta preencher com a senha do login)
+    key = forms.CharField(label="Key", required=False, widget=forms.PasswordInput(render_value=True, attrs={'autocomplete': 'new-password'}))
     urlLink = forms.CharField(label="Custom URL for links", required=False)
     downloadLink = forms.CharField(label="Custom URL for downloading new versions", required=False)
     compname = forms.CharField(label="Company name",required=False)
@@ -103,6 +104,13 @@ class GenerateForm(forms.Form):
         # Padroes Nextec: com a trava ligada, o servidor/chave/API ficam fixos (o servidor tambem reforca ao gerar)
         from . import nextec
         if nextec.is_locked():
+            defaults = nextec.server_defaults()
+            if self.is_bound:
+                # modelo carregado (ou POST antigo) com porta/servidor diferentes: vale o fixo, senao o campo travado
+                # ficava com um valor recusado e sem como corrigir
+                self.data = self.data.copy()
+                for name in nextec.locked_fields():
+                    self.data[name] = defaults.get(name, '')
             for name in nextec.locked_fields():
                 if name in self.fields:
                     self.fields[name].widget.attrs['readonly'] = 'readonly'

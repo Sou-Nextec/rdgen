@@ -681,6 +681,10 @@
 
                                 if (elements.length > 0) { // Check if any element(s) exist
                                     elements.forEach(element => { // Loop through all matching elements (important for radios)
+                                        // campos travados pela Nextec (servidor, porta, chave, API...) nao mudam por modelo
+                                        if (element.readOnly) {
+                                            return;
+                                        }
                                         // Skip fossil values from old saves: objects (e.g. File
                                         // serialized as {}) coerce to "[object Object]" on
                                         // assignment, and that literal string is never legit.

@@ -42,6 +42,7 @@ Da Nextec:
 | `NX_URL_LINK`, `NX_DOWNLOAD_LINK`, `NX_COMPANY`, `NX_APP_NAME` | Links, empresa e nome padrão do app |
 | `NX_LOCK_SERVER` | `1` (padrão) trava os campos acima, no formulário e no servidor |
 | `NX_ICON_FILE`, `NX_LOGO_FILE` | Imagens padrão (PNG quadrado) quando nenhuma é enviada |
+| `NX_ALLOWED_EMAILS` | E-mails autorizados a gerar (vírgula ou espaço). Vazio = quem passa pelo Access. Veja "Quem pode gerar" |
 | `WEB_CONCURRENCY` | Processos do gunicorn (padrão 2) |
 
 Sem `NX_SERVER_HOST` o gerador se comporta como o original.
@@ -50,6 +51,19 @@ Sem `NX_SERVER_HOST` o gerador se comporta como o original.
 
 - `GENURL`: endereço público do gerador, com o prefixo, sem barra final (`https://painel-remoto.nex.tec.br/gerador`).
 - `ZIP_PASSWORD`: igual ao `ZIP_PASSWORD` do servidor (no Portainer: `GERADOR_ZIP_SENHA`). Use um valor longo e aleatório.
+
+## Quem pode gerar
+
+Só administradores e pessoas autorizadas. São duas camadas:
+
+1. **Cloudflare Access** (Entra): quem entra em `/gerador`. Ajuste a política para o grupo certo.
+2. **Lista do gerador** (`NX_ALLOWED_EMAILS`, no Portainer: `GERADOR_EMAILS_AUTORIZADOS`): o middleware
+   `rdgenerator/middleware.py` compara o e-mail que o Access autenticou (`Cf-Access-Authenticated-User-Email`) com a lista e
+   mostra "Você não está autorizado a gerar clientes" (403) a quem não está. Sem cabeçalho (acesso direto, sem Access) também
+   é recusado. As rotas do GitHub (`updategh`, `cleanzip`, `save_custom_client`, `get_png`, `get_zip`) e a verificação de saúde
+   local não passam por essa lista.
+
+O cabeçalho só é confiável porque o contêiner não é publicado: o único caminho até ele é o túnel, que passa pelo Access.
 
 ## Segurança das rotas liberadas no Access
 

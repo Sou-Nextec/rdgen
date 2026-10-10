@@ -82,6 +82,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'rdgenerator.middleware.NextecAccessMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',

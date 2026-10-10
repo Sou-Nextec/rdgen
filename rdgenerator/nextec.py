@@ -30,7 +30,9 @@ def server_defaults():
     if not key and key_file:
         try:
             key = Path(key_file).read_text(encoding='utf-8').strip()
-        except OSError:
+        except (OSError, ValueError) as exc:
+            # arquivo inexistente, e um diretorio (o Docker cria um quando o caminho do host nao existe) ou ilegivel
+            print(f"NX_KEY_FILE ({key_file}) nao pode ser lido: {exc}")
             key = ''
     values = {
         'serverIP': _env('NX_SERVER_HOST'),
@@ -43,6 +45,17 @@ def server_defaults():
         'appname': _env('NX_APP_NAME'),
     }
     return {k: v for k, v in values.items() if v}
+
+
+def is_configured():
+    """True quando o servidor Nextec esta configurado (NX_SERVER_HOST)."""
+    return 'serverIP' in server_defaults()
+
+
+def locked_fields():
+    """Campos travados. A chave so trava se houver valor padrao: sem ele o campo fica editavel (e obrigatorio)."""
+    defaults = server_defaults()
+    return [f for f in LOCKED_FIELDS if f in defaults or f == 'serverPort']
 
 
 def is_locked():

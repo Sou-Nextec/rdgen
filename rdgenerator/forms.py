@@ -103,7 +103,7 @@ class GenerateForm(forms.Form):
         # Padroes Nextec: com a trava ligada, o servidor/chave/API ficam fixos (o servidor tambem reforca ao gerar)
         from . import nextec
         if nextec.is_locked():
-            for name in nextec.LOCKED_FIELDS:
+            for name in nextec.locked_fields():
                 if name in self.fields:
                     self.fields[name].widget.attrs['readonly'] = 'readonly'
                     self.fields[name].widget.attrs['title'] = 'Fixo pela Nextec'
@@ -165,6 +165,18 @@ class GenerateForm(forms.Form):
             raise forms.ValidationError(
                 "21117 a 21119 sao as portas do relay e do websocket, nao a do servidor de ID. "
                 "Deixe em branco ou use 21116. / 21117-21119 are relay/websocket ports; use 21116 or leave blank."
+            )
+        return value
+
+    def clean_key(self):
+        # Servidor Nextec configurado e sem chave (nem padrao, nem digitada): o build sairia com a chave publica do RustDesk
+        # original e o app nunca falaria com o nosso servidor.
+        value = (self.cleaned_data.get('key') or '').strip()
+        from . import nextec
+        if not value and nextec.is_configured():
+            raise forms.ValidationError(
+                "Informe a chave publica do servidor (painel: Ajustes do servidor > Dados do servidor). / "
+                "Enter the server public key."
             )
         return value
 

@@ -57,6 +57,8 @@ def generate_custom_client(params, full_url):
         On failure: includes 'error' and optionally 'status_code'.
     """
     params = nextec.apply(params)
+    if nextec.is_configured() and not (params.get('key') or '').strip():
+        return {'success': False, 'error': 'Chave publica do servidor ausente (NX_KEY ou NX_KEY_FILE).', 'status_code': 400}
     user_secret = params.get('sh_secret_field', '')
     selfhosted = (_settings.SH_SECRET == user_secret)
     platform = params.get('platform', 'windows')

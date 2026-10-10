@@ -33,7 +33,14 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force source/rustdesk | Out-Null
-          Invoke-WebRequest 'https://github.com/rustdesk/rustdesk/releases/download/1.5.0/rustdesk-1.5.0-x86_64.exe' -OutFile source/rustdesk/Nextec-Connect.exe
+          Invoke-WebRequest 'https://github.com/rustdesk/rustdesk/releases/download/1.5.0/rustdesk-1.5.0-x86_64.msi' -OutFile official.msi
+          $extract = Join-Path $env:RUNNER_TEMP 'official-rustdesk'
+          $process = Start-Process msiexec.exe -ArgumentList @('/a', "$PWD/official.msi", '/qn', "TARGETDIR=$extract") -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw 'Official MSI extraction failed' }
+          $exe = Get-ChildItem $extract -Filter rustdesk.exe -Recurse | Select-Object -First 1
+          if (!$exe) { throw 'Official client EXE missing' }
+          Copy-Item "$($exe.Directory.FullName)/*" source/rustdesk -Recurse -Force
+          Rename-Item source/rustdesk/rustdesk.exe Nextec-Connect.exe
           python -m pip install Pillow
       - name: Construir MSI com o mesmo script do gerador
         shell: pwsh

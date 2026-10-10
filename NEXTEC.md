@@ -99,9 +99,40 @@ git merge upstream/master
 
 Conflitos prováveis: `rdgenerator/views.py`, `forms.py` e `templates/generator.html`. Depois do merge, rode os testes e o teste
 de fumaça (o CI faz). Os workflows `generator-*.yml` não foram alterados; se o upstream mudar o formato do `secrets.json`, confira
-que o campo `token` continua sendo exportado como `env.token` (a ação `decrypt-secrets` exporta todas as chaves).
+que o campo `token` continua sendo exportado como `env.token` (a ação `decrypt-secrets` valida os campos conhecidos antes
+de exportá-los).
 
-## Arquivo provisório
+## Correções de 10/10/2026
+
+Preparadas para PR; merge condicionado à CI. A API `POST /api/generate` exige `Authorization: Bearer <SH_SECRET>`, além das
+restrições do Cloudflare Access. JSON precisa ser objeto, strings e booleanos têm tipos verificados, e escolhas,
+nome do app e porta passam pelas mesmas regras do formulário. Plataformas disponíveis: Windows 64 bits e Linux;
+versão inicial: 1.5.0. `/startgh` e `/creategh` retornam 410; integrar pelo endpoint validado.
+
+O formulário usa CSRF. Ao importar/exportar modelos, o token CSRF da página atual é preservado e não entra no JSON.
+`CSRF_TRUSTED_ORIGINS` inclui a origem de GENURL; também aceita origens adicionais separadas por espaço na variável
+homônima. Cookies ficam seguros quando PROTOCOL=https. Redirecionamento HTTPS e HSTS dependem do proxy externo.
+
+`rdgenerator/build_inputs.py` é compartilhado com a ação decrypt-secrets: aceita somente os campos conhecidos e recusa
+quebras de linha, tipos inesperados e sintaxe perigosa para os scripts de build. A ação valida tudo antes de escrever
+GITHUB_ENV e lê a senha do ZIP pela variável de ambiente. Os callbacks de upload mantêm autenticação por token de build.
+
+Chamadas ao GitHub têm timeout de conexão/leitura. Downloads são enviados por streaming e arquivos ausentes retornam 404.
+Dados, clientes, pacotes temporários e arquivos .env são excluídos do contexto Docker. O CI constrói a imagem, roda a suíte
+e o teste de fumaça nos PRs para master, sem publicar. Depois do merge, testa novamente e publica a imagem. A suíte roda
+incluindo a integração com a ação real:
+
+```bash
+docker run --rm --network none -e DB_PATH=/tmp/rdgen-test/db.sqlite3 \
+  -v "$PWD/.github/actions/decrypt-secrets:/opt/rdgen/.github/actions/decrypt-secrets:ro" \
+  --entrypoint python rdgen-nextec:teste manage.py test rdgenerator
+```
+
+Sem as variáveis obrigatórias, o gerador continua retornando 503 e o contêiner deve ficar unhealthy. Preencher no Portainer
+GERADOR_GH_TOKEN, GERADOR_ZIP_SENHA (igual ao segredo ZIP_PASSWORD no GitHub) e GERADOR_SH_SECRET; depois Pull and redeploy.
+Não trocar o healthcheck para esconder a falta de configuração. SECRET_KEY vazia usa a chave persistente no volume.
+
+## Arquivo provisório (servidor antigo)
 
 `atualizar-servidor.sh` atualiza o rdgen **antigo** (fora da stack) por cron. Fica obsoleto quando o servidor antigo for
 desligado; pode ser removido.

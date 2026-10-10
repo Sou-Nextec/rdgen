@@ -5,6 +5,8 @@
 name: Imagem Nextec do gerador
 
 on:
+  pull_request:
+    branches: [master]
   push:
     branches: [master]
     paths:
@@ -16,6 +18,7 @@ on:
       - 'rdgenerator/**'
       - 'nextec/**'
       - '.github/workflows/nextec-imagem.yml'
+      - '.github/actions/decrypt-secrets/**'
   workflow_dispatch:
 
 permissions:
@@ -23,7 +26,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: imagem-gerador
+  group: imagem-gerador-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -38,6 +41,7 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -52,6 +56,12 @@ jobs:
           tags: rdgen-nextec:teste
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Testes de regressão e segurança
+        run: |
+          docker run --rm --network none -e DB_PATH=/tmp/rdgen-test/db.sqlite3 \
+            -v "$PWD/.github/actions/decrypt-secrets:/opt/rdgen/.github/actions/decrypt-secrets:ro" \
+            --entrypoint python rdgen-nextec:teste manage.py test rdgenerator
 
       - name: Teste de fumaça
         run: |
@@ -80,14 +90,17 @@ jobs:
             sleep 2
           done
           { [ "$code" = "503" ] && grep -q "GHBEARER" /tmp/semconfig.html; } || { echo "sem configuracao deveria dar 503 com aviso"; exit 1; }
+          docker rm -f teste-sem-config >/dev/null
           echo "OK"
 
       - name: Marcas
+        if: github.event_name != 'pull_request'
         id: v
         run: |
           echo "tags=${IMAGE}:latest,${IMAGE}:master-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Publicar
+        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
         with:
           context: .

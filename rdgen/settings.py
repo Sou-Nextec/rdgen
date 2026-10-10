@@ -67,7 +67,13 @@ DEBUG_ENV = os.environ.get("DEBUG", "False")
 DEBUG = DEBUG_ENV.lower() in ['true', '1', 't']
 
 ALLOWED_HOSTS = ['*']
-#CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', '').split()
+from urllib.parse import urlsplit
+_generator_url = urlsplit(GENURL)
+CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', '').split()
+if _generator_url.scheme in ('https', 'http') and _generator_url.netloc:
+    CSRF_TRUSTED_ORIGINS.append(f'{_generator_url.scheme}://{_generator_url.netloc}')
+SESSION_COOKIE_SECURE = PROTOCOL == 'https'
+CSRF_COOKIE_SECURE = PROTOCOL == 'https'
 
 # Application definition
 
@@ -86,7 +92,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    #'django.middleware.csrf.CsrfViewMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',

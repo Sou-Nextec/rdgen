@@ -1,6 +1,6 @@
 import io
 from pathlib import Path
-from django.http import HttpResponse, JsonResponse, HttpResponseForbidden
+from django.http import HttpResponse, JsonResponse, HttpResponseForbidden, FileResponse, Http404
 from django.shortcuts import render, get_object_or_404
 from django.core.files.base import ContentFile
 import os
@@ -20,6 +20,9 @@ from . import nextec
 from .models import GithubRun
 from PIL import Image
 from urllib.parse import quote
+from django.views.decorators.csrf import csrf_exempt
+from .build_inputs import validate_build_inputs
+from .forms import validate_generate_params
 
 # get_png, download and save_custom_client build file paths from request values;
 # only accept a UUID and a plain file name so "../" or absolute paths cannot escape png/ and exe/.
@@ -56,13 +59,18 @@ def generate_custom_client(params, full_url):
         dict with 'success' key. On success: also includes 'uuid', 'filename', 'platform', 'log_url'.
         On failure: includes 'error' and optionally 'status_code'.
     """
-    params = nextec.apply(params)
+    problems = nextec.config_problems()
+    if problems:
+        return {'success': False, 'error': ' '.join(problems), 'status_code': 503}
+    params, errors = validate_generate_params(params)
+    if errors:
+        return {'success': False, 'error': 'Invalid generation parameters.', 'status_code': 400}
     if nextec.is_configured() and not (params.get('key') or '').strip():
         return {'success': False, 'error': 'Chave publica do servidor ausente (NX_KEY ou NX_KEY_FILE).', 'status_code': 400}
     user_secret = params.get('sh_secret_field', '')
     selfhosted = (_settings.SH_SECRET == user_secret)
     platform = params.get('platform', 'windows')
-    version = params.get('version', '1.4.9')
+    version = params.get('version', '1.5.0')
     delayFix = params.get('delayFix', True)
     xOffline = params.get('xOffline', False)
     hidecm = params.get('hidecm', False)
@@ -170,13 +178,13 @@ def generate_custom_client(params, full_url):
 
     ###create the custom.txt json here and send in as inputs below
     decodedCustom = {}
-    if direction != "Both":
+    if direction != "both":
         decodedCustom['conn-type'] = direction
     if installation == "installationN":
         decodedCustom['disable-installation'] = 'Y'
     if settings == "settingsN":
         decodedCustom['disable-settings'] = 'Y'
-    if appname.upper != "rustdesk".upper and appname != "":
+    if appname.lower() != "rustdesk":
         decodedCustom['app-name'] = appname
     decodedCustom['override-settings'] = {}
     decodedCustom['default-settings'] = {}
@@ -307,6 +315,11 @@ def generate_custom_client(params, full_url):
         "filename":filename
     }
 
+    try:
+        validate_build_inputs(inputs_raw)
+    except ValueError as exc:
+        return {'success': False, 'error': str(exc), 'status_code': 400}
+
     temp_json_path = f"data_{uuid.uuid4()}.json"
     zip_filename = f"secrets_{myuuid}.zip"
     zip_path = "temp_zips/%s" % (zip_filename)
@@ -347,10 +360,11 @@ def generate_custom_client(params, full_url):
         status="Starting generator...please wait"
     )
     try:
-        response = requests.post(url, json=data, headers=headers)
-        if response.status_code == 204 or response.status_code == 200:
+        response = requests.post(url, json=data, headers=headers, timeout=(5, 30))
+        if response.status_code == 200:
             github_data = response.json()
-            print(github_data)
+            if not github_data.get('workflow_run_id'):
+                return {'success': False, 'error': 'GitHub did not return the workflow run ID.', 'status_code': 502}
             new_github_run.github_run_id = github_data.get('workflow_run_id')
             new_github_run.status = "in_progress"
             new_github_run.save()
@@ -402,7 +416,7 @@ def _get_run_status(uuid_val):
         api_url = f"https://api.github.com/repos/{_settings.GHUSER}/{_settings.REPONAME}/actions/runs/{gh_run.github_run_id}"
         
         try:
-            gh_response = requests.get(api_url, headers=headers)
+            gh_response = requests.get(api_url, headers=headers, timeout=(5, 30))
             if gh_response.status_code == 200:
                 gh_data = gh_response.json()
                 
@@ -486,32 +500,27 @@ def check_for_file(request):
         })
 
 def download(request):
-    filename = request.GET['filename']
-    uuid = request.GET['uuid']
+    filename = request.GET.get('filename', '')
+    uuid = request.GET.get('uuid', '')
     if not _safe_parts(uuid, filename):
         return HttpResponseForbidden("Invalid filename")
     file_path = os.path.join('exe', uuid, filename)
-    with open(file_path, 'rb') as file:
-        content = file.read()
-    response = HttpResponse(content, headers={
-        'Content-Type': 'application/vnd.microsoft.portable-executable',
-        'Content-Disposition': f'attachment; filename="{filename}"'
-    })
-    return response
+    try:
+        return FileResponse(open(file_path, 'rb'), as_attachment=True, filename=filename,
+                            content_type='application/octet-stream')
+    except OSError:
+        raise Http404('Client file not found')
 
 def get_png(request):
-    filename = request.GET['filename']
-    uuid = request.GET['uuid']
+    filename = request.GET.get('filename', '')
+    uuid = request.GET.get('uuid', '')
     if not _safe_parts(uuid, filename):
         return HttpResponseForbidden("Invalid filename")
     file_path = os.path.join('png',uuid,filename)
-    with open(file_path, 'rb') as file:
-        response = HttpResponse(file, headers={
-            'Content-Type': 'application/vnd.microsoft.portable-executable',
-            'Content-Disposition': f'attachment; filename="{filename}"'
-        })
-
-    return response
+    try:
+        return FileResponse(open(file_path, 'rb'), content_type='image/png')
+    except OSError:
+        raise Http404('Image not found')
 
 def create_github_run(myuuid):
     new_github_run = GithubRun(
@@ -520,6 +529,7 @@ def create_github_run(myuuid):
     )
     new_github_run.save()
 
+@csrf_exempt
 def update_github_run(request):
     data = json.loads(request.body)
     myuuid = data.get('uuid')
@@ -567,6 +577,11 @@ def resize_and_encode_icon(imagefile):
     return resized64
  
 #the following is used when accessed from an external source, like the rustdesk api server
+@csrf_exempt
+def deprecated_generation(request):
+    return JsonResponse({'error': 'Use /api/generate with Authorization: Bearer SH_SECRET.'}, status=410)
+
+
 def startgh(request):
     #print(request)
     data_ = json.loads(request.body)
@@ -623,6 +638,7 @@ def save_png(file, uuid, domain, name):
     #return "%s/%s" % (domain, file_save_path)
     return domain, uuid, name
 
+@csrf_exempt
 def save_custom_client(request):
     file = request.FILES.get('file')
     myuuid = request.POST.get('uuid')
@@ -641,6 +657,7 @@ def save_custom_client(request):
 
     return HttpResponse("File saved successfully!")
 
+@csrf_exempt
 def cleanup_secrets(request):
     # Pass the UUID as a query param or in JSON body
     data = json.loads(request.body)
@@ -667,10 +684,8 @@ def get_zip(request):
     file_path = os.path.abspath(os.path.join(base_dir, filename))
     if not file_path.startswith(base_dir + os.sep):
         return HttpResponseForbidden("Invalid filename")
-    with open(file_path, 'rb') as file:
-        response = HttpResponse(file, headers={
-            'Content-Type': 'application/vnd.microsoft.portable-executable',
-            'Content-Disposition': f'attachment; filename="{filename}"'
-        })
-
-    return response
+    try:
+        return FileResponse(open(file_path, 'rb'), as_attachment=True, filename=filename,
+                            content_type='application/zip')
+    except OSError:
+        raise Http404('Build package not found')

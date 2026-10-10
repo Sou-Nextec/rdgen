@@ -71,3 +71,26 @@ class CallbackHardeningTests(TestCase):
         self.assertEqual(self.client.get('/get_zip', {'filename': 'outro.txt'}).status_code, 403)
         self.assertEqual(self.client.get('/get_zip', {'filename': '../manage.py'}).status_code, 403)
         self.assertEqual(self.client.get('/get_zip').status_code, 403)
+
+
+class ConfigClaraTests(TestCase):
+    def test_sem_variaveis_mostra_o_que_falta(self):
+        from django.test import override_settings
+        with override_settings(GHBEARER='', GHUSER='', ZIP_PASSWORD='', SH_SECRET=''):
+            r = self.client.get('/')
+        self.assertEqual(r.status_code, 503)
+        body = r.content.decode()
+        for nome in ('GHBEARER', 'GHUSER', 'ZIP_PASSWORD', 'SH_SECRET'):
+            self.assertIn(nome, body)
+
+    def test_com_variaveis_abre_o_formulario(self):
+        from django.test import override_settings
+        with override_settings(GHBEARER='t', GHUSER='u', ZIP_PASSWORD='senha-forte', SH_SECRET='outra-forte'):
+            r = self.client.get('/')
+        self.assertEqual(r.status_code, 200)
+
+    def test_senhas_padrao_do_projeto_original_sao_recusadas(self):
+        from django.test import override_settings
+        with override_settings(GHBEARER='t', GHUSER='u', ZIP_PASSWORD='insecure', SH_SECRET='secret'):
+            r = self.client.get('/')
+        self.assertEqual(r.status_code, 503)

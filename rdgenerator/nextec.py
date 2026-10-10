@@ -75,3 +75,19 @@ def default_image(kind):
         return ContentFile(path.read_bytes(), name=path.name)
     except OSError:
         return None
+
+
+def config_problems():
+    """Lista, em portugues, o que falta configurar para o gerador funcionar. Vazia = tudo certo."""
+    from django.conf import settings
+    problems = []
+    if not settings.GHBEARER:
+        problems.append('Token do GitHub ausente (variável GHBEARER; no Portainer: GERADOR_GH_TOKEN).')
+    if not settings.GHUSER:
+        problems.append('Usuário do GitHub ausente (variável GHUSER; no Portainer: GERADOR_GH_USER).')
+    if not settings.ZIP_PASSWORD or settings.ZIP_PASSWORD == 'insecure':
+        problems.append('Senha do pacote ausente ou padrão (variável ZIP_PASSWORD; no Portainer: GERADOR_ZIP_SENHA). '
+                        'Precisa ser igual ao segredo ZIP_PASSWORD do repositório no GitHub.')
+    if not settings.SH_SECRET or settings.SH_SECRET == 'secret':
+        problems.append('Senha da API ausente ou padrão (variável SH_SECRET; no Portainer: GERADOR_SH_SECRET).')
+    return problems

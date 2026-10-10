@@ -20,7 +20,35 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('SECRET_KEY','django-insecure-!(t-!f#6g#sr%yfded9(xha)g+=!6craeez^cp+*&bz_7vdk61')
+def _secret_key():
+    # Nextec: variavel SECRET_KEY vazia deixava o Django devolvendo 500 em tudo. Sem variavel, usa uma chave aleatoria
+    # persistente (arquivo secret_key ao lado do banco, que fica em volume), igual em todos os processos.
+    value = os.environ.get('SECRET_KEY', '').strip()
+    if value:
+        return value
+    path = Path(os.environ.get('DB_PATH') or (BASE_DIR / 'db.sqlite3')).parent / 'secret_key'
+    try:
+        return path.read_text(encoding='utf-8').strip() or ''
+    except OSError:
+        pass
+    import secrets
+    key = secrets.token_hex(50)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(key)
+    except FileExistsError:
+        try:
+            return path.read_text(encoding='utf-8').strip() or key
+        except OSError:
+            return key
+    except OSError:
+        pass
+    return key
+
+
+SECRET_KEY = _secret_key()
 GHUSER = os.environ.get("GHUSER", '')
 GHBEARER = os.environ.get("GHBEARER", '')
 GENURL = os.environ.get("GENURL", '')

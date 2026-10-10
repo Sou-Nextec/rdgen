@@ -47,8 +47,8 @@
       <span class="version">Gerador {{ product_version }}</span>
     </div>
     <nav class="nav" aria-label="Seções do gerador">
-      <a href="{% url 'generator' %}">Gerar cliente</a>
-      <a class="active" href="{% url 'branding' %}" aria-current="page">Identidade visual</a>
+      <a href="../../">Gerar cliente</a>
+      <a class="active" href="" aria-current="page">Identidade visual</a>
     </nav>
   </header>
   <main>
@@ -68,7 +68,7 @@
           {% else %}<span class="empty">Nenhuma imagem cadastrada</span>{% endif %}
         </div>
         {% if asset.managed %}<p class="managed">Imagem personalizada salva</p>{% elif asset.configured %}<p class="managed">Padrão incluído no gerador</p>{% endif %}
-        <form method="post" action="{{ asset.upload_url }}" enctype="multipart/form-data">
+        <form method="post" enctype="multipart/form-data">
           {% csrf_token %}
           <input type="hidden" name="asset" value="{{ asset.key }}">
           <input type="file" name="image" accept="image/png,.png" required>
@@ -84,3 +84,4 @@
   </main>
 </body>
 </html>
+

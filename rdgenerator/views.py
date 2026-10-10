@@ -2,7 +2,6 @@ import io
 from pathlib import Path
 from django.http import HttpResponse, JsonResponse, HttpResponseForbidden, FileResponse, Http404
 from django.shortcuts import render, get_object_or_404
-from django.urls import reverse
 from django.core.files.base import ContentFile
 import os
 import secrets
@@ -498,7 +497,7 @@ def generator_view(request):
     return render(request, 'generator.html', {
         'form': form,
         'product_version': nextec.product_version(),
-        'branding_url': reverse('branding'),
+        'branding_url': 'nextec/imagens/',
     })
 
 
@@ -775,8 +774,7 @@ def branding_view(request):
 def _branding_rows():
     rows = branding.list_assets()
     for row in rows:
-        row['url'] = reverse('get_artwork', args=(row['key'],))
-        row['upload_url'] = reverse('branding')
+        row['url'] = f'../../get_artwork/{row["key"]}'
     return rows
 
 

@@ -257,11 +257,11 @@
             <span class="nx-version">Gerador {{ product_version }}</span>
         </div>
         <nav class="nx-nav" aria-label="Seções do gerador">
-            <a class="active" href="{% url 'generator' %}" aria-current="page">Gerar cliente</a>
+            <a class="active" href="./" aria-current="page">Gerar cliente</a>
             <a href="{{ branding_url }}">Identidade visual</a>
         </nav>
     </header>
-    <form id="myForm" action="{% url 'generator' %}" method="post" enctype="multipart/form-data">
+    <form id="myForm" action="generator" method="post" enctype="multipart/form-data">
         {% csrf_token %}
         <div class="save-load-section-container">
             <div class="section">
@@ -763,3 +763,4 @@
     </script>
 </body>
 </html>
+

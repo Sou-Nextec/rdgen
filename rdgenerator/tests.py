@@ -310,8 +310,18 @@ class BrandingAssetsTests(TestCase):
         body = response.content.decode()
         self.assertIn('Gerador 2.0.1', body)
         self.assertIn('Identidade visual', body)
+        self.assertIn('<a href="../../">Gerar cliente</a>', body)
+        self.assertIn('<form method="post" enctype="multipart/form-data">', body)
         from .branding import ASSETS
         self.assertEqual(set(ASSETS), {'icon', 'logo', 'privacy'})
+
+    def test_generator_uses_relative_paths_behind_url_prefix(self):
+        with patch('rdgenerator.nextec.config_problems', return_value=[]):
+            response = self.client.get('/', SCRIPT_NAME='/gerador')
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn('action="generator"', body)
+        self.assertIn('href="nextec/imagens/"', body)
 
     def test_midia_persistida_pode_ser_visualizada_por_nome_fixo(self):
         self.client.post('/nextec/imagens/', {

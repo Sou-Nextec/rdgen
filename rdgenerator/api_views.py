@@ -38,11 +38,13 @@ def api_status(request):
     uuid_val = request.GET.get('uuid')
     if not uuid_val:
         return JsonResponse({'error': 'Missing uuid.'}, status=400)
-    result = _get_run_status(uuid_val)
+    result = _get_run_status(uuid_val, request.GET.get('filename', ''), request.GET.get('platform', ''))
     if not result['found']:
         return JsonResponse({'error': 'Run not found'}, status=404)
     response_data = {'status': result['status'], 'uuid': uuid_val, 'log_url': result['github_log_url']}
+    response_data['files'] = result['files']
+    response_data['missing_files'] = result['missing_files']
     for field in ('filename', 'platform'):
-        if request.GET.get(field):
-            response_data[field] = request.GET[field]
+        if result.get(field):
+            response_data[field] = result[field]
     return JsonResponse(response_data)

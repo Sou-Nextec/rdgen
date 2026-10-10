@@ -1,0 +1,55 @@
+name: Validar MSI Nextec
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - '.github/scripts/build-msi.ps1'
+      - '.github/workflows/*generator-windows.yml'
+      - '.github/workflows/nextec-msi.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: msi-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  package:
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        source: ['1.5.0', 'master']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: rustdesk/rustdesk
+          ref: ${{ matrix.source }}
+          path: source
+          persist-credentials: false
+      - uses: microsoft/setup-msbuild@v2
+      - uses: NuGet/setup-nuget@v2
+      - name: Preparar EXE oficial para testar somente o empacotamento
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force source/rustdesk | Out-Null
+          Invoke-WebRequest 'https://github.com/rustdesk/rustdesk/releases/download/1.5.0/rustdesk-1.5.0-x86_64.msi' -OutFile official.msi
+          $extract = Join-Path $env:RUNNER_TEMP 'official-rustdesk'
+          $msi = (Resolve-Path official.msi).Path
+          $log = Join-Path $env:RUNNER_TEMP 'extract-msi.log'
+          $process = Start-Process msiexec.exe -ArgumentList "/a `"$msi`" /qn TARGETDIR=`"$extract`" /l*v `"$log`"" -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { Get-Content $log -Tail 35; throw "Official MSI extraction failed: $($process.ExitCode)" }
+          $exe = Get-ChildItem $extract -Filter rustdesk.exe -Recurse | Select-Object -First 1
+          if (!$exe) { throw 'Official client EXE missing' }
+          Copy-Item "$($exe.Directory.FullName)/*" source/rustdesk -Recurse -Force
+          Rename-Item source/rustdesk/rustdesk.exe Nextec-Connect.exe
+          python -m pip install Pillow
+      - name: Construir MSI com o mesmo script do gerador
+        shell: pwsh
+        env:
+          VERSION: master
+        run: |
+          & ./.github/scripts/build-msi.ps1 -AppName Nextec-Connect -SourceRoot "$PWD/source"
+          $file = 'source/SignOutput/rustdesk.msi'
+          $signature = [BitConverter]::ToString([IO.File]::ReadAllBytes((Resolve-Path $file))[0..7])
+          if ($signature -ne 'D0-CF-11-E0-A1-B1-1A-E1') { throw 'Invalid MSI file signature' }

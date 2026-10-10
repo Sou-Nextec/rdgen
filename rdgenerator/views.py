@@ -357,6 +357,8 @@ def generate_custom_client(params, full_url):
     }
     new_github_run = GithubRun(
         uuid=myuuid,
+        filename=filename,
+        platform=platform,
         status="Starting generator...please wait"
     )
     try:
@@ -390,7 +392,7 @@ def generate_custom_client(params, full_url):
         }
 
 
-def _get_run_status(uuid_val):
+def _get_run_status(uuid_val, filename='', platform=''):
     """
     Core status-check logic shared by web form and JSON API.
 
@@ -426,12 +428,43 @@ def _get_run_status(uuid_val):
         except Exception as e:
             print(f"Error checking GitHub: {e}")
 
+    filename = gh_run.filename or filename
+    platform = gh_run.platform or platform
+    files = _received_files(uuid_val, filename) if filename else []
+    missing = []
+    status = gh_run.status
+    if status == 'success' and filename:
+        names = {item['name'] for item in files}
+        if platform == 'windows':
+            missing = [filename + ext for ext in ('.exe', '.msi') if filename + ext not in names]
+        elif not files:
+            missing = ['arquivo do instalador']
+        if missing:
+            status = 'incomplete'
     return {
         "found": True,
-        "status": gh_run.status,
+        "status": status,
         "github_log_url": github_log_url,
-        "gh_run": gh_run
+        "gh_run": gh_run,
+        "filename": filename,
+        "platform": platform,
+        "files": files,
+        "missing_files": missing,
     }
+
+
+def _received_files(uuid_val, filename):
+    from urllib.parse import urlencode
+    if not _safe_parts(uuid_val or '', (filename or '') + '.exe'):
+        return []
+    directory = Path('exe') / uuid_val
+    if not directory.is_dir():
+        return []
+    return [{'name': path.name, 'url': 'download?' + urlencode({'uuid': uuid_val, 'filename': path.name})}
+            for path in sorted(directory.iterdir())
+            if path.is_file() and path.stat().st_size > 0 and not path.is_symlink()
+            and (path.name.startswith(filename + '.') or path.name.startswith(filename + '-'))
+            and _safe_parts(uuid_val, path.name)]
 
 
 def generator_view(request):
@@ -466,7 +499,7 @@ def check_for_file(request):
     uuid = request.GET.get('uuid')
     platform = request.GET.get('platform')
 
-    result = _get_run_status(uuid)
+    result = _get_run_status(uuid, filename, platform)
     if not result['found']:
         from django.http import Http404
         raise Http404("Run not found")
@@ -474,20 +507,25 @@ def check_for_file(request):
     gh_run = result['gh_run']
     github_log_url = result['github_log_url']
 
-    if gh_run.status == "success":
+    filename = result['filename']
+    platform = result['platform']
+    if result['status'] == "success":
         return render(request, 'generated.html', {
             'filename': filename, 
             'uuid': uuid, 
-            'platform': platform
+            'platform': platform,
+            'files': result['files'],
         })
         
-    elif gh_run.status in ['failure', 'cancelled', 'timed_out', 'skipped', 'action_required']:
+    elif result['status'] in ['failure', 'cancelled', 'timed_out', 'skipped', 'action_required', 'incomplete']:
         return render(request, 'failure.html', {
             'log_url': github_log_url, 
             'filename': filename, 
             'uuid': uuid, 
             'platform': platform,
-            'status': gh_run.status
+            'status': result['status'],
+            'files': result['files'],
+            'missing_files': result['missing_files'],
         })
         
     else:

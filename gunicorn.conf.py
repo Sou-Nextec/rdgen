@@ -2,7 +2,7 @@ import os
 
 # Adjust these values as needed
 bind = "0.0.0.0:8000"  # Host and port for Gunicorn to listen on
-workers = 5  # The number of worker processes for concurrency (adjust based on system resources)
+workers = int(os.environ.get('WEB_CONCURRENCY', '2'))  # Nextec: 2 por padrao (VPS pequena); ajuste por variavel de ambiente
 threads = 6
 activate_base = True  # Activate your virtual environment if applicable
 

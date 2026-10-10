@@ -225,7 +225,7 @@
 </head>
 <body>
     <h1><i class="fas fa-cogs"></i> RustDesk Custom Client Builder</h1>
-    <form id="myForm" action="/generator" method="post" enctype="multipart/form-data">
+    <form id="myForm" action="generator" method="post" enctype="multipart/form-data">
         <div class="save-load-section-container">
             <div class="section">
                 <h2 id="saveLoadTitle">Save/Load Configuration <i class="fas fa-chevron-down"></i></h2>  
@@ -250,20 +250,11 @@
                         <i class="fab fa-windows  fa-stack-2x platform-icon active" data-platform="windows"></i>
                         <strong class="fa-stack-1x text-64">64</strong>
                     </span>
-                    <span class="fa-stack fa-lg">
-                        <i class="fab fa-windows  fa-stack-2x platform-icon" data-platform="windows-x86"></i>
-                        <strong class="fa-stack-1x text-32">32</strong>
-                    </span>
                     <i class="fab fa-linux platform-icon" data-platform="linux"></i>
-                    <i class="fab fa-android platform-icon" data-platform="android"></i>
-                    <i class="fab fa-apple platform-icon" data-platform="macos"></i>
                 </div>
                 <select name="platform" id="id_platform">
                     <option value="windows" selected>Windows 64Bit</option>
-                    <option value="windows-x86">Windows 32Bit</option>
                     <option value="linux">Linux</option>
-                    <option value="android">Android</option>
-                    <option value="macos">macOS</option>
                 </select>
                 <label for="{{ form.version.id_for_label }}">Rustdesk Version:</label>
                 {{ form.version }}

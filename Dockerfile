@@ -19,7 +19,8 @@ ENV PYTHONUNBUFFERED=1 \
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD wget -q --spider http://127.0.0.1:8000/ || exit 1
+# start-period: o primeiro minuto (migrate + gunicorn subindo) nao conta como falha
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 CMD wget -q -O /dev/null http://127.0.0.1:8000/ || exit 1
 
 # migra o banco (no volume) e sobe o gunicorn
 CMD ["sh", "-c", "python manage.py migrate --noinput && exec gunicorn -c gunicorn.conf.py rdgen.wsgi:application"]

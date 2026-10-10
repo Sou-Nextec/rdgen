@@ -94,3 +94,55 @@ class ConfigClaraTests(TestCase):
         with override_settings(GHBEARER='t', GHUSER='u', ZIP_PASSWORD='insecure', SH_SECRET='secret'):
             r = self.client.get('/')
         self.assertEqual(r.status_code, 503)
+
+
+class AutorizadosTests(TestCase):
+    EMAIL = 'HTTP_CF_ACCESS_AUTHENTICATED_USER_EMAIL'
+
+    def _cfg(self):
+        from django.test import override_settings
+        return override_settings(GHBEARER='t', GHUSER='u', ZIP_PASSWORD='senha-forte', SH_SECRET='outra-forte')
+
+    def test_sem_lista_quem_passa_pelo_access_usa(self):
+        with self._cfg():
+            r = self.client.get('/', **{self.EMAIL: 'qualquer@nex.tec.br'})
+        self.assertEqual(r.status_code, 200)
+
+    def test_com_lista_pessoa_fora_e_barrada(self):
+        os.environ['NX_ALLOWED_EMAILS'] = 'admin@nex.tec.br, tecnico@nex.tec.br'
+        try:
+            with self._cfg():
+                r = self.client.get('/', REMOTE_ADDR='172.18.0.5', **{self.EMAIL: 'outro@nex.tec.br'})
+                semcab = self.client.get('/', REMOTE_ADDR='172.18.0.5')
+        finally:
+            del os.environ['NX_ALLOWED_EMAILS']
+        self.assertEqual(r.status_code, 403)
+        self.assertIn('outro@nex.tec.br', r.content.decode())
+        self.assertEqual(semcab.status_code, 403)
+
+    def test_com_lista_pessoa_autorizada_entra_sem_diferenciar_maiusculas(self):
+        os.environ['NX_ALLOWED_EMAILS'] = 'admin@nex.tec.br'
+        try:
+            with self._cfg():
+                r = self.client.get('/', REMOTE_ADDR='172.18.0.5', **{self.EMAIL: 'Admin@Nex.Tec.br'})
+        finally:
+            del os.environ['NX_ALLOWED_EMAILS']
+        self.assertEqual(r.status_code, 200)
+
+    def test_rotas_do_github_nao_exigem_pessoa(self):
+        os.environ['NX_ALLOWED_EMAILS'] = 'admin@nex.tec.br'
+        try:
+            r = self.client.get('/get_zip', {'filename': 'x'}, REMOTE_ADDR='172.18.0.5')
+        finally:
+            del os.environ['NX_ALLOWED_EMAILS']
+        self.assertEqual(r.status_code, 403)  # 403 do próprio get_zip (nome inválido), não a tela de autorização
+        self.assertNotIn('autorizado a gerar', r.content.decode())
+
+    def test_verificacao_de_saude_local_passa(self):
+        os.environ['NX_ALLOWED_EMAILS'] = 'admin@nex.tec.br'
+        try:
+            with self._cfg():
+                r = self.client.get('/', REMOTE_ADDR='127.0.0.1')
+        finally:
+            del os.environ['NX_ALLOWED_EMAILS']
+        self.assertEqual(r.status_code, 200)

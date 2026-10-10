@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Gerador de clientes: sem autorização</title>
+    <style>
+      body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background: #f6f6f7; color: #222; margin: 0; }
+      main { max-width: 560px; margin: 10vh auto; padding: 0 20px; }
+      .card { background: #fff; border: 1px solid #e3e3e6; border-radius: 10px; padding: 24px 28px; }
+      h1 { font-size: 1.3rem; margin: 0 0 8px; }
+      p { line-height: 1.5; margin: 8px 0; color: #444; }
+      code { background: #f0f0f2; padding: 1px 5px; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="card">
+        <h1>Você não está autorizado a gerar clientes</h1>
+        <p>Só administradores e pessoas autorizadas pela Nextec podem usar o gerador.</p>
+        {% if email %}<p>Entrou como <code>{{ email }}</code>.</p>{% endif %}
+        <p>Se você precisa gerar um cliente, peça a um administrador para incluir seu e-mail na lista de autorizados.</p>
+      </div>
+    </main>
+  </body>
+</html>

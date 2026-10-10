@@ -91,3 +91,30 @@ def config_problems():
     if not settings.SH_SECRET or settings.SH_SECRET == 'secret':
         problems.append('Senha da API ausente ou padrão (variável SH_SECRET; no Portainer: GERADOR_SH_SECRET).')
     return problems
+
+
+# Rotas que o GitHub Actions chama (liberadas no Access). Todas as outras exigem pessoa autorizada.
+PUBLIC_PATHS = ('/updategh', '/cleanzip', '/save_custom_client', '/get_png', '/get_zip')
+
+
+def allowed_emails():
+    """E-mails autorizados a gerar (NX_ALLOWED_EMAILS, separados por vírgula ou espaço). Vazio = quem passa pelo Access."""
+    raw = _env('NX_ALLOWED_EMAILS').replace(';', ',').replace(' ', ',')
+    return {e.strip().lower() for e in raw.split(',') if e.strip()}
+
+
+def access_user(request):
+    """E-mail que o Cloudflare Access autenticou (cabeçalho Cf-Access-Authenticated-User-Email), em minúsculas."""
+    return (request.META.get('HTTP_CF_ACCESS_AUTHENTICATED_USER_EMAIL') or '').strip().lower()
+
+
+def access_denied(request):
+    """True se há lista de autorizados e esta requisição não é de uma pessoa da lista."""
+    allowed = allowed_emails()
+    if not allowed:
+        return False
+    if request.path_info.rstrip('/') in PUBLIC_PATHS:
+        return False
+    if request.META.get('REMOTE_ADDR') in ('127.0.0.1', '::1'):
+        return False  # verificação de saúde do próprio contêiner
+    return access_user(request) not in allowed

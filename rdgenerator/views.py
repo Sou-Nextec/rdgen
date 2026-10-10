@@ -8,6 +8,8 @@ import secrets
 import re
 import requests
 import base64
+import hashlib
+import hmac
 import json
 import uuid
 import pyzipper
@@ -22,6 +24,16 @@ from urllib.parse import quote
 # get_png, download and save_custom_client build file paths from request values;
 # only accept a UUID and a plain file name so "../" or absolute paths cannot escape png/ and exe/.
 _UUID_RE = re.compile(r'^[0-9a-fA-F-]{36}$')
+# o pacote cifrado com os dados do build chama-se secrets_<uuid do build>.zip (nome conhecido so por quem tem o uuid)
+_ZIP_RE = re.compile(r'^secrets_[0-9a-fA-F-]{36}\.zip$')
+# limite do arquivo que o GitHub devolve (exe, msi, deb...)
+MAX_CLIENT_BYTES = 600 * 1024 * 1024
+
+
+def build_token(uuid_val):
+    # Segredo por build: vai dentro do pacote cifrado (secrets.json) e o workflow o devolve em "Authorization: Bearer".
+    # Sem ele, quem nao rodou o build nao consegue gravar arquivo no servidor.
+    return hmac.new(_settings.SECRET_KEY.encode(), ('rdgen-build:' + uuid_val).encode(), hashlib.sha256).hexdigest()
 _NAME_RE = re.compile(r'^[\w.-]+$')
 
 def _safe_parts(uuid_val, filename):
@@ -270,6 +282,7 @@ def generate_custom_client(params, full_url):
         "apiServer":apiServer,
         "custom":encodedCustom,
         "uuid":myuuid,
+        "token":build_token(myuuid),
         "iconlink_url":iconlink_url,
         "iconlink_uuid":iconlink_uuid,
         "iconlink_file":iconlink_file,
@@ -293,7 +306,7 @@ def generate_custom_client(params, full_url):
     }
 
     temp_json_path = f"data_{uuid.uuid4()}.json"
-    zip_filename = f"secrets_{uuid.uuid4()}.zip"
+    zip_filename = f"secrets_{myuuid}.zip"
     zip_path = "temp_zips/%s" % (zip_filename)
     Path("temp_zips").mkdir(parents=True, exist_ok=True)
 
@@ -605,10 +618,15 @@ def save_png(file, uuid, domain, name):
     return domain, uuid, name
 
 def save_custom_client(request):
-    file = request.FILES['file']
+    file = request.FILES.get('file')
     myuuid = request.POST.get('uuid')
-    if not _safe_parts(myuuid, file.name):
+    if file is None or not _safe_parts(myuuid, file.name):
         return HttpResponseForbidden("Invalid filename")
+    sent = request.META.get('HTTP_AUTHORIZATION', '')
+    if not sent.startswith('Bearer ') or not hmac.compare_digest(sent[7:].strip(), build_token(myuuid)):
+        return HttpResponseForbidden("Invalid token")
+    if file.size > MAX_CLIENT_BYTES:
+        return HttpResponseForbidden("File too large")
     file_save_path = "exe/%s/%s" % (myuuid, file.name)
     Path("exe/%s" % myuuid).mkdir(parents=True, exist_ok=True)
     with open(file_save_path, "wb+") as f:
@@ -621,27 +639,24 @@ def cleanup_secrets(request):
     # Pass the UUID as a query param or in JSON body
     data = json.loads(request.body)
     my_uuid = data.get('uuid')
-    
-    if not my_uuid:
+
+    # uuid inteiro e valido: antes bastava um pedaco ("-") para apagar o pacote de todos os builds em andamento
+    if not my_uuid or not _UUID_RE.match(str(my_uuid)):
         return HttpResponse("Missing UUID", status=400)
 
-    # 1. Find the files in your temp directory matching the UUID
-    temp_dir = os.path.join('temp_zips')
-    
-    # We look for any file starting with 'secrets_' and containing the uuid
-    for filename in os.listdir(temp_dir):
-        if my_uuid in filename and filename.endswith('.zip'):
-            file_path = os.path.join(temp_dir, filename)
-            try:
-                os.remove(file_path)
-                print(f"Successfully deleted {file_path}")
-            except OSError as e:
-                print(f"Error deleting file: {e}")
+    file_path = os.path.join('temp_zips', f"secrets_{my_uuid}.zip")
+    try:
+        os.remove(file_path)
+        print(f"Successfully deleted {file_path}")
+    except OSError as e:
+        print(f"Error deleting file: {e}")
 
     return HttpResponse("Cleanup successful", status=200)
 
 def get_zip(request):
-    filename = request.GET['filename']
+    filename = request.GET.get('filename', '')
+    if not _ZIP_RE.match(filename):
+        return HttpResponseForbidden("Invalid filename")
     base_dir = os.path.abspath('temp_zips')
     file_path = os.path.abspath(os.path.join(base_dir, filename))
     if not file_path.startswith(base_dir + os.sep):

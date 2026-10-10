@@ -1,6 +1,7 @@
 import io
 from pathlib import Path
 from django.http import HttpResponse, JsonResponse, HttpResponseForbidden, FileResponse, Http404
+from django.views.decorators.http import require_http_methods
 from django.shortcuts import render, get_object_or_404
 from django.core.files.base import ContentFile
 import os
@@ -248,9 +249,11 @@ def generate_custom_client(params, full_url):
         decodedCustom['override-settings']['enable-remote-printer'] = 'Y' if enablePrinter else 'N'
         decodedCustom['override-settings']['enable-camera'] = 'Y' if enableCamera else 'N'
         decodedCustom['override-settings']['enable-terminal'] = 'Y' if enableTerminal else 'N'
-        if direction == 'incoming':
-            decodedCustom['override-settings']['custom-rendezvous-server'] = server
-            decodedCustom['override-settings']['api-server'] = apiServer
+
+    # Network settings must be present even when permissions keep their defaults.
+    if direction == 'incoming':
+        decodedCustom['override-settings']['custom-rendezvous-server'] = server
+        decodedCustom['override-settings']['api-server'] = apiServer
 
     if defaultManual:
         for line in defaultManual.splitlines():
@@ -498,7 +501,52 @@ def generator_view(request):
         'form': form,
         'product_version': nextec.product_version(),
         'branding_url': 'nextec/imagens/',
+        'public_key_loaded': bool(nextec.server_defaults().get('key')),
+        'saved_models_url': 'nextec/modelos/',
+        'access_email': nextec.access_user(request),
     })
+
+
+@require_http_methods(['GET', 'POST', 'DELETE'])
+def saved_models_view(request):
+    """Personal, non-secret generator presets kept in the RDGen database."""
+    from .models import SavedModel
+    from .forms import GenerateForm
+
+    owner = nextec.access_user(request)
+    if not owner:
+        return JsonResponse({'error': 'Entre pelo acesso Nextec para usar modelos salvos.'}, status=403)
+    presets = SavedModel.objects.filter(owner=owner)
+    if request.method == 'GET':
+        name = request.GET.get('name')
+        if name:
+            preset = presets.filter(name=name).first()
+            return JsonResponse({'name': preset.name, 'settings': preset.settings}) if preset else JsonResponse({'error': 'Modelo não encontrado.'}, status=404)
+        return JsonResponse({'models': list(presets.values('name', 'updated_at'))})
+
+    try:
+        payload = json.loads(request.body)
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse({'error': 'JSON inválido.'}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({'error': 'Dados inválidos.'}, status=400)
+    name = payload.get('name')
+    if not isinstance(name, str) or not 1 <= len(name.strip()) <= 80:
+        return JsonResponse({'error': 'Informe um nome de até 80 caracteres.'}, status=400)
+    name = name.strip()
+    if request.method == 'DELETE':
+        deleted, _ = presets.filter(name=name).delete()
+        return JsonResponse({'deleted': bool(deleted)})
+    settings = payload.get('settings')
+    if not isinstance(settings, dict) or len(json.dumps(settings)) > 16000:
+        return JsonResponse({'error': 'Modelo inválido ou grande demais.'}, status=400)
+    excluded = {'key', 'permanentPassword', 'sh_secret_field', 'iconbase64', 'logobase64',
+                'privacybase64', 'defaultManual', 'overrideManual'}
+    allowed = set(GenerateForm.base_fields) - excluded
+    clean = {key: value for key, value in settings.items()
+             if key in allowed and isinstance(value, (str, bool)) and len(str(value)) <= 2000}
+    SavedModel.objects.update_or_create(owner=owner, name=name, defaults={'settings': clean})
+    return JsonResponse({'name': name, 'saved': True})
 
 
 def check_for_file(request):
@@ -522,6 +570,8 @@ def check_for_file(request):
             'uuid': uuid, 
             'platform': platform,
             'files': result['files'],
+            'panel_updates_url': (nextec.server_defaults().get('apiServer', '').rstrip('/') + '/_admin/#/user/updates')
+                                 if nextec.server_defaults().get('apiServer') else '',
         })
         
     elif result['status'] in ['failure', 'cancelled', 'timed_out', 'skipped', 'action_required', 'incomplete']:

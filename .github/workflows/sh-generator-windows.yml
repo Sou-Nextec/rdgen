@@ -599,7 +599,10 @@ jobs:
           # VERSION=master (variável do workflow) vira a propriedade Version do MSBuild e o restore do NuGet falha
           # com "'master' is not a valid version string"; a variável é limpa só neste passo
           Remove-Item Env:VERSION -ErrorAction SilentlyContinue
-          msbuild msi.sln -restore -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10
+          # CustomActions.vcxproj usa packages.config (WiX WcaUtil/DUtil): sem restaurar essa pasta o build do MSI falha com
+          # "This project references NuGet package(s) that are missing". Restaura pelo nuget e tambem pelo MSBuild.
+          nuget restore msi.sln
+          msbuild msi.sln -restore -p:RestorePackagesConfig=true -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10
           cp ./Package/bin/x64/Release/en-us/Package.msi ../../SignOutput/rustdesk-latest.msi
           mv ./Package/bin/x64/Release/en-us/Package.msi ../../SignOutput/rustdesk.msi
           sha256sum ../../SignOutput/rustdesk.msi

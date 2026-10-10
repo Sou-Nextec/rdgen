@@ -233,3 +233,45 @@ class ModeloEChaveTests(TestCase):
         campo = re.search(r'<input[^>]*name="key"[^>]*>', html).group(0)
         self.assertIn('type="password"', campo)
         self.assertIn('readonly', campo)
+
+
+class BuildOutputsTests(TestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        from .models import GithubRun
+        self.old = os.getcwd()
+        self.tmp = tempfile.TemporaryDirectory()
+        os.chdir(self.tmp.name)
+        self.uuid = '11111111-2222-3333-4444-555555555555'
+        self.directory = Path('exe') / self.uuid
+        self.directory.mkdir(parents=True)
+        GithubRun.objects.create(uuid=self.uuid, github_run_id='1', status='success', filename='Nextec-Connect', platform='windows')
+
+    def tearDown(self):
+        os.chdir(self.old)
+        self.tmp.cleanup()
+
+    def test_success_requires_received_exe_and_msi(self):
+        from .views import _get_run_status
+        (self.directory / 'Nextec-Connect.exe').write_bytes(b'exe')
+        result = _get_run_status(self.uuid)
+        self.assertEqual(result['status'], 'incomplete')
+        self.assertEqual(result['missing_files'], ['Nextec-Connect.msi'])
+        self.assertEqual(len(result['files']), 1)
+        (self.directory / 'Nextec-Connect.msi').write_bytes(b'msi')
+        self.assertEqual(_get_run_status(self.uuid)['status'], 'success')
+
+    def test_empty_or_unrelated_files_do_not_count(self):
+        from .views import _get_run_status
+        (self.directory / 'Nextec-Connect.msi').touch()
+        (self.directory / 'other.exe').write_bytes(b'exe')
+        result = _get_run_status(self.uuid, 'other', 'linux')
+        self.assertEqual(result['files'], [])
+        self.assertEqual(result['status'], 'incomplete')
+
+    def test_html_does_not_offer_missing_msi(self):
+        from django.template.loader import render_to_string
+        html = render_to_string('failure.html', {'files': [{'name': 'Nextec-Connect.exe', 'url': 'download?filename=Nextec-Connect.exe'}], 'missing_files': ['Nextec-Connect.msi']})
+        self.assertIn('download?filename=Nextec-Connect.exe', html)
+        self.assertNotIn('download?filename=Nextec-Connect.msi', html)

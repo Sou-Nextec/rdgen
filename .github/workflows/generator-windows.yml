@@ -98,6 +98,10 @@ jobs:
         with:
           zip_password: ${{ secrets.ZIP_PASSWORD }}
 
+      - name: Preserve MSI packaging script
+        shell: pwsh
+        run: Copy-Item .github/scripts/build-msi.ps1 (Join-Path $env:RUNNER_TEMP 'build-msi.ps1')
+
       - name: Finalize and Cleanup zip/json
         if: always() # Run even if previous steps fail
         continue-on-error: true
@@ -683,24 +687,10 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Build msi
-        continue-on-error: true
         if: env.UPLOAD_ARTIFACT == 'true'
+        shell: pwsh
         run: |
-          $myappname = "${{ env.appname }}" -replace '\s','_'
-          cp "rustdesk/${{ env.appname }}.exe" "rustdesk/${myappname}.exe" -ErrorAction SilentlyContinue
-          pushd ./res/msi
-          python preprocess.py --app-name "$myappname" --arp -d ../../rustdesk
-          # projeto WiX 4 (SDK): o restore precisa ser feito pelo próprio MSBuild (-restore); 'nuget restore' não gera o project.assets.json
-          # VERSION=master (variável do workflow) vira a propriedade Version do MSBuild e o restore do NuGet falha
-          # com "'master' is not a valid version string"; a variável é limpa só neste passo
-          Remove-Item Env:VERSION -ErrorAction SilentlyContinue
-          # CustomActions.vcxproj usa packages.config (WiX WcaUtil/DUtil): sem restaurar essa pasta o build do MSI falha com
-          # "This project references NuGet package(s) that are missing". Restaura pelo nuget e tambem pelo MSBuild.
-          nuget restore msi.sln
-          msbuild msi.sln -restore -p:RestorePackagesConfig=true -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10
-          cp ./Package/bin/x64/Release/en-us/Package.msi ../../SignOutput/rustdesk-latest.msi
-          mv ./Package/bin/x64/Release/en-us/Package.msi ../../SignOutput/rustdesk.msi
-          sha256sum ../../SignOutput/rustdesk.msi
+          & (Join-Path $env:RUNNER_TEMP 'build-msi.ps1') -AppName $env:appname
 
       - name: zip exe and msi
         continue-on-error: true
@@ -735,9 +725,8 @@ jobs:
           mv ./SignOutput/rustdesk.exe "./SignOutput/${{ env.filename }}.exe" || echo "rustdesk"
 
       - name: rename rustdesk.msi to filename.msi
-        continue-on-error: true
         run: |
-          mv ./SignOutput/rustdesk.msi "./SignOutput/${{ env.filename }}.msi" || echo "rustdesk"
+          mv ./SignOutput/rustdesk.msi "./SignOutput/${{ env.filename }}.msi"
 
       - name: send file to rdgen server
         if: ${{ env.rdgen == 'true' }}
@@ -748,8 +737,8 @@ jobs:
           retry_wait_seconds: 15
           shell: bash
           command: |
-            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.exe" -F "uuid=${{ env.uuid }}" "${{ secrets.GENURL }}/save_custom_client"
-            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.msi" -F "uuid=${{ env.uuid }}" "${{ secrets.GENURL }}/save_custom_client" || true
+            curl --fail-with-body --show-error -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.exe" -F "uuid=${{ env.uuid }}" "${{ secrets.GENURL }}/save_custom_client"
+            curl --fail-with-body --show-error -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.msi" -F "uuid=${{ env.uuid }}" "${{ secrets.GENURL }}/save_custom_client"
 
       - name: send file to api server
         if: ${{ env.rdgen == 'false' }}
@@ -760,8 +749,8 @@ jobs:
           retry_wait_seconds: 15
           shell: bash
           command: |
-            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.exe" ${{ env.apiServer }}/api/save_custom_client
-            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.msi" ${{ env.apiServer }}/api/save_custom_client || true
+            curl --fail-with-body --show-error -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.exe" ${{ env.apiServer }}/api/save_custom_client
+            curl --fail-with-body --show-error -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.msi" ${{ env.apiServer }}/api/save_custom_client
 
   cleanup:
     needs: [build-for-windows-flutter]

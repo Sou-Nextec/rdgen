@@ -17,7 +17,7 @@ from pathlib import Path
 from django.core.files.base import ContentFile
 
 LOCKED_FIELDS = ('serverIP', 'serverPort', 'apiServer', 'key', 'urlLink', 'downloadLink', 'compname')
-_BRANDING = Path(__file__).resolve().parent.parent / 'nextec' / 'branding'
+_PRODUCT_VERSION = Path(__file__).resolve().parent / 'VERSION'
 
 
 def _env(name, default=''):
@@ -81,13 +81,29 @@ def apply(params):
 
 
 def default_image(kind):
-    """Imagem padrao (icon ou logo) quando nenhuma foi enviada. Devolve um arquivo para o save_png, ou None."""
-    env = _env('NX_ICON_FILE' if kind == 'icon' else 'NX_LOGO_FILE')
-    path = Path(env) if env else _BRANDING / ('icon.png' if kind == 'icon' else 'logo.png')
+    """Imagem padrão gerenciada quando nenhuma foi enviada no formulário."""
+    env_name = {'icon': 'NX_ICON_FILE', 'logo': 'NX_LOGO_FILE', 'privacy': 'NX_PRIVACY_FILE'}.get(kind)
+    env = _env(env_name) if env_name else ''
+    if env:
+        path = Path(env)
+    else:
+        from .branding import get_path
+        path = get_path(kind)
+        if not path:
+            return None
     try:
         return ContentFile(path.read_bytes(), name=path.name)
     except OSError:
         return None
+
+
+def product_version():
+    """Versão da experiência Nextec do gerador, separada da versão-base RustDesk."""
+    try:
+        value = _PRODUCT_VERSION.read_text(encoding='utf-8').strip()
+    except OSError:
+        return '2.0.1'
+    return value if value and len(value) <= 32 else '2.0.1'
 
 
 def config_problems():
@@ -107,7 +123,7 @@ def config_problems():
 
 
 # Rotas que o GitHub Actions chama (liberadas no Access). Todas as outras exigem pessoa autorizada.
-PUBLIC_PATHS = ('/updategh', '/cleanzip', '/save_custom_client', '/get_png', '/get_zip')
+PUBLIC_PATHS = ('/updategh', '/cleanzip', '/save_custom_client', '/get_png', '/get_zip', '/get_artwork')
 
 
 def allowed_emails():
@@ -126,7 +142,8 @@ def access_denied(request):
     allowed = allowed_emails()
     if not allowed:
         return False
-    if request.path_info.rstrip('/') in PUBLIC_PATHS:
+    path = request.path_info.rstrip('/')
+    if path in PUBLIC_PATHS or path.startswith('/get_artwork/'):
         return False
     if request.META.get('REMOTE_ADDR') in ('127.0.0.1', '::1'):
         return False  # verificação de saúde do próprio contêiner

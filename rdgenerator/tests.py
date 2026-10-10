@@ -1,6 +1,12 @@
 import json
 import os
+import io
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from PIL import Image
 
 # Create your tests here.
 
@@ -275,3 +281,50 @@ class BuildOutputsTests(TestCase):
         html = render_to_string('failure.html', {'files': [{'name': 'Nextec-Connect.exe', 'url': 'download?filename=Nextec-Connect.exe'}], 'missing_files': ['Nextec-Connect.msi']})
         self.assertIn('download?filename=Nextec-Connect.exe', html)
         self.assertNotIn('download?filename=Nextec-Connect.msi', html)
+
+
+class BrandingAssetsTests(TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        old_cwd = os.getcwd()
+        os.chdir(self.temp.name)
+        self.addCleanup(os.chdir, old_cwd)
+        self.branding = Path(self.temp.name) / 'branding'
+        self.branding_env = patch.dict(os.environ, {'NX_BRANDING_DIR': str(self.branding)})
+        self.branding_env.start()
+        self.addCleanup(self.branding_env.stop)
+        self.allowed = patch.dict(os.environ, {'NX_ALLOWED_EMAILS': ''})
+        self.allowed.start()
+        self.addCleanup(self.allowed.stop)
+
+    @staticmethod
+    def image_file(name, size, fmt):
+        stream = io.BytesIO()
+        Image.new('RGB', size, '#1479d1').save(stream, format=fmt)
+        return SimpleUploadedFile(name, stream.getvalue(), content_type=f'image/{fmt.lower()}')
+
+    def test_manager_translated_and_shows_version_and_asset_specs(self):
+        response = self.client.get('/nextec/imagens/')
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn('Gerador 2.0.1', body)
+        self.assertIn('Identidade visual', body)
+        from .branding import ASSETS
+        self.assertEqual(set(ASSETS), {'icon', 'logo', 'privacy'})
+
+    def test_midia_persistida_pode_ser_visualizada_por_nome_fixo(self):
+        self.client.post('/nextec/imagens/', {
+            'asset': 'icon', 'action': 'upload',
+            'image': self.image_file('icon.png', (64, 64), 'PNG'),
+        })
+        response = self.client.get('/get_artwork/icon')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'image/png')
+        response.close()
+
+    def test_upload_de_identidade_visual_exige_csrf(self):
+        from django.test import Client
+        client = Client(enforce_csrf_checks=True)
+        response = client.post('/nextec/imagens/', {'asset': 'icon', 'action': 'upload'})
+        self.assertEqual(response.status_code, 403)

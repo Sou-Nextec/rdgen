@@ -16,55 +16,55 @@ APP_NAME_ALLOWED = re.compile(r'^[A-Za-z0-9-]+$')
 class GenerateForm(forms.Form):
     sh_secret_field = forms.CharField(required=False)
     #Platform
-    platform = forms.ChoiceField(choices=[('windows','Windows 64Bit'),('linux','Linux')], initial='windows')
-    version = forms.ChoiceField(choices=[('master','nightly'),('1.5.0','1.5.0'),('1.4.9','1.4.9'),('1.4.8','1.4.8'),('1.4.7','1.4.7'),('1.4.6','1.4.6'),('1.4.5','1.4.5'),('1.4.4','1.4.4'),('1.4.3','1.4.3'),('1.4.2','1.4.2'),('1.4.1','1.4.1'),('1.4.0','1.4.0')], initial='1.5.0')
-    help_text="'master' is the development version (nightly build) with the latest features but may be less stable"
+    platform = forms.ChoiceField(choices=[('windows','Windows 64 bits'),('linux','Linux')], initial='windows')
+    version = forms.ChoiceField(choices=[('master','Desenvolvimento (nightly)'),('1.5.0','1.5.0'),('1.4.9','1.4.9'),('1.4.8','1.4.8'),('1.4.7','1.4.7'),('1.4.6','1.4.6'),('1.4.5','1.4.5'),('1.4.4','1.4.4'),('1.4.3','1.4.3'),('1.4.2','1.4.2'),('1.4.1','1.4.1'),('1.4.0','1.4.0')], initial='1.5.0', label='Versão-base do RustDesk')
+    help_text="A versão de desenvolvimento traz os recursos mais novos e pode ser menos estável."
     delayFix = forms.BooleanField(initial=True, required=False)
 
     #General
-    exename = forms.CharField(label="Name for EXE file", required=True)
-    appname = forms.CharField(label="Custom App Name", required=False)
+    exename = forms.CharField(label="Nome do arquivo de instalação", required=True)
+    appname = forms.CharField(label="Nome exibido no aplicativo", required=False)
     direction = forms.ChoiceField(widget=forms.RadioSelect, choices=[
-        ('incoming', 'Incoming Only'),
-        ('outgoing', 'Outgoing Only'),
-        ('both', 'Bidirectional')
+        ('incoming', 'Receber conexões'),
+        ('outgoing', 'Iniciar conexões'),
+        ('both', 'Receber e iniciar conexões')
     ], initial='both')
-    installation = forms.ChoiceField(label="Disable Installation", choices=[
-        ('installationY', 'No, enable installation'),
-        ('installationN', 'Yes, DISABLE installation')
+    installation = forms.ChoiceField(label="Instalação", choices=[
+        ('installationY', 'Permitir instalação'),
+        ('installationN', 'Desativar instalação')
     ], initial='installationY')
-    settings = forms.ChoiceField(label="Disable Settings", choices=[
-        ('settingsY', 'No, enable settings'),
-        ('settingsN', 'Yes, DISABLE settings')
+    settings = forms.ChoiceField(label="Configurações", choices=[
+        ('settingsY', 'Permitir configurações'),
+        ('settingsN', 'Desativar configurações')
     ], initial='settingsY')
-    androidappid = forms.CharField(label="Custom Android App ID (replaces 'com.carriez.flutter_hbb')", required=False)
+    androidappid = forms.CharField(label="ID do aplicativo Android", required=False)
 
     #Custom Server
-    serverIP = forms.CharField(label="Host", required=False)
-    serverPort = forms.CharField(label="Port", required=False)
-    apiServer = forms.CharField(label="API Server", required=False)
+    serverIP = forms.CharField(label="Servidor de ID", required=False)
+    serverPort = forms.CharField(label="Porta do servidor de ID", required=False)
+    apiServer = forms.CharField(label="Endereço da API", required=False)
     # mascarada como senha: nao aparece em captura de tela (e o navegador nao tenta preencher com a senha do login)
-    key = forms.CharField(label="Key", required=False, widget=forms.PasswordInput(render_value=True, attrs={'autocomplete': 'new-password'}))
-    urlLink = forms.CharField(label="Custom URL for links", required=False)
-    downloadLink = forms.CharField(label="Custom URL for downloading new versions", required=False)
-    compname = forms.CharField(label="Company name",required=False)
+    key = forms.CharField(label="Chave pública", required=False, widget=forms.PasswordInput(render_value=True, attrs={'autocomplete': 'new-password'}))
+    urlLink = forms.CharField(label="Endereço dos links", required=False)
+    downloadLink = forms.CharField(label="Endereço para baixar atualizações", required=False)
+    compname = forms.CharField(label="Empresa",required=False)
 
     #Visual
-    iconfile = forms.FileField(label="Custom App Icon (in .png format)", required=False, widget=forms.FileInput(attrs={'accept': 'image/png'}))
-    logofile = forms.FileField(label="Custom App Logo (in .png format)", required=False, widget=forms.FileInput(attrs={'accept': 'image/png'}))
-    privacyfile = forms.FileField(label="Custom privacy screen (in .png format)", required=False, widget=forms.FileInput(attrs={'accept': 'image/png'}))
+    iconfile = forms.FileField(label="Ícone do aplicativo (PNG)", required=False, widget=forms.FileInput(attrs={'accept': 'image/png'}))
+    logofile = forms.FileField(label="Logo do aplicativo (PNG)", required=False, widget=forms.FileInput(attrs={'accept': 'image/png'}))
+    privacyfile = forms.FileField(label="Tela de privacidade (PNG)", required=False, widget=forms.FileInput(attrs={'accept': 'image/png'}))
     iconbase64 = forms.CharField(required=False)
     logobase64 = forms.CharField(required=False)
     privacybase64 = forms.CharField(required=False)
     theme = forms.ChoiceField(choices=[
-        ('light', 'Light'),
-        ('dark', 'Dark'),
-        ('system', 'Follow System')
+        ('light', 'Claro'),
+        ('dark', 'Escuro'),
+        ('system', 'Seguir o sistema')
     ], initial='system')
-    themeDorO = forms.ChoiceField(choices=[('default', 'Default'),('override', 'Override')], initial='default')
+    themeDorO = forms.ChoiceField(choices=[('default', 'Padrão'),('override', 'Obrigatório')], initial='default')
 
     #Security
-    passApproveMode = forms.ChoiceField(choices=[('password','Accept sessions via password'),('click','Accept sessions via click'),('password-click','Accepts sessions via both')],initial='password-click')
+    passApproveMode = forms.ChoiceField(choices=[('password','Aceitar com senha'),('click','Aceitar com confirmação'),('password-click','Aceitar com senha ou confirmação')],initial='password-click')
     permanentPassword = forms.CharField(widget=forms.PasswordInput(), required=False)
     #runasadmin = forms.ChoiceField(choices=[('false','No'),('true','Yes')], initial='false')
     denyLan = forms.BooleanField(initial=False, required=False)
@@ -73,8 +73,8 @@ class GenerateForm(forms.Form):
     autoClose = forms.BooleanField(initial=False, required=False)
 
     #Permissions
-    permissionsDorO = forms.ChoiceField(choices=[('default', 'Default'),('override', 'Override')], initial='default')
-    permissionsType = forms.ChoiceField(choices=[('custom', 'Custom'),('full', 'Full Access'),('view','Screen share')], initial='custom')
+    permissionsDorO = forms.ChoiceField(choices=[('default', 'Padrão editável pelo cliente'),('override', 'Obrigatório')], initial='default')
+    permissionsType = forms.ChoiceField(choices=[('custom', 'Personalizado'),('full', 'Acesso total'),('view','Somente visualizar')], initial='custom')
     enableKeyboard =  forms.BooleanField(initial=True, required=False)
     enableClipboard = forms.BooleanField(initial=True, required=False)
     enableFileTransfer = forms.BooleanField(initial=True, required=False)
@@ -118,7 +118,6 @@ class GenerateForm(forms.Form):
                     self.fields[name].required = False
 
     def clean_iconfile(self):
-        print("checking icon")
         image = self.cleaned_data['iconfile']
         if image:
             try:
@@ -127,27 +126,27 @@ class GenerateForm(forms.Form):
 
                 # Check if the image is a PNG (optional, but good practice)
                 if img.format != 'PNG':
-                    raise forms.ValidationError("Only PNG images are allowed.")
+                    raise forms.ValidationError("Envie uma imagem PNG.")
 
                 # Get image dimensions
                 width, height = img.size
 
                 # Check for square dimensions
                 if width != height:
-                    raise forms.ValidationError("Custom App Icon dimensions must be square.")
+                    raise forms.ValidationError("O ícone do aplicativo deve ser quadrado.")
                 
                 return image
             except OSError:  # Handle cases where the uploaded file is not a valid image
-                raise forms.ValidationError("Invalid icon file.")
+                raise forms.ValidationError("O arquivo de ícone é inválido.")
             except Exception as e: # Catch any other image processing errors
-                raise forms.ValidationError(f"Error processing icon: {e}")
+                raise forms.ValidationError(f"Não foi possível processar o ícone: {e}")
 
     def _reject_unsafe_name_chars(self, field):
         value = self.cleaned_data.get(field, '')
         if value and UNSAFE_NAME_CHARS.search(value):
             raise forms.ValidationError(
-                "Contains characters unsupported in build scripts "
-                "(& \\ | ' \" $ `, newlines)."
+                "O texto contém caracteres não aceitos nos scripts de geração "
+                "(& \\ | ' \" $ ` ou quebras de linha)."
             )
         return value
 
@@ -155,9 +154,8 @@ class GenerateForm(forms.Form):
         value = self._reject_unsafe_name_chars('appname')
         if value and not APP_NAME_ALLOWED.match(value):
             raise forms.ValidationError(
-                "Use apenas letras (sem acento), numeros e hifen, sem espacos. "
-                "Exemplo: Nextec-Connect. O instalador do RustDesk recusa outros nomes. / "
-                "Only letters (no accents), digits and hyphen, no spaces. Example: Nextec-Connect."
+                "Use apenas letras sem acento, números e hífen, sem espaços. "
+                "Exemplo: Nextec-Connect. O instalador do RustDesk recusa outros nomes."
             )
         return value
 
@@ -168,11 +166,11 @@ class GenerateForm(forms.Form):
         if not value:
             return value
         if not value.isdigit() or not (1 <= int(value) <= 65532):
-            raise forms.ValidationError("Use apenas o numero da porta do servidor de ID (padrao 21116). / Port must be a number (default 21116).")
+            raise forms.ValidationError("Informe somente o número da porta do servidor de ID (padrão: 21116).")
         if int(value) in (21117, 21118, 21119):
             raise forms.ValidationError(
-                "21117 a 21119 sao as portas do relay e do websocket, nao a do servidor de ID. "
-                "Deixe em branco ou use 21116. / 21117-21119 are relay/websocket ports; use 21116 or leave blank."
+                "As portas 21117 a 21119 são do relay e do websocket, não do servidor de ID. "
+                "Deixe em branco ou use 21116."
             )
         return value
 
@@ -183,8 +181,7 @@ class GenerateForm(forms.Form):
         from . import nextec
         if not value and nextec.is_configured():
             raise forms.ValidationError(
-                "Informe a chave publica do servidor (painel: Ajustes do servidor > Dados do servidor). / "
-                "Enter the server public key."
+                "Informe a chave pública do servidor (painel: Ajustes do servidor > Dados do servidor)."
             )
         return value
 
@@ -198,10 +195,10 @@ class GenerateForm(forms.Form):
         for field in ('serverIP', 'key', 'apiServer', 'urlLink', 'downloadLink', 'androidappid'):
             value = cleaned.get(field, '')
             if value and UNSAFE.search(value):
-                self.add_error(field, 'Caracteres inseguros para o build. / Unsafe build characters.')
+                self.add_error(field, 'O valor contém caracteres não aceitos na geração.')
         value = cleaned.get('androidappid', '')
         if value and not ANDROID_ID.fullmatch(value):
-            self.add_error('androidappid', 'Invalid Android application ID.')
+            self.add_error('androidappid', 'O ID do aplicativo Android é inválido.')
         return cleaned
 
 

@@ -43,9 +43,20 @@ Da Nextec:
 | `NX_LOCK_SERVER` | `1` (padrão) trava os campos acima, no formulário e no servidor |
 | `NX_ICON_FILE`, `NX_LOGO_FILE` | Imagens padrão (PNG quadrado) quando nenhuma é enviada |
 | `NX_ALLOWED_EMAILS` | E-mails autorizados a gerar (vírgula ou espaço). Vazio = quem passa pelo Access. Veja "Quem pode gerar" |
+| `NX_BRANDING_DIR` | Diretório persistente das imagens gerenciadas (padrão: `/opt/rdgen/data/branding`, dentro do volume `rdgen-db`) |
 | `WEB_CONCURRENCY` | Processos do gunicorn (padrão 2) |
 
 Sem `NX_SERVER_HOST` o gerador se comporta como o original.
+
+## Versão e imagens
+
+`rdgenerator/VERSION` guarda a versão da experiência do gerador, atualmente `2.0.1`. Ao alterar layout ou recursos próprios,
+atualize esse arquivo e acrescente uma entrada em `nextec/CHANGELOG.md`. Essa versão é separada da versão-base RustDesk usada
+no build e da versão do produto publicada na tela de atualizações do painel.
+
+Na aba **Identidade visual**, ícone, logo e tela de privacidade aceitam PNG e ficam no volume de dados existente do
+gerador para as próximas gerações. A personalização do bitmap MSI depende de isolar o build Windows dos segredos de
+upload; consulte `nextec/ROADMAP.md`.
 
 ## Segredos do repositório (GitHub > Settings > Secrets and variables > Actions)
 

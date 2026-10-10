@@ -2,21 +2,31 @@
 
 ## Entregue nesta versão do gerador
 
-- Versão própria do gerador em `rdgenerator/VERSION` (`2.0.1`), separada da versão-base do RustDesk e da versão publicada para os clientes.
+- Versão própria do gerador em `rdgenerator/VERSION` (`2.0.3`), separada da versão-base do RustDesk e da versão publicada para os clientes.
 - Interface do gerador e telas de resultado em português, com identidade visual Nextec.
 - Aba **Identidade visual** para enviar, pré-visualizar e restaurar ícone, logo e tela de privacidade. O volume persistente já usado pelo banco mantém os arquivos após recriações do container.
-- Arquivos PNG são validados por tamanho, formato e dimensões antes de serem salvos.
+- Arquivos PNG e artes do MSI são validados por tamanho, formato e dimensões antes de serem salvos.
 - Corrigida a condição lógica da tela de espera para reconhecer corretamente os builds Windows.
 
 ## Próximos itens
 
 ### Prioridade 1 — personalização visual do MSI
 
-**Estado atual:** a tela do instalador tem duas artes configuráveis no WiX: o bitmap lateral do print (493 × 312 px) e a faixa superior (493 × 58 px). O gerador ainda não aplica esses arquivos aos builds.
+**Estado atual:** o gerador recebe as duas artes, valida dimensões, converte para BMP e o fluxo Windows as copia para os recursos WiX antes do MSI. Ainda falta executar um build Windows real e conferir as telas do instalador antes de liberar para produção.
 
 **Bloqueio:** os workflows Windows executam código de repositórios externos em runner próprio e usam segredos no fluxo de upload. A revisão automática de segurança recusou incluir essa alteração porque o build poderia expor os segredos ou comprometer o runner.
 
-**Trabalho:** separar a compilação de código externo do job que usa segredos, usar runner isolado e sem dados persistentes para o build, e liberar ao job de publicação apenas artefatos validados. Depois, habilitar o envio das duas imagens e a prévia no gerador.
+**Trabalho:** separar a compilação de código externo do job que usa segredos, usar runner isolado e sem dados persistentes para o build, e liberar ao job de publicação apenas artefatos validados. Validar a arte no MSI compilado em uma VM Windows.
+
+### Prioridade 1 — publicar o MSI pelo gerador
+
+**Estado atual:** após gerar, o operador baixa o MSI e o envia pela tela Atualizações do app no painel. A publicação direta ainda não existe.
+
+**Trabalho:** criar autorização de serviço restrita à publicação de MSI, exigir assinatura digital válida e conferência de hash no painel, permitir seleção de versão e grupo piloto pelo operador e registrar auditoria. Não armazenar token de administrador do painel no gerador nem colocar credencial de publicação no job que compila código externo.
+
+### Prioridade 2 — geração conjunta Windows e Linux
+
+**Estado atual:** cada plataforma é gerada separadamente. Adiar a geração simultânea até o fluxo Windows estar validado.
 
 ### Prioridade 1 — migração EXE para MSI sem perder a máquina
 

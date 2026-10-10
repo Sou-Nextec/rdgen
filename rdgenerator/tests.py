@@ -308,12 +308,30 @@ class BrandingAssetsTests(TestCase):
         response = self.client.get('/nextec/imagens/')
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
-        self.assertIn('Gerador 2.0.2', body)
+        self.assertIn('Gerador 2.0.3', body)
         self.assertIn('Identidade visual', body)
         self.assertIn('<a href="../../">Gerar cliente</a>', body)
         self.assertIn('<form method="post" enctype="multipart/form-data">', body)
         from .branding import ASSETS
-        self.assertEqual(set(ASSETS), {'icon', 'logo', 'privacy'})
+        self.assertEqual(set(ASSETS), {'icon', 'logo', 'privacy', 'msi_dialog', 'msi_banner'})
+
+    def test_msi_artwork_is_converted_to_expected_bmp(self):
+        for kind, size in (('msi_dialog', (493, 312)), ('msi_banner', (493, 58))):
+            response = self.client.post('/nextec/imagens/', {
+                'asset': kind, 'action': 'upload',
+                'image': self.image_file('art.png', size, 'PNG'),
+            })
+            self.assertEqual(response.status_code, 200)
+            image = self.client.get(f'/get_artwork/{kind}')
+            self.assertEqual(image['Content-Type'], 'image/bmp')
+            with Image.open(io.BytesIO(b''.join(image.streaming_content))) as bitmap:
+                self.assertEqual(bitmap.format, 'BMP')
+                self.assertEqual(bitmap.size, size)
+
+    def test_msi_artwork_requires_exact_dimensions(self):
+        from .branding import save_upload
+        with self.assertRaisesRegex(ValueError, '493 × 312'):
+            save_upload('msi_dialog', self.image_file('art.png', (492, 312), 'PNG'))
 
     def test_generator_uses_relative_paths_behind_url_prefix(self):
         with patch('rdgenerator.nextec.config_problems', return_value=[]):

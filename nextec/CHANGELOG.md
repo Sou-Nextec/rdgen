@@ -2,6 +2,11 @@
 
 O número nesta página acompanha a experiência do gerador (layout, organização e recursos próprios da Nextec). Ele é independente da versão-base do RustDesk escolhida em cada build e da versão publicada pelo painel para atualização dos clientes.
 
+## 2.0.3
+
+- Permite enviar as duas artes do MSI (lateral de 493 × 312 px e faixa de 493 × 58 px) na aba Identidade visual. O gerador converte PNG ou BMP validado para BMP e o build usa essas imagens nas próximas gerações.
+- Mantém a publicação da atualização pelo painel e a instalação automática dentro do EXE/MSI pendentes de um fluxo de assinatura, distribuição e migração comprovado em Windows.
+
 ## 2.0.2
 
 - Corrige servidor de ID e API nos clientes de entrada gerados com permissões padrão.

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Identidade visual · Gerador Nextec</title>
+  <style>
+    :root { color-scheme: light; --navy:#102b46; --blue:#0879e8; --cyan:#08b9d8; --ink:#192b3d; --muted:#637487; --line:#dce5ed; --surface:#fff; --page:#f3f7fb; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--page); color:var(--ink); font:15px/1.5 Inter,Segoe UI,Arial,sans-serif; }
+    .top { background:linear-gradient(115deg,var(--navy),#075a96); color:#fff; padding:22px max(24px,calc((100vw - 1120px)/2)); }
+    .brand { display:flex; align-items:center; justify-content:space-between; gap:20px; }
+    .brand h1 { margin:0; font-size:22px; letter-spacing:.01em; }
+    .version { border:1px solid #ffffff55; border-radius:999px; padding:5px 11px; font-size:12px; white-space:nowrap; }
+    .nav { display:flex; gap:8px; margin-top:18px; }
+    .nav a { color:#d6e9fa; padding:8px 12px; border-radius:7px; text-decoration:none; }
+    .nav a.active,.nav a:hover { color:#fff; background:#ffffff20; }
+    main { width:min(1120px,calc(100% - 32px)); margin:26px auto 52px; }
+    .intro { margin-bottom:18px; }
+    .intro h2 { margin:0 0 6px; font-size:24px; }
+    .intro p,.help { color:var(--muted); }
+    .notice { padding:12px 14px; border-radius:8px; margin:14px 0; }
+    .success { background:#e7f8ef; border:1px solid #b6e8cb; color:#17613a; }
+    .error { background:#fff0ef; border:1px solid #f0c2be; color:#8d251d; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(310px,1fr)); gap:16px; }
+    .card { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:18px; box-shadow:0 3px 12px #193c5910; }
+    .card h3 { margin:0 0 3px; font-size:17px; }
+    .spec { margin:0 0 12px; color:var(--muted); font-size:13px; }
+    .preview { min-height:118px; display:grid; place-items:center; overflow:hidden; background:#f6f9fc; border:1px dashed #c8d6e3; border-radius:9px; padding:10px; margin:12px 0; }
+    .preview img { max-width:100%; max-height:160px; object-fit:contain; image-rendering:auto; }
+    .preview.dialog img { max-height:210px; }
+    .empty { color:#8797a6; font-size:13px; }
+    input[type=file] { display:block; width:100%; margin:12px 0; font-size:13px; }
+    .actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    button { border:0; border-radius:7px; padding:9px 14px; color:white; background:var(--blue); font-weight:650; cursor:pointer; }
+    button.secondary { background:#eaf1f7; color:#29435b; }
+    button:hover { filter:brightness(.95); }
+    .managed { color:#23754a; font-size:12px; }
+    .footer { color:var(--muted); font-size:12px; text-align:center; margin-top:20px; }
+    @media (max-width:520px) { .brand { align-items:flex-start; flex-direction:column; gap:9px; } .top { padding:18px 16px; } main { margin-top:20px; } }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <h1>Gerador de clientes Nextec</h1>
+      <span class="version">Gerador {{ product_version }}</span>
+    </div>
+    <nav class="nav" aria-label="Seções do gerador">
+      <a href="../../">Gerar cliente</a>
+      <a class="active" href="" aria-current="page">Identidade visual</a>
+    </nav>
+  </header>
+  <main>
+    <div class="intro">
+      <h2>Identidade visual</h2>
+      <p>Atualize aqui as imagens usadas nas próximas gerações. As imagens ficam guardadas no volume persistente do gerador.</p>
+    </div>
+    {% if message %}<p class="notice success" role="status">{{ message }}</p>{% endif %}
+    {% if error %}<p class="notice error" role="alert">{{ error }}</p>{% endif %}
+    <div class="grid">
+      {% for asset in assets %}
+      <section class="card" aria-labelledby="asset-{{ asset.key }}">
+        <h3 id="asset-{{ asset.key }}">{{ asset.label }}</h3>
+        <p class="spec">{{ asset.dimensions }}</p>
+        <div class="preview">
+          {% if asset.configured %}<img src="{{ asset.url }}?v={{ product_version }}" alt="Prévia: {{ asset.label }}">
+          {% else %}<span class="empty">Nenhuma imagem cadastrada</span>{% endif %}
+        </div>
+        {% if asset.managed %}<p class="managed">Imagem personalizada salva</p>{% elif asset.configured %}<p class="managed">Padrão incluído no gerador</p>{% endif %}
+        <form method="post" enctype="multipart/form-data">
+          {% csrf_token %}
+          <input type="hidden" name="asset" value="{{ asset.key }}">
+          <input type="file" name="image" accept="image/png,.png" required>
+          <div class="actions">
+            <button type="submit" name="action" value="upload">Salvar imagem</button>
+            {% if asset.managed %}<button type="submit" name="action" value="reset" class="secondary" formnovalidate>Restaurar padrão</button>{% endif %}
+          </div>
+        </form>
+      </section>
+      {% endfor %}
+    </div>
+    <p class="footer">Ícone, logo e tela de privacidade são usados nas próximas gerações. A personalização visual do MSI está no roadmap.</p>
+  </main>
+</body>
+</html>
+

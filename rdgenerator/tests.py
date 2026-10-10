@@ -1,6 +1,12 @@
 import json
 import os
+import io
+import tempfile
+from pathlib import Path
+from unittest.mock import Mock, patch
 from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from PIL import Image
 
 # Create your tests here.
 
@@ -275,3 +281,84 @@ class BuildOutputsTests(TestCase):
         html = render_to_string('failure.html', {'files': [{'name': 'Nextec-Connect.exe', 'url': 'download?filename=Nextec-Connect.exe'}], 'missing_files': ['Nextec-Connect.msi']})
         self.assertIn('download?filename=Nextec-Connect.exe', html)
         self.assertNotIn('download?filename=Nextec-Connect.msi', html)
+
+
+class BrandingAssetsTests(TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        old_cwd = os.getcwd()
+        os.chdir(self.temp.name)
+        self.addCleanup(os.chdir, old_cwd)
+        self.branding = Path(self.temp.name) / 'branding'
+        self.branding_env = patch.dict(os.environ, {'NX_BRANDING_DIR': str(self.branding)})
+        self.branding_env.start()
+        self.addCleanup(self.branding_env.stop)
+        self.allowed = patch.dict(os.environ, {'NX_ALLOWED_EMAILS': ''})
+        self.allowed.start()
+        self.addCleanup(self.allowed.stop)
+
+    @staticmethod
+    def image_file(name, size, fmt):
+        stream = io.BytesIO()
+        Image.new('RGB', size, '#1479d1').save(stream, format=fmt)
+        return SimpleUploadedFile(name, stream.getvalue(), content_type=f'image/{fmt.lower()}')
+
+    def test_manager_translated_and_shows_version_and_asset_specs(self):
+        response = self.client.get('/nextec/imagens/')
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn('Gerador 2.0.1', body)
+        self.assertIn('Identidade visual', body)
+        self.assertIn('<a href="../../">Gerar cliente</a>', body)
+        self.assertIn('<form method="post" enctype="multipart/form-data">', body)
+        from .branding import ASSETS
+        self.assertEqual(set(ASSETS), {'icon', 'logo', 'privacy'})
+
+    def test_generator_uses_relative_paths_behind_url_prefix(self):
+        with patch('rdgenerator.nextec.config_problems', return_value=[]):
+            response = self.client.get('/', SCRIPT_NAME='/gerador')
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn('action="generator"', body)
+        self.assertIn('href="nextec/imagens/"', body)
+
+    def test_midia_persistida_pode_ser_visualizada_por_nome_fixo(self):
+        self.client.post('/nextec/imagens/', {
+            'asset': 'icon', 'action': 'upload',
+            'image': self.image_file('icon.png', (64, 64), 'PNG'),
+        })
+        response = self.client.get('/get_artwork/icon')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'image/png')
+        response.close()
+
+    def test_upload_de_identidade_visual_exige_csrf(self):
+        from django.test import Client
+        client = Client(enforce_csrf_checks=True)
+        response = client.post('/nextec/imagens/', {'asset': 'icon', 'action': 'upload'})
+        self.assertEqual(response.status_code, 403)
+
+    def test_geracao_usa_tela_de_privacidade_salva_como_padrao(self):
+        from . import nextec, views
+
+        uploaded = self.image_file('privacy.png', (96, 54), 'PNG')
+        from .branding import save_upload
+        managed_path = save_upload('privacy', uploaded)
+        expected = managed_path.read_bytes()
+
+        response = Mock(status_code=200)
+        response.json.return_value = {'workflow_run_id': 123, 'html_url': 'https://github.com/example/run/123'}
+        with (
+            patch.object(nextec, 'config_problems', return_value=[]),
+            patch.object(nextec, 'is_configured', return_value=False),
+            patch.object(views, 'validate_generate_params', side_effect=lambda params: (params, {})),
+            patch.object(views, 'validate_build_inputs'),
+            patch.object(views, 'save_png', return_value=('false', 'false', 'false')) as save_png,
+            patch.object(views.requests, 'post', return_value=response),
+        ):
+            result = views.generate_custom_client({'exename': 'Nextec-Connect'}, 'https://gerador.example')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(save_png.call_args_list[2].args[0].read(), expected)
+

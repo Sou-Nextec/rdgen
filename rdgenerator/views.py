@@ -17,6 +17,7 @@ from django.conf import settings as _settings
 from django.db.models import Q
 from .forms import GenerateForm
 from . import nextec
+from . import branding
 from .models import GithubRun
 from PIL import Image
 from urllib.parse import quote
@@ -169,6 +170,8 @@ def generate_custom_client(params, full_url):
         privacyfile = params.get('privacyfile')
         if not privacyfile:
             privacyfile = params.get('privacybase64')
+        if not privacyfile:
+            privacyfile = nextec.default_image('privacy')
         privacylink_url, privacylink_uuid, privacylink_file = save_png(privacyfile,myuuid,full_url,"privacy.png")
     except:
         print("failed to get logo")
@@ -312,7 +315,7 @@ def generate_custom_client(params, full_url):
         "removeNewVersionNotif": 'true' if removeNewVersionNotif else 'false',
         "compname": compname,
         "androidappid":androidappid,
-        "filename":filename
+        "filename":filename,
     }
 
     try:
@@ -491,7 +494,11 @@ def generator_view(request):
     else:
         form = GenerateForm(initial=nextec.initial())
     #return render(request, 'maintenance.html')
-    return render(request, 'generator.html', {'form': form})
+    return render(request, 'generator.html', {
+        'form': form,
+        'product_version': nextec.product_version(),
+        'branding_url': 'nextec/imagens/',
+    })
 
 
 def check_for_file(request):
@@ -727,3 +734,55 @@ def get_zip(request):
                             content_type='application/zip')
     except OSError:
         raise Http404('Build package not found')
+
+
+def branding_view(request):
+    """Tela protegida pelo Cloudflare Access para manter as imagens padrão do gerador."""
+    if request.method == 'POST':
+        kind = (request.POST.get('asset') or '').strip()
+        action = (request.POST.get('action') or 'upload').strip()
+        if kind not in branding.ASSETS:
+            return HttpResponseForbidden('Tipo de imagem inválido.')
+        try:
+            if action == 'reset':
+                path = branding.managed_path(kind)
+                if path and path.is_file():
+                    path.unlink()
+                message = 'Imagem restaurada para o padrão do gerador.'
+            elif action == 'upload':
+                branding.save_upload(kind, request.FILES.get('image'))
+                message = 'Imagem atualizada. Ela será usada nas próximas gerações.'
+            else:
+                return HttpResponseForbidden('Ação inválida.')
+        except ValueError as exc:
+            return render(request, 'branding.html', {
+                'assets': _branding_rows(), 'product_version': nextec.product_version(), 'error': str(exc),
+            }, status=400)
+        except OSError:
+            return render(request, 'branding.html', {
+                'assets': _branding_rows(), 'product_version': nextec.product_version(),
+                'error': 'Não foi possível salvar no armazenamento persistente do gerador.',
+            }, status=500)
+        return render(request, 'branding.html', {
+            'assets': _branding_rows(), 'product_version': nextec.product_version(), 'message': message,
+        })
+    return render(request, 'branding.html', {
+        'assets': _branding_rows(), 'product_version': nextec.product_version(),
+    })
+
+
+def _branding_rows():
+    rows = branding.list_assets()
+    for row in rows:
+        row['url'] = f'../../get_artwork/{row["key"]}'
+    return rows
+
+
+def get_artwork(request, asset):
+    """Serve only the named, validated Nextec preview assets."""
+    path = branding.get_path(asset)
+    if not path or not path.is_file() or path.is_symlink():
+        raise Http404('Artwork not found')
+    content_type = 'image/bmp' if path.suffix.lower() == '.bmp' else 'image/png'
+    return FileResponse(open(path, 'rb'), content_type=content_type)
+

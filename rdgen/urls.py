@@ -15,6 +15,7 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 import django
+from django.urls import path
 
 from rdgenerator import views as views
 from rdgenerator import api_views as api_views
@@ -24,7 +25,9 @@ else:
     from django.conf.urls import  url, include
 
 urlpatterns = [
-    url(r'^$',views.generator_view),
+    path('nextec/imagens/', views.branding_view, name='branding'),
+    path('get_artwork/<str:asset>', views.get_artwork, name='get_artwork'),
+    url(r'^$',views.generator_view, name='generator'),
     url(r'^generator',views.generator_view),
     url(r'^check_for_file',views.check_for_file),
     url(r'^download',views.download),

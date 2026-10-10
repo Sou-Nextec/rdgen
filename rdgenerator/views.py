@@ -14,6 +14,7 @@ import pyzipper
 from django.conf import settings as _settings
 from django.db.models import Q
 from .forms import GenerateForm
+from . import nextec
 from .models import GithubRun
 from PIL import Image
 from urllib.parse import quote
@@ -43,6 +44,7 @@ def generate_custom_client(params, full_url):
         dict with 'success' key. On success: also includes 'uuid', 'filename', 'platform', 'log_url'.
         On failure: includes 'error' and optionally 'status_code'.
     """
+    params = nextec.apply(params)
     user_secret = params.get('sh_secret_field', '')
     selfhosted = (_settings.SH_SECRET == user_secret)
     platform = params.get('platform', 'windows')
@@ -121,6 +123,8 @@ def generate_custom_client(params, full_url):
         iconfile = params.get('iconfile')
         if not iconfile:
             iconfile = params.get('iconbase64')
+        if not iconfile:
+            iconfile = nextec.default_image('icon')
         iconlink_url, iconlink_uuid, iconlink_file = save_png(iconfile,myuuid,full_url,"icon.png")
     except:
         print("failed to get icon, using default")
@@ -131,6 +135,8 @@ def generate_custom_client(params, full_url):
         logofile = params.get('logofile')
         if not logofile:
             logofile = params.get('logobase64')
+        if not logofile:
+            logofile = nextec.default_image('logo')
         logolink_url, logolink_uuid, logolink_file = save_png(logofile,myuuid,full_url,"logo.png")
     except:
         print("failed to get logo")
@@ -404,7 +410,7 @@ def generator_view(request):
         form = GenerateForm(request.POST, request.FILES)
         if form.is_valid():
             params = form.cleaned_data
-            full_url = f"{_settings.PROTOCOL}://{request.get_host()}" if _settings.GENURL else f"{_settings.PROTOCOL}://{request.get_host()}"
+            full_url = f"{_settings.PROTOCOL}://{request.get_host()}{request.META.get('SCRIPT_NAME', '').rstrip('/')}"
             result = generate_custom_client(params, full_url)
             if result['success']:
                 return render(request, 'waiting.html', {
@@ -417,7 +423,7 @@ def generator_view(request):
             else:
                 return JsonResponse({"error": result['error']}, status=result.get('status_code', 500))
     else:
-        form = GenerateForm()
+        form = GenerateForm(initial=nextec.initial())
     #return render(request, 'maintenance.html')
     return render(request, 'generator.html', {'form': form})
 

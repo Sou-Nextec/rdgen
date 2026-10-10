@@ -129,7 +129,7 @@ def api_generate(request):
         }, status=400)
 
     # Build full_url the same way as generator_view
-    full_url = f"{_settings.PROTOCOL}://{request.get_host()}" if _settings.GENURL else f"{_settings.PROTOCOL}://{request.get_host()}"
+    full_url = f"{_settings.PROTOCOL}://{request.get_host()}{request.META.get('SCRIPT_NAME', '').rstrip('/')}"
 
     result = generate_custom_client(cleaned, full_url)
 

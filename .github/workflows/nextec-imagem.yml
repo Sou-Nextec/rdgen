@@ -1,0 +1,86 @@
+# Publica a imagem Nextec do gerador no GitHub Container Registry: ghcr.io/sou-nextec/rdgen-nextec
+#   - a cada push na master que mexe no app/Dockerfile:  :latest  e  :master-<commit>
+#   - manualmente em Actions > Imagem Nextec do gerador > Run workflow
+# Antes de publicar, a imagem sobe num contêiner de teste: o formulário precisa responder em /gerador/ com os padrões Nextec.
+name: Imagem Nextec do gerador
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'Dockerfile'
+      - 'requirements.txt'
+      - 'manage.py'
+      - 'gunicorn.conf.py'
+      - 'rdgen/**'
+      - 'rdgenerator/**'
+      - 'nextec/**'
+      - '.github/workflows/nextec-imagem.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: imagem-gerador
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/sou-nextec/rdgen-nextec
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Construir para teste
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: rdgen-nextec:teste
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Teste de fumaça
+        run: |
+          docker run -d --name teste -p 8000:8000 \
+            -e URL_PREFIX=/gerador -e NX_SERVER_HOST=remoto.exemplo -e NX_API_SERVER=https://painel.exemplo -e NX_KEY=CHAVE= \
+            rdgen-nextec:teste
+          ok=0
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /tmp/form.html -w '%{http_code}' http://localhost:8000/gerador/ || true)
+            if [ "$code" = "200" ]; then ok=1; break; fi
+            sleep 2
+          done
+          if [ "$ok" != "1" ]; then docker logs teste; echo "O gerador não respondeu em /gerador/"; exit 1; fi
+          grep -q 'action="generator"' /tmp/form.html            || { echo "action do formulário não é relativa"; exit 1; }
+          grep -q 'value="remoto.exemplo"' /tmp/form.html        || { echo "padrão do servidor não aplicado"; exit 1; }
+          grep -q 'value="android"' /tmp/form.html               && { echo "Android não deveria aparecer"; exit 1; }
+          [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/gerador)" = "301" ] || { echo "/gerador sem barra deveria redirecionar"; exit 1; }
+          echo "OK"
+
+      - name: Marcas
+        id: v
+        run: |
+          echo "tags=${IMAGE}:latest,${IMAGE}:master-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Publicar
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.v.outputs.tags }}
+          cache-from: type=gha

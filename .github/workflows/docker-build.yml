@@ -10,6 +10,8 @@ on:
 
 jobs:
   build:
+    # Nextec: publicar no Docker Hub do upstream exige as credenciais dele; no fork a imagem sai pelo nextec-imagem.yml (GHCR)
+    if: github.repository == 'bryangerlach/rdgen'
     runs-on: ubuntu-latest
     steps:
       - name: set docker image tag

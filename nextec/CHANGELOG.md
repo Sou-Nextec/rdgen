@@ -2,6 +2,14 @@
 
 O número nesta página acompanha a experiência do gerador (layout, organização e recursos próprios da Nextec). Ele é independente da versão-base do RustDesk escolhida em cada build e da versão publicada pelo painel para atualização dos clientes.
 
+## 2.0.2
+
+- Corrige servidor de ID e API nos clientes de entrada gerados com permissões padrão.
+- Aproxima o gerador das cores do painel remoto e reorganiza os campos para telas menores.
+- Permite salvar modelos de configuração por usuário no banco do gerador, sem credenciais, imagens ou ajustes manuais; importação e exportação JSON continuam disponíveis.
+- Explica os nomes do pacote e do aplicativo, o tema escuro e a geração de uma plataforma por vez.
+- Mostra se a chave pública foi carregada do servidor e permite conferi-la no formulário.
+
 ## 2.0.1
 
 - Gerador em português e identidade visual Nextec, com navegação clara entre geração e imagens.

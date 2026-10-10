@@ -25,6 +25,7 @@ else:
     from django.conf.urls import  url, include
 
 urlpatterns = [
+    path('nextec/modelos/', views.saved_models_view, name='saved_models'),
     path('nextec/imagens/', views.branding_view, name='branding'),
     path('get_artwork/<str:asset>', views.get_artwork, name='get_artwork'),
     url(r'^$',views.generator_view, name='generator'),

@@ -27,6 +27,9 @@ def _env(name, default=''):
 def server_defaults():
     key = _env('NX_KEY')
     key_file = _env('NX_KEY_FILE')
+    company = _env('NX_COMPANY')
+    if _env('NX_SERVER_HOST') and company in ('', 'Nextec'):
+        company = 'Nextec LTDA'
     if not key and key_file:
         try:
             key = Path(key_file).read_text(encoding='utf-8').strip()
@@ -41,7 +44,7 @@ def server_defaults():
         'key': key,
         'urlLink': _env('NX_URL_LINK'),
         'downloadLink': _env('NX_DOWNLOAD_LINK'),
-        'compname': _env('NX_COMPANY'),
+        'compname': company,
         'appname': _env('NX_APP_NAME'),
     }
     return {k: v for k, v in values.items() if v}
@@ -102,14 +105,16 @@ def product_version():
     try:
         value = _PRODUCT_VERSION.read_text(encoding='utf-8').strip()
     except OSError:
-        return '2.0.1'
-    return value if value and len(value) <= 32 else '2.0.1'
+        return '2.0.2'
+    return value if value and len(value) <= 32 else '2.0.2'
 
 
 def config_problems():
     """Lista, em portugues, o que falta configurar para o gerador funcionar. Vazia = tudo certo."""
     from django.conf import settings
     problems = []
+    if is_configured() and not server_defaults().get('key'):
+        problems.append('Chave pública do servidor ausente ou ilegível (NX_KEY ou NX_KEY_FILE).')
     if not settings.GHBEARER:
         problems.append('Token do GitHub ausente (variável GHBEARER; no Portainer: GERADOR_GH_TOKEN).')
     if not settings.GHUSER:

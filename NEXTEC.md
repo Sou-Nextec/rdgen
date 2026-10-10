@@ -50,13 +50,19 @@ Sem `NX_SERVER_HOST` o gerador se comporta como o original.
 
 ## Versão e imagens
 
-`rdgenerator/VERSION` guarda a versão da experiência do gerador, atualmente `2.0.1`. Ao alterar layout ou recursos próprios,
+`rdgenerator/VERSION` guarda a versão da experiência do gerador, atualmente `2.0.2`. Ao alterar layout ou recursos próprios,
 atualize esse arquivo e acrescente uma entrada em `nextec/CHANGELOG.md`. Essa versão é separada da versão-base RustDesk usada
 no build e da versão do produto publicada na tela de atualizações do painel.
 
 Na aba **Identidade visual**, ícone, logo e tela de privacidade aceitam PNG e ficam no volume de dados existente do
 gerador para as próximas gerações. A personalização do bitmap MSI depende de isolar o build Windows dos segredos de
 upload; consulte `nextec/ROADMAP.md`.
+
+Os **modelos de configuração** ficam no mesmo banco persistente do gerador, separados pelo e-mail autenticado no
+Cloudflare Access. Senha permanente, chave pública, imagens e ajustes manuais não são armazenados nesses modelos.
+Também é possível exportar ou importar JSON; confira os campos após importar. A geração continua sendo uma plataforma
+por vez. Para distribuir um MSI, a tela de resultado abre a área de atualizações do painel; a publicação é manual.
+Os EXE/MSI gerados ainda não instalam a tarefa de atualização automática (veja `nextec/ROADMAP.md`).
 
 ## Segredos do repositório (GitHub > Settings > Secrets and variables > Actions)
 

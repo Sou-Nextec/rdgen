@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gerador de clientes · Nextec</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body {
             font-family: 'Roboto', sans-serif;
@@ -221,56 +221,82 @@
             transform: rotate(360deg);
             color: #0095EA;
         }
-        :root { --nx-navy:#102b46; --nx-blue:#0879e8; --nx-cyan:#08b9d8; --nx-ink:#192b3d; --nx-muted:#637487; --nx-line:#dce5ed; }
-        body { background:#f3f7fb; color:var(--nx-ink); padding:0 0 36px; }
+        :root { --nx-navy:#0D0035; --nx-blue:#4901FA; --nx-cyan:#5C50FF; --nx-ink:#211a38; --nx-muted:#655f74; --nx-line:#5C50FF; }
+        *, *::before, *::after { box-sizing:border-box; }
+        body { background:#f4f4f4; color:var(--nx-ink); padding:0 0 36px; font-family:'Open Sans',sans-serif; }
         h1 { margin:0; color:white; text-align:left; font-size:23px; }
         h2 { color:var(--nx-navy); }
-        .section { background:#fff; border:1px solid var(--nx-line); border-radius:12px; box-shadow:0 3px 12px #193c5910; color:var(--nx-ink); }
+        .section { background:#fff; border:1px solid #e4e0ef; border-radius:12px; box-shadow:none; color:var(--nx-ink); min-width:0; }
         .section label, label { color:#34495e; }
-        input[type="text"], input[type="password"], select, textarea { background:#fff; color:var(--nx-ink); border-color:#cbd8e4; }
+        input[type="text"], input[type="password"], select, textarea { background:#fff; color:var(--nx-ink); border-color:#c8c0df; max-width:100%; }
+        :is(input,select,textarea,button,a,summary):focus-visible { outline:2px solid var(--nx-line); outline-offset:2px; }
         input[readonly] { background:#eef4f9 !important; color:#526a7f !important; }
         button { background:var(--nx-blue); font-weight:650; }
-        button:hover { background:#0569ca; }
+        button:hover { background:#3700bf; }
         .platform-icon { color:#7990a4; }
         .platform-icon:hover, .platform-icon.active { color:var(--nx-blue); }
         .help-text { color:#45637b; background:#eef6fc; border:1px solid #d6e9f7; animation:none; }
         .save-load-section-container { position:static; width:min(1120px,calc(100% - 32px)); margin:18px auto; box-shadow:none; background:transparent; }
         .save-load-section-container .section { padding:12px 16px; }
         .save-load-section { display:flex; gap:8px; flex-wrap:wrap; }
-        .nx-header { background:linear-gradient(115deg,var(--nx-navy),#075a96); color:#fff; padding:20px max(24px,calc((100vw - 1120px)/2)); }
-        .nx-header p { margin:5px 0 0; color:#d6e9fa; font-size:13px; }
+        .nx-header { background:var(--nx-navy); color:#fff; padding:20px max(24px,calc((100vw - 1120px)/2)); }
+        .nx-header p { margin:5px 0 0; color:#e7e2f6; font-size:13px; }
         .nx-header-line { display:flex; justify-content:space-between; align-items:center; gap:16px; }
         .nx-version { border:1px solid #ffffff55; border-radius:999px; padding:5px 11px; font-size:12px; white-space:nowrap; }
         .nx-nav { display:flex; gap:8px; margin-top:15px; }
-        .nx-nav a { color:#d6e9fa; padding:7px 11px; border-radius:7px; text-decoration:none; font-size:14px; }
+        .nx-nav a { color:#e7e2f6; padding:7px 11px; border-radius:7px; text-decoration:none; font-size:14px; }
         .nx-nav a.active,.nx-nav a:hover { color:#fff; background:#ffffff20; }
         .platform,.container { width:min(1120px,calc(100% - 32px)); padding:0; }
-        .container { gap:16px; }
+        .container { gap:16px; align-items:start; }
         .platform { margin-top:18px; }
+        .field-help { margin:0 0 12px; color:var(--nx-muted); font-size:13px; line-height:1.5; }
+        .field-help strong { color:var(--nx-ink); }
+        .key-row { display:flex; gap:8px; align-items:start; }
+        .key-row input { min-width:0; flex:1; }
+        .secondary-action { background:#eeeaf8; color:var(--nx-navy); }
+        .secondary-action:hover { background:#e1d9f6; }
+        .model-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+        .model-actions select { flex:1; min-width:180px; margin:0; }
+        .model-actions button { white-space:nowrap; }
+        .section details { margin:10px 0; }
+        .section summary { cursor:pointer; font-weight:700; color:var(--nx-navy); }
+        .notice { padding:10px 12px; border-radius:8px; background:#f0edfa; color:var(--nx-navy); font-size:13px; }
+        .platform-icons { justify-content:flex-start; gap:28px; }
+        .platform-icon { min-width:32px; }
+        .section h2 { font-family:'Visby CF','Open Sans',sans-serif; }
+        @media (max-width:760px) { .container { grid-template-columns:1fr; } .platform-icons { justify-content:flex-start; } .save-load-section-container { width:calc(100% - 32px); } }
         @media (max-width:560px) { .nx-header-line { align-items:flex-start; flex-direction:column; gap:8px; } .nx-header { padding:18px 16px; } }
       </style>
 </head>
 <body>
     <header class="nx-header">
         <div class="nx-header-line">
-            <div><h1><i class="fas fa-cogs"></i> Gerador de clientes Nextec</h1><p>Configure e gere instaladores para os clientes.</p></div>
+            <div><h1>Gerador de clientes Nextec</h1><p>Configure o aplicativo e gere o instalador da plataforma escolhida.</p></div>
             <span class="nx-version">Gerador {{ product_version }}</span>
         </div>
         <nav class="nx-nav" aria-label="Seções do gerador">
             <a class="active" href="./" aria-current="page">Gerar cliente</a>
             <a href="{{ branding_url }}">Identidade visual</a>
         </nav>
+        <details class="field-help"><summary>Ajuda: o que cada nome e imagem altera?</summary><p>O nome do arquivo identifica o download. O nome do aplicativo aparece no programa instalado e no atalho. Ícone, logo e tela de privacidade são aplicados ao cliente gerado; não mudam o painel. A versão 1.5.0 é a base do RustDesk, enquanto {{ product_version }} é a versão do gerador.</p></details>
+        <p class="field-help">Acesso ao gerador: Cloudflare Access e lista de pessoas autorizadas na implantação.{% if access_email %} Sua conta: {{ access_email }}.{% endif %}</p>
     </header>
     <form id="myForm" action="generator" method="post" enctype="multipart/form-data">
         {% csrf_token %}
         <div class="save-load-section-container">
             <div class="section">
-                <h2 id="saveLoadTitle">Modelos de configuração <i class="fas fa-chevron-down"></i></h2>
-                <div class="save-load-section">  
-                    <button type="button" onclick="saveFormData()">Salvar modelo</button>
-                    <input type="file" id="fileInput" style="display:none;" accept=".json">
-                    <button type="button" onclick="loadFormData()">Carregar modelo</button>
+                <h2>Modelos de configuração</h2>
+                <p class="field-help">Salve um modelo neste servidor para sua conta ou importe um JSON. Senhas, chave pública, imagens e ajustes manuais não entram no modelo salvo.</p>
+                <div class="model-actions">
+                    <select id="savedModels" aria-label="Modelos salvos"><option value="">Selecione um modelo salvo</option></select>
+                    <button type="button" id="saveServerModel">Salvar no servidor</button>
+                    <button type="button" id="loadServerModel" class="secondary-action">Carregar</button>
+                    <button type="button" id="deleteServerModel" class="secondary-action">Excluir</button>
+                    <button type="button" onclick="saveFormData()" class="secondary-action">Exportar JSON</button>
+                    <input type="file" id="fileInput" style="display:none;" accept=".json,application/json">
+                    <button type="button" onclick="loadFormData()" class="secondary-action">Importar JSON</button>
                 </div>
+                <p id="modelStatus" class="field-help" role="status"></p>
             </div>
         </div>
         {% if form.iconfile.errors %}
@@ -295,43 +321,44 @@
                 </select>
                 <label for="{{ form.version.id_for_label }}">{{ form.version.label }}:</label>
                 {{ form.version }}
-                <div class="help-text">{{ form.version.help_text }}</div>
+                <p class="field-help">1.5.0 é a versão estável escolhida para o cliente. A opção “Escuro” fica em Aparência e funciona com essa versão. “Desenvolvimento” pode mudar ou falhar na compilação.</p>
                 <label for="{{ form.delayFix.id_for_label }}">{{ form.delayFix }} Corrigir atraso ao conectar usando uma API externa</label>
             </div>
-        </div>
         <div class="container">   
             <div class="section">
                 <h2><i class="fas fa-sliders-h"></i> Aplicativo</h2>
-                    <label for="{{ form.exename.id_for_label }}">Nome dos arquivos gerados (use letras, números e hífen):</label>
-                    {{ form.exename }}<span id="filenameError" class="error"></span><br><br>
-                    <label for="{{ form.appname.id_for_label }}">Nome do aplicativo (letras, números e hífen; vazio usa o padrão):</label>
-                    {{ form.appname }}<br><br>
+                    <label for="{{ form.exename.id_for_label }}">Nome do arquivo para download</label>
+                    {{ form.exename }}<span id="filenameError" class="error"></span>
+                    <p class="field-help">Base do nome dos instaladores gerados, como <strong>Nextec-Connect.msi</strong> ou <strong>Nextec-Connect.exe</strong>. Não define o nome do aplicativo nem do atalho.</p>
+                    <label for="{{ form.appname.id_for_label }}">Nome interno do aplicativo</label>
+                    {{ form.appname }}
+                    <p class="field-help">Aparece no aplicativo, na instalação e no atalho. Nesta versão, use letras, números e hífen, sem espaços: <strong>Nextec-Connect</strong>. “Nextec Support” com espaço faz o instalador falhar.</p>
                     <label for="{{ form.direction.id_for_label }}">Tipo de conexão:</label>
                     {{ form.direction }}<br><br>
                     <label for="{{ form.installation.id_for_label }}">Instalação:</label>
                     {{ form.installation }}<br><br>
                     <label for="{{ form.settings.id_for_label }}">Configurações:</label>
                     {{ form.settings }}<br><br>
-                    <label for="{{ form.androidappid.id_for_label }}">ID do aplicativo Android (vazio usa o padrão):</label>
-                    {{ form.androidappid }}<br><br>
+                    <details><summary>Configuração de Android</summary><label for="{{ form.androidappid.id_for_label }}">ID do aplicativo Android</label>{{ form.androidappid }}<p class="field-help">Não altera os pacotes Windows ou Linux.</p></details>
             </div>
 
             <div class="section">
-                <h2><i class="fas fa-server"></i> Servidor</h2>
-                    <label for="{{ form.serverIP.id_for_label }}">Servidor de ID:</label>
+                <h2>Servidor Nextec</h2>
+                    <p class="field-help">Os dados são preenchidos pela implantação. Passe o mouse sobre cada campo para ver se está fixado.</p>
+                    <label for="{{ form.serverIP.id_for_label }}">Servidor de ID</label>
                     {{ form.serverIP }}<br><br>
                     <label for="{{ form.serverPort.id_for_label }}">Porta do servidor de ID (vazia usa 21116; 21117 é do relay):</label>
                     {{ form.serverPort }}<br><br>
-                    <label for="{{ form.key.id_for_label }}">Chave pública:</label>
-                    {{ form.key }}<br><br>
+                    <label for="{{ form.key.id_for_label }}">Chave pública</label>
+                    <div class="key-row">{{ form.key }}<button type="button" class="secondary-action" id="toggleKey" aria-label="Mostrar chave pública">Mostrar</button></div>
+                    {% if public_key_loaded %}<p class="field-help">Chave pública carregada do servidor. Você pode conferir com “Mostrar”.</p>{% else %}<p class="field-help error">Chave pública não foi carregada. Confira o arquivo montado em NX_KEY_FILE antes de gerar.</p>{% endif %}
                     <label for="{{ form.apiServer.id_for_label }}">API:</label>
                     {{ form.apiServer }}<br><br>
                     <label for="{{ form.urlLink.id_for_label }}">Endereço dos links:</label>
                     {{ form.urlLink }}<br><br>
                     <label for="{{ form.downloadLink.id_for_label }}">Endereço para baixar atualizações:</label>
                     {{ form.downloadLink }}<br><br>
-                    <label for="{{ form.compname.id_for_label }}">Empresa exibida nos direitos autorais:</label>
-                    {{ form.compname }}<br><br>
+                    <details><summary>Dados administrativos do cliente</summary><label for="{{ form.compname.id_for_label }}">Empresa exibida nos direitos autorais</label>{{ form.compname }}<p class="field-help">Valor definido na implantação. O padrão Nextec deve ser “Nextec LTDA”.</p></details>
             </div>
         </div>
         <div class="container">
@@ -370,8 +397,8 @@
                     {{ form.privacyfile }}<br><br>
                     <!-- <input type="file" name="iconfile" id="iconfile" accept="image/png"> -->
                     <div id="privacy-preview"></div><br><br>
-                    <label for="{{ form.theme.id_for_label }}">Tema:</label>
-                    {{ form.theme }} {{ form.themeDorO }} Padrão permite alterar depois; obrigatório fixa o tema.<br><br>
+                    <label for="{{ form.theme.id_for_label }}">Tema do aplicativo</label>
+                    {{ form.theme }} {{ form.themeDorO }}<p class="field-help">Escolha Escuro para iniciar escuro mesmo usando a versão-base 1.5.0. “Padrão” permite que o usuário mude depois; “Obrigatório” fixa o tema.</p>
             </div>
         </div>
         <div class="container">
@@ -396,23 +423,26 @@
                         <label for="{{ form.enableTerminal.id_for_label }}">{{ form.enableTerminal }} Terminal remoto</label>
                     </div><br>
                 <h2><i class="fas fa-code"></i> Opções adicionais</h2>
+                    <label for="{{ form.removeWallpaper.id_for_label }}">{{ form.removeWallpaper }} Ocultar papel de parede durante a sessão</label><br>
                     <label for="{{ form.xOffline.id_for_label }}">{{ form.xOffline }} Marcar dispositivos offline no catálogo</label><br>
                     <label for="{{ form.removeNewVersionNotif.id_for_label }}">{{ form.removeNewVersionNotif }} Ocultar aviso de nova versão</label><br>
             </div>
 
             <div class="section">
-                <h2><i class="fas fa-cog"></i> Ajustes avançados</h2>
-                    <label for="{{ form.removeWallpaper.id_for_label }}">{{ form.removeWallpaper }} Ocultar papel de parede durante a sessão</label><br>
+                <details><summary>Ajustes avançados</summary>
                     <a href="https://rustdesk.com/docs/en/self-host/client-configuration/advanced-settings/" target="_blank" rel="noopener">Consultar documentação dos ajustes</a>
                     <label for="{{ form.defaultManual.id_for_label }}">Ajustes padrão</label><br>
                     {{ form.defaultManual }}<br><br>
                     <label for="{{ form.overrideManual.id_for_label }}">Ajustes obrigatórios</label><br>
                     {{ form.overrideManual }}<br><br>
+                </details>
             </div>
         </div>
         <div class="platform">
             <div class="section">
-                <button type="submit"><i class="fas fa-rocket"></i> Gerar instaladores para Windows e Linux</button>
+                <button type="submit">Gerar para a plataforma escolhida</button>
+                <p class="field-help">O gerador cria uma plataforma por vez. Para obter Windows e Linux, faça duas gerações com o mesmo modelo.</p>
+                <p class="field-help">A atualização automática ainda exige o método de instalação publicado no painel. Este EXE/MSI, sozinho, não cria uma tarefa de atualização.</p>
             </div>
         </div>
     </form>
@@ -483,7 +513,7 @@
                 enableRemoteModi.disabled = true;
                 enablePrinter.disabled = true;
                 enableCamera.disabled = true;
-                enableTerminal.disable = true;
+                enableTerminal.disabled = true;
             } else if (this.value === 'view') {
                 enableKeyboard.checked = false;
                 enableClipboard.checked = false;
@@ -509,7 +539,7 @@
                 enableRemoteModi.disabled = true;
                 enablePrinter.disabled = true;
                 enableCamera.disabled = true;
-                enableTerminal.disable = true;
+                enableTerminal.disabled = true;
             } else if (this.value === 'custom') {
                 enableKeyboard.disabled = false;
                 enableClipboard.disabled = false;
@@ -520,9 +550,9 @@
                 enableRecording.disabled = false;
                 enableBlockingInput.disabled = false;
                 enableRemoteModi.disabled = false;
-                enablePrinter.checked = false;
-                enableCamera.checked = false;
-                enableTerminal.checked = false;
+                enablePrinter.disabled = false;
+                enableCamera.disabled = false;
+                enableTerminal.disabled = false;
             }
         });
         function previewImage(input, previewContainerId) {
@@ -539,19 +569,10 @@
                 reader.readAsDataURL(input.files[0]);
             }
         }
-        const saveLoadTitle = document.getElementById("saveLoadTitle");
-        const saveLoadSection = document.querySelector(".save-load-section");
-
-        saveLoadTitle.addEventListener("click", () => {
-            if (!saveLoadSection.style.display || saveLoadSection.style.display === "none") {
-                saveLoadSection.style.display = "block";
-            } else {
-                saveLoadSection.style.display = "none";
-            }
-
-            const icon = saveLoadTitle.querySelector("i");
-            icon.classList.toggle("fa-chevron-down");
-            icon.classList.toggle("fa-chevron-up");
+        const keyInput = document.getElementById('{{ form.key.id_for_label }}');
+        document.getElementById('toggleKey').addEventListener('click', function() {
+            keyInput.type = keyInput.type === 'password' ? 'text' : 'password';
+            this.textContent = keyInput.type === 'text' ? 'Ocultar' : 'Mostrar';
         });
 
         async function saveFormData() {
@@ -578,6 +599,11 @@
                 }
                 formData[key] = value; // Add each key/value pair to the formData object.
             });
+            delete formData.permanentPassword;
+            delete formData.sh_secret_field;
+            delete formData.key;
+            delete formData.defaultManual;
+            delete formData.overrideManual;
 
             // 2. Handle select elements separately (more reliable):
             const selectElements = form.querySelectorAll('select');
@@ -630,7 +656,7 @@
 
             // Carry over unknown fields from the loaded config (see loadFormData).
             for (const k in carriedUnknownFields) {
-                if (!formData.hasOwnProperty(k)) {
+                if (!formData.hasOwnProperty(k) && !['key','permanentPassword','sh_secret_field','defaultManual','overrideManual'].includes(k)) {
                     formData[k] = carriedUnknownFields[k];
                 }
             }
@@ -688,6 +714,7 @@
             fileInput.addEventListener("change", (event) => {
                 const file = event.target.files[0];
                 if (file) {
+                    if (file.size > 100000) { alert('O modelo JSON é grande demais.'); return; }
                     const reader = new FileReader();
                     reader.onload = (e) => {
                         try {
@@ -695,9 +722,9 @@
                             carriedUnknownFields = {};
                             const skippedKeys = [];
                             for (const key in formData) {
-                                if (key === 'csrfmiddlewaretoken') continue;
+                                if (['csrfmiddlewaretoken','key','permanentPassword','sh_secret_field','defaultManual','overrideManual'].includes(key)) continue;
                                 // More robust selector: checks for name OR id
-                                const elements = document.querySelectorAll(`[name="${key}"], [id="${key}"]`);
+                                const elements = document.getElementsByName(key);
 
                                 if (elements.length > 0) { // Check if any element(s) exist
                                     elements.forEach(element => { // Loop through all matching elements (important for radios)
@@ -723,23 +750,23 @@
                                                 element.checked = false; // Uncheck others in the group
                                             }
                                         } else if (element.type === 'checkbox') {
-                                            element.checked = formData[key];
+                                            element.checked = formData[key] === true || formData[key] === 'on';
                                         } else if (element.type !== 'file') {
                                             element.value = formData[key];
                                         }
 
                                         // Handle image previews (as before)
-                                        if (key === 'iconfile' && formData[key]) {
+                                        if (key === 'iconfile' && typeof formData[key] === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(formData[key])) {
                                             document.getElementById('id_iconbase64').value = formData[key];
-                                            document.getElementById('icon-preview').innerHTML = `<img src="${formData[key]}" style="max-width: 300px; max-height: 60px;">`;
+                                            setImportedPreview('icon-preview', formData[key]);
                                         }
-                                        if (key === 'logofile' && formData[key]) {
+                                        if (key === 'logofile' && typeof formData[key] === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(formData[key])) {
                                             document.getElementById('id_logobase64').value = formData[key];
-                                            document.getElementById('logo-preview').innerHTML = `<img src="${formData[key]}" style="max-width: 300px; max-height: 60px;">`;
+                                            setImportedPreview('logo-preview', formData[key]);
                                         }
-                                        if (key === 'privacyfile' && formData[key]) {
+                                        if (key === 'privacyfile' && typeof formData[key] === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(formData[key])) {
                                             document.getElementById('id_privacybase64').value = formData[key];
-                                            document.getElementById('privacy-preview').innerHTML = `<img src="${formData[key]}" style="max-width: 300px; max-height: 60px;">`;
+                                            setImportedPreview('privacy-preview', formData[key]);
                                         }
                                     });
                                 } else {
@@ -760,6 +787,74 @@
                 }
             });
         }
+        function setImportedPreview(id, source) {
+            const img = document.createElement('img');
+            img.src = source;
+            img.className = 'preview-image';
+            document.getElementById(id).replaceChildren(img);
+        }
+
+        const savedModelsUrl = '{{ saved_models_url }}';
+        const modelStatus = document.getElementById('modelStatus');
+        const modelSelect = document.getElementById('savedModels');
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        async function refreshModels(selected = '') {
+            try {
+                const response = await fetch(savedModelsUrl, {credentials:'same-origin'});
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Não foi possível listar os modelos.');
+                modelSelect.replaceChildren(new Option('Selecione um modelo salvo', ''));
+                data.models.forEach(item => modelSelect.add(new Option(item.name, item.name)));
+                modelSelect.value = selected;
+            } catch (error) { modelStatus.textContent = error.message; }
+        }
+        document.getElementById('saveServerModel').addEventListener('click', async () => {
+            const name = prompt('Nome do modelo para salvar neste servidor:', modelSelect.value || '');
+            if (!name) return;
+            const form = document.getElementById('myForm');
+            const settings = {};
+            new FormData(form).forEach((value, key) => {
+                if (value instanceof File || ['csrfmiddlewaretoken','key','permanentPassword','sh_secret_field','iconbase64','logobase64','privacybase64','defaultManual','overrideManual'].includes(key)) return;
+                settings[key] = value;
+            });
+            form.querySelectorAll('input[type=checkbox]').forEach(input => { settings[input.name] = input.checked; });
+            try {
+                const response = await fetch(savedModelsUrl, {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken}, body:JSON.stringify({name,settings})});
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Não foi possível salvar.');
+                modelStatus.textContent = 'Modelo salvo neste servidor para sua conta.';
+                await refreshModels(name);
+            } catch (error) { modelStatus.textContent = error.message; }
+        });
+        document.getElementById('loadServerModel').addEventListener('click', async () => {
+            if (!modelSelect.value) { modelStatus.textContent = 'Selecione um modelo.'; return; }
+            try {
+                const response = await fetch(savedModelsUrl + '?name=' + encodeURIComponent(modelSelect.value), {credentials:'same-origin'});
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Não foi possível carregar.');
+                Object.entries(data.settings).forEach(([key,value]) => {
+                    document.getElementsByName(key).forEach(input => {
+                        if (input.readOnly || input.type === 'file') return;
+                        if (input.type === 'checkbox') input.checked = value === true || value === 'on';
+                        else if (input.type === 'radio') input.checked = input.value === value;
+                        else input.value = value;
+                    });
+                });
+                modelStatus.textContent = 'Modelo carregado. Confira os campos antes de gerar.';
+            } catch (error) { modelStatus.textContent = error.message; }
+        });
+        document.getElementById('deleteServerModel').addEventListener('click', async () => {
+            const name = modelSelect.value;
+            if (!name || !confirm('Excluir o modelo “' + name + '” da sua conta?')) return;
+            try {
+                const response = await fetch(savedModelsUrl, {method:'DELETE', credentials:'same-origin', headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken}, body:JSON.stringify({name})});
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Não foi possível excluir.');
+                modelStatus.textContent = data.deleted ? 'Modelo excluído.' : 'Modelo não encontrado.';
+                await refreshModels();
+            } catch (error) { modelStatus.textContent = error.message; }
+        });
+        refreshModels();
     </script>
 </body>
 </html>

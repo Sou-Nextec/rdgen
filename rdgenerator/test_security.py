@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import subprocess
@@ -142,3 +143,58 @@ class GenerationSecurityTests(TestCase):
             result = generate_custom_client({'exename': 'Cliente'}, 'https://generator.example')
             self.assertFalse(result['success'])
             response.json.assert_called_once()  # only the successful 200 is parsed
+
+    def test_incoming_client_keeps_server_settings_with_default_permissions(self):
+        from .views import generate_custom_client
+        response = Mock(status_code=200)
+        response.json.return_value = {'workflow_run_id': 123}
+        with patch('rdgenerator.views.requests.post', return_value=response):
+            result = generate_custom_client({
+                'exename': 'Cliente', 'appname': 'Nextec-Connect',
+                'direction': 'incoming', 'permissionsDorO': 'default',
+                'serverIP': 'remoto.nex.tec.br',
+                'apiServer': 'https://painel-remoto.nex.tec.br',
+            }, 'https://generator.example')
+        self.assertTrue(result['success'], result)
+        archive = Path('temp_zips') / ('secrets_' + result['uuid'] + '.zip')
+        with pyzipper.AESZipFile(archive) as zf:
+            zf.setpassword(b'test-only-zip')
+            inputs = json.loads(zf.read('secrets.json'))
+        custom = json.loads(base64.b64decode(inputs['custom']))
+        self.assertEqual(custom['override-settings']['custom-rendezvous-server'], 'remoto.nex.tec.br')
+        self.assertEqual(custom['override-settings']['api-server'], 'https://painel-remoto.nex.tec.br')
+
+    def test_saved_models_are_private_and_exclude_credentials(self):
+        url = '/nextec/modelos/'
+        self.assertEqual(self.client.get(url).status_code, 403)
+        headers = {'HTTP_CF_ACCESS_AUTHENTICATED_USER_EMAIL': 'ana@nex.tec.br'}
+        body = {'name': 'Padrão Nextec', 'settings': {
+            'exename': 'Cliente', 'theme': 'dark', 'permanentPassword': 'hidden',
+            'key': 'public-key', 'sh_secret_field': 'hidden', 'iconbase64': 'data:large',
+        }}
+        response = self.client.post(url, data=json.dumps(body), content_type='application/json', **headers)
+        self.assertEqual(response.status_code, 200)
+        saved = self.client.get(url, {'name': body['name']}, **headers).json()['settings']
+        self.assertEqual(saved, {'exename': 'Cliente', 'theme': 'dark'})
+        other = {'HTTP_CF_ACCESS_AUTHENTICATED_USER_EMAIL': 'bia@nex.tec.br'}
+        self.assertEqual(self.client.get(url, {'name': body['name']}, **other).status_code, 404)
+
+    def test_saved_models_require_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+        response = client.post('/nextec/modelos/', data='{}', content_type='application/json',
+                               HTTP_CF_ACCESS_AUTHENTICATED_USER_EMAIL='ana@nex.tec.br')
+        self.assertEqual(response.status_code, 403)
+
+    def test_nextec_company_default_and_dark_theme_are_independent_of_base_version(self):
+        from . import nextec
+        with patch.dict(os.environ, {'NX_COMPANY': 'Nextec', 'NX_SERVER_HOST': 'remoto.nex.tec.br'}):
+            self.assertEqual(nextec.server_defaults()['compname'], 'Nextec LTDA')
+        data, errors = validate_generate_params({'exename': 'Cliente', 'version': '1.5.0',
+                                                 'theme': 'dark', 'appname': 'Nextec-Connect'})
+        self.assertFalse(errors)
+        self.assertEqual((data['version'], data['theme']), ('1.5.0', 'dark'))
+
+    def test_configured_nextec_without_public_key_fails_before_generation(self):
+        from . import nextec
+        with patch.dict(os.environ, {'NX_SERVER_HOST': 'remoto.nex.tec.br', 'NX_KEY': '', 'NX_KEY_FILE': ''}):
+            self.assertTrue(any('Chave pública' in problem for problem in nextec.config_problems()))

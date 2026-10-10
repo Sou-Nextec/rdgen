@@ -362,3 +362,10 @@ class BrandingAssetsTests(TestCase):
         self.assertTrue(result['success'])
         self.assertEqual(save_png.call_args_list[2].args[0].read(), expected)
 
+    def test_upload_de_tela_de_privacidade_rejeita_altura_acima_do_limite(self):
+        from .branding import save_upload
+
+        image = self.image_file('privacy.png', (100, 1200), 'PNG')
+        with self.assertRaisesRegex(ValueError, '1920 × 1080'):
+            save_upload('privacy', image)
+

@@ -35,8 +35,10 @@ jobs:
           New-Item -ItemType Directory -Force source/rustdesk | Out-Null
           Invoke-WebRequest 'https://github.com/rustdesk/rustdesk/releases/download/1.5.0/rustdesk-1.5.0-x86_64.msi' -OutFile official.msi
           $extract = Join-Path $env:RUNNER_TEMP 'official-rustdesk'
-          $process = Start-Process msiexec.exe -ArgumentList @('/a', "$PWD/official.msi", '/qn', "TARGETDIR=$extract") -Wait -PassThru -WindowStyle Hidden
-          if ($process.ExitCode -ne 0) { throw 'Official MSI extraction failed' }
+          $msi = (Resolve-Path official.msi).Path
+          $log = Join-Path $env:RUNNER_TEMP 'extract-msi.log'
+          $process = Start-Process msiexec.exe -ArgumentList "/a `"$msi`" /qn TARGETDIR=`"$extract`" /l*v `"$log`"" -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { Get-Content $log -Tail 35; throw "Official MSI extraction failed: $($process.ExitCode)" }
           $exe = Get-ChildItem $extract -Filter rustdesk.exe -Recurse | Select-Object -First 1
           if (!$exe) { throw 'Official client EXE missing' }
           Copy-Item "$($exe.Directory.FullName)/*" source/rustdesk -Recurse -Force

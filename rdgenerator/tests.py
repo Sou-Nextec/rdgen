@@ -3,7 +3,7 @@ import os
 import io
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from django.test import TestCase
 from django.core.files.uploadedfile import SimpleUploadedFile
 from PIL import Image
@@ -328,3 +328,27 @@ class BrandingAssetsTests(TestCase):
         client = Client(enforce_csrf_checks=True)
         response = client.post('/nextec/imagens/', {'asset': 'icon', 'action': 'upload'})
         self.assertEqual(response.status_code, 403)
+
+    def test_geracao_usa_tela_de_privacidade_salva_como_padrao(self):
+        from . import nextec, views
+
+        uploaded = self.image_file('privacy.png', (96, 54), 'PNG')
+        from .branding import save_upload
+        managed_path = save_upload('privacy', uploaded)
+        expected = managed_path.read_bytes()
+
+        response = Mock(status_code=200)
+        response.json.return_value = {'workflow_run_id': 123, 'html_url': 'https://github.com/example/run/123'}
+        with (
+            patch.object(nextec, 'config_problems', return_value=[]),
+            patch.object(nextec, 'is_configured', return_value=False),
+            patch.object(views, 'validate_generate_params', side_effect=lambda params: (params, {})),
+            patch.object(views, 'validate_build_inputs'),
+            patch.object(views, 'save_png', return_value=('false', 'false', 'false')) as save_png,
+            patch.object(views.requests, 'post', return_value=response),
+        ):
+            result = views.generate_custom_client({'exename': 'Nextec-Connect'}, 'https://gerador.example')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(save_png.call_args_list[2].args[0].read(), expected)
+

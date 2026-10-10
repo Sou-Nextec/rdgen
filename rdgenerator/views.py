@@ -171,6 +171,8 @@ def generate_custom_client(params, full_url):
         privacyfile = params.get('privacyfile')
         if not privacyfile:
             privacyfile = params.get('privacybase64')
+        if not privacyfile:
+            privacyfile = nextec.default_image('privacy')
         privacylink_url, privacylink_uuid, privacylink_file = save_png(privacyfile,myuuid,full_url,"privacy.png")
     except:
         print("failed to get logo")
@@ -785,3 +787,4 @@ def get_artwork(request, asset):
         raise Http404('Artwork not found')
     content_type = 'image/bmp' if path.suffix.lower() == '.bmp' else 'image/png'
     return FileResponse(open(path, 'rb'), content_type=content_type)
+

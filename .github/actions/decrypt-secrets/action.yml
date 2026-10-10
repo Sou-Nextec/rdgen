@@ -21,6 +21,9 @@ runs:
       env:
         PYTHONUTF8: "1"
         PYTHONIOENCODING: "utf-8"
+        ZIP_PATH: ${{ inputs.zip_path }}
+        ZIP_PASSWORD: ${{ inputs.zip_password }}
+        VALIDATION_PATH: ${{ github.action_path }}/../../../rdgenerator
       run: |
         import sys
         import io
@@ -34,11 +37,15 @@ runs:
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
-        with pyzipper.AESZipFile('${{ inputs.zip_path }}') as zf:
-            zf.setpassword('${{ inputs.zip_password }}'.encode())
+        sys.path.insert(0, os.environ['VALIDATION_PATH'])
+        from build_inputs import validate_build_inputs
+        with pyzipper.AESZipFile(os.environ['ZIP_PATH']) as zf:
+            zf.setpassword(os.environ['ZIP_PASSWORD'].encode())
             with zf.open('secrets.json') as f:
                 secrets = json.load(f)
 
+        # Validate all inputs before exporting any variable.
+        validate_build_inputs(secrets)
         with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env_file:
             for key, value in secrets.items():
                 if value:

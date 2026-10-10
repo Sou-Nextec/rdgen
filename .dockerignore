@@ -14,3 +14,12 @@ LICENSE
 *.pyc
 .venv
 db.sqlite3
+*.sqlite3*
+.env
+.env.*
+data/
+exe/
+png/
+temp_zips/
+secret_key
+data_*.json

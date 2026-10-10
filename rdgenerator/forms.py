@@ -167,7 +167,7 @@ class GenerateForm(forms.Form):
         value = (self.cleaned_data.get('serverPort') or '').strip()
         if not value:
             return value
-        if not value.isdigit() or not (1 <= int(value) <= 65535):
+        if not value.isdigit() or not (1 <= int(value) <= 65532):
             raise forms.ValidationError("Use apenas o numero da porta do servidor de ID (padrao 21116). / Port must be a number (default 21116).")
         if int(value) in (21117, 21118, 21119):
             raise forms.ValidationError(
@@ -190,3 +190,44 @@ class GenerateForm(forms.Form):
 
     def clean_compname(self):
         return self._reject_unsafe_name_chars('compname')
+
+    def clean(self):
+        cleaned = super().clean()
+        from .build_inputs import UNSAFE, ANDROID_ID
+        # Manual settings are encoded as JSON/base64 and may contain multiple lines.
+        for field in ('serverIP', 'key', 'apiServer', 'urlLink', 'downloadLink', 'androidappid'):
+            value = cleaned.get(field, '')
+            if value and UNSAFE.search(value):
+                self.add_error(field, 'Caracteres inseguros para o build. / Unsafe build characters.')
+        value = cleaned.get('androidappid', '')
+        if value and not ANDROID_ID.fullmatch(value):
+            self.add_error('androidappid', 'Invalid Android application ID.')
+        return cleaned
+
+
+def validate_generate_params(data):
+    """Use the form's choices, defaults and validation for JSON/internal callers."""
+    if not isinstance(data, dict):
+        return {}, {'body': 'Must be a JSON object.'}
+    values, errors = {}, {}
+    for name, field in GenerateForm.base_fields.items():
+        if isinstance(field, forms.FileField):
+            continue
+        value = data.get(name, field.initial if field.initial is not None else '')
+        if isinstance(field, forms.BooleanField):
+            if name not in data:
+                value = bool(field.initial)
+            if not isinstance(value, bool):
+                errors[name] = 'Must be a boolean.'
+        elif not isinstance(value, str):
+            errors[name] = 'Must be a string.'
+        values[name] = value
+    if errors:
+        return {}, errors
+    from . import nextec
+    form = GenerateForm(nextec.apply(values), files={
+        name: data[name] for name in ('iconfile', 'logofile', 'privacyfile') if data.get(name)
+    })
+    if not form.is_valid():
+        return {}, {name: list(messages) for name, messages in form.errors.items()}
+    return form.cleaned_data, {}

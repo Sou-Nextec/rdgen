@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Gerador de clientes: configuração incompleta</title>
+    <style>
+      body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background: #f6f6f7; color: #222; margin: 0; }
+      main { max-width: 640px; margin: 8vh auto; padding: 0 20px; }
+      .card { background: #fff; border: 1px solid #e3e3e6; border-radius: 10px; padding: 24px 28px; }
+      h1 { font-size: 1.3rem; margin: 0 0 8px; }
+      p { line-height: 1.5; margin: 8px 0; color: #444; }
+      li { margin: 8px 0; line-height: 1.45; }
+      code { background: #f0f0f2; padding: 1px 5px; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="card">
+        <h1>O gerador ainda não está configurado</h1>
+        <p>Faltam estas configurações no servidor. Quem administra a stack define as variáveis no Portainer e reimplanta.</p>
+        <ul>
+          {% for p in problems %}<li>{{ p }}</li>{% endfor %}
+        </ul>
+        <p>Depois de salvar, use <code>Pull and redeploy</code> na stack.</p>
+      </div>
+    </main>
+  </body>
+</html>

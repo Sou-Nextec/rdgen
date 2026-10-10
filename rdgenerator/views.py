@@ -419,6 +419,10 @@ def _get_run_status(uuid_val):
 
 
 def generator_view(request):
+    problems = nextec.config_problems()
+    if problems:
+        # sem token/senhas o build nao funciona: diz o que falta em vez de falhar adiante
+        return render(request, 'config_problem.html', {'problems': problems}, status=503)
     if request.method == 'POST':
         form = GenerateForm(request.POST, request.FILES)
         if form.is_valid():

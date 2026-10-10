@@ -57,6 +57,7 @@ jobs:
         run: |
           docker run -d --name teste -p 8000:8000 \
             -e URL_PREFIX=/gerador -e NX_SERVER_HOST=remoto.exemplo -e NX_API_SERVER=https://painel.exemplo -e NX_KEY=CHAVE= \
+            -e GHUSER=teste -e GHBEARER=teste -e ZIP_PASSWORD=senha-de-teste-do-ci -e SH_SECRET=segredo-de-teste-do-ci \
             rdgen-nextec:teste
           ok=0
           for i in $(seq 1 30); do
@@ -69,6 +70,16 @@ jobs:
           grep -q 'value="remoto.exemplo"' /tmp/form.html        || { echo "padrão do servidor não aplicado"; exit 1; }
           grep -q 'value="android"' /tmp/form.html               && { echo "Android não deveria aparecer"; exit 1; }
           [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/gerador)" = "301" ] || { echo "/gerador sem barra deveria redirecionar"; exit 1; }
+          # sem configuracao o gerador deve avisar o que falta (503), nao falhar com erro generico
+          docker rm -f teste >/dev/null
+          docker run -d --name teste-sem-config -p 8001:8000 -e URL_PREFIX=/gerador rdgen-nextec:teste
+          code=000
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /tmp/semconfig.html -w '%{http_code}' http://localhost:8001/gerador/ || true)
+            [ "$code" = "503" ] && break
+            sleep 2
+          done
+          { [ "$code" = "503" ] && grep -q "GHBEARER" /tmp/semconfig.html; } || { echo "sem configuracao deveria dar 503 com aviso"; exit 1; }
           echo "OK"
 
       - name: Marcas

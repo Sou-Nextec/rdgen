@@ -10,6 +10,11 @@ class NextecAccessMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
+        if request.path_info.rstrip('/') == '/api/artifact':
+            # Dedicated internal export authenticates even when no allowlist is configured.
+            from .artifacts import authenticated
+            if authenticated(request):
+                return self.get_response(request)
         if nextec.access_denied(request):
             return render(request, 'access_denied.html', {'email': nextec.access_user(request)}, status=403)
         return self.get_response(request)

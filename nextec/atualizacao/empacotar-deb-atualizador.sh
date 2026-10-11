@@ -5,6 +5,8 @@ deb=${1:?Informe o .deb gerado}
 updater_dir=${2:?Informe a pasta nextec/atualizacao}
 [[ -f "$deb" && "$deb" == *.deb ]]
 app_name=${3:-Nextec-Connect}
+package_version=${4:-${package_version:-}}
+[[ -z "$package_version" || "$package_version" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || { echo "Versão do pacote inválida." >&2; exit 2; }
 [[ "$app_name" == "Nextec-Connect" ]] || { echo "Atualizador só se aplica ao Nextec-Connect." >&2; exit 2; }
 
 tmp=$(mktemp -d)
@@ -17,6 +19,7 @@ arch=$(dpkg-deb -f "$deb" Architecture)
 pkg=$(printf '%s' "$pkg" | tr '[:upper:]' '[:lower:]')
 [[ "$pkg" =~ ^[a-z0-9][a-z0-9+.-]+$ ]]
 sed -i "s/^Package:.*/Package: $pkg/" "$tmp/root/DEBIAN/control"
+if [[ -n "$package_version" ]]; then sed -i "s/^Version:.*/Version: $package_version/" "$tmp/root/DEBIAN/control"; fi
 [[ "$arch" == amd64 || "$arch" == arm64 ]]
 
 install -d -m 0755 "$tmp/root/usr/lib/nextec-connect" "$tmp/root/usr/lib/systemd/system"

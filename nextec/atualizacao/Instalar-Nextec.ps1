@@ -34,6 +34,7 @@ param(
   [string]$UrlBase = 'https://painel-remoto.nex.tec.br/api/nextec/update',
   [int]$GrupoId = 0,
   [string]$ChaveCliente = '',
+  [string]$PacoteVersao = '',
   [switch]$Forcar,
   [switch]$SoVerificar,
   [switch]$Registrar,
@@ -60,8 +61,9 @@ function RegistrarAtualizador {
   ProtegerPastaAtualizador
   $arg = "-NoProfile -ExecutionPolicy Bypass -File `"$fixo`" -UrlBase `"$UrlBase`" -Silencioso"
   $acao = New-ScheduledTaskAction -Execute (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -Argument $arg
-  $gatilho = New-ScheduledTaskTrigger -Daily -At '12:30'
-  $gatilho.RandomDelay = [TimeSpan]::FromHours(2)
+  # The cmdlet encodes TimeSpan as ISO-8601 (PT2H). Assigning the CIM property
+  # directly produces 02:00:00 and Task Scheduler rejects the task XML.
+  $gatilho = New-ScheduledTaskTrigger -Daily -At '12:30' -RandomDelay (New-TimeSpan -Hours 2)
   $conf = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 1) -MultipleInstances IgnoreNew
   Register-ScheduledTask -TaskName $Tarefa -Action $acao -Trigger $gatilho -Settings $conf -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
   Escrever "Tarefa agendada: $Tarefa (todo dia, perto das 12:30)"
@@ -255,7 +257,15 @@ try {
   $UrlBase = $baseUri.AbsoluteUri.TrimEnd('/')
   # Called by EXE/MSI after installing their trusted, bundled updater.
   # Registration must work offline and never download or install another package.
-  if ($Registrar) { RegistrarAtualizador; return }
+  if ($Registrar) {
+    if ($PacoteVersao -and $PacoteVersao -notmatch '^\d{1,3}\.\d{1,3}\.\d{1,3}$') { throw 'Versão do pacote inválida.' }
+    RegistrarAtualizador
+    if ($PacoteVersao) {
+      New-Item -Path $ChaveReg -Force | Out-Null
+      Set-ItemProperty -Path $ChaveReg -Name Versao -Value $PacoteVersao
+    }
+    return
+  }
 
   # 1. versão instalada (marca gravada por este script) e ID do RustDesk (o painel usa para piloto e acompanhamento)
   $instalada = $null

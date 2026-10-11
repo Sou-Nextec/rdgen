@@ -19,12 +19,17 @@ from django.urls import path
 
 from rdgenerator import views as views
 from rdgenerator import api_views as api_views
+from rdgenerator.artifacts import artifact
+from rdgenerator import catalog as catalog
 if django.__version__.split('.')[0]>='4':
     from django.urls import re_path as url
 else:
     from django.conf.urls import  url, include
 
 urlpatterns = [
+    path('api/artifact', artifact, name='artifact'),
+    path('nextec/geracoes/', catalog.generation_catalog, name='generation_catalog'),
+    path('nextec/geracoes/<str:uuid>/', catalog.generation_detail, name='generation_detail'),
     path('nextec/modelos/', views.saved_models_view, name='saved_models'),
     path('nextec/imagens/', views.branding_view, name='branding'),
     path('get_artwork/<str:asset>', views.get_artwork, name='get_artwork'),

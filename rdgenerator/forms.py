@@ -14,6 +14,11 @@ UNSAFE_NAME_CHARS = re.compile(r'[&\\|\'"$`\r\n]')
 APP_NAME_ALLOWED = re.compile(r'^[A-Za-z0-9-]+$')
 
 class GenerateForm(forms.Form):
+    package_version = forms.RegexField(regex=r'^\d{1,3}\.\d{1,3}\.\d{1,3}$', required=False,
+        label='Versão do pacote Nextec', help_text='Ex.: 2.0.7. Uma nova imagem ou configuração precisa de uma nova versão.')
+    profile = forms.ChoiceField(choices=[('default', 'Cliente padrão'), ('analysts', 'Analistas'), ('client', 'Cliente específico')], required=False)
+    client_name = forms.CharField(required=False, max_length=120, label='Cliente / carteira')
+    notes = forms.CharField(required=False, max_length=1000, widget=forms.Textarea(attrs={'rows': 2}), label='Notas desta versão')
     sh_secret_field = forms.CharField(required=False)
     #Platform
     platform = forms.ChoiceField(choices=[('windows','Windows 64 bits'),('linux','Linux')], initial='windows')

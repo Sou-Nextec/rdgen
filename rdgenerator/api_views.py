@@ -26,7 +26,7 @@ def api_generate(request):
     if errors:
         return JsonResponse({'success': False, 'error': 'Validation errors', 'details': errors}, status=400)
     full_url = f"{settings.PROTOCOL}://{request.get_host()}{request.META.get('SCRIPT_NAME', '').rstrip('/')}"
-    result = generate_custom_client(cleaned, full_url)
+    result = generate_custom_client(cleaned, full_url, created_by=nextec.access_user(request))
     if result['success']:
         result['status_url'] = f"/api/status?uuid={result['uuid']}&platform={result['platform']}&filename={result['filename']}"
     return JsonResponse(result, status=200 if result['success'] else result.get('status_code', 500))

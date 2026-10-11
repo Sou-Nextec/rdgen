@@ -8,6 +8,9 @@
 (() => {
   if (parent === window) return;
   document.documentElement.dataset.embedded = 'true';
+  {% if uuid %}
+  parent.postMessage({type:'nextec-generation-started', uuid:'{{ uuid|escapejs }}'}, location.origin);
+  {% endif %}
   const report = () => parent.postMessage({type:'nextec-generator-ready', height:Math.ceil(document.body.scrollHeight)}, location.origin);
   window.addEventListener('message', event => {
     if (event.origin !== location.origin || event.source !== parent || event.data?.type !== 'nextec-generator-theme') return;

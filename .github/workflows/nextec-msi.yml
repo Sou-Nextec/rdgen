@@ -15,6 +15,14 @@ concurrency:
   group: msi-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  exe-wrapper:
+    name: Validar instalador EXE e MSI incorporado
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compilar EXE real e verificar payload sem executar instalação
+        shell: pwsh
+        run: ./.github/scripts/test-setup-exe.ps1
   package:
     runs-on: windows-2022
     strategy:

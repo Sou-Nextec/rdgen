@@ -2,6 +2,14 @@
 
 O número nesta página acompanha a experiência do gerador (layout, organização e recursos próprios da Nextec). Ele é independente da versão-base do RustDesk escolhida em cada build e da versão publicada pelo painel para atualização dos clientes.
 
+## 2.0.6
+
+- Incorpora o gerador ao painel na mesma origem, acompanhando o tema e a altura do conteúdo.
+- Mostra o percentual das etapas reais do Actions e identifica a etapa que falhou. Downloads dependem dos arquivos recebidos.
+- Aceita o patch Flutter já aplicado ao SDK restaurado do cache, sem ocultar incompatibilidades.
+- Corrige a substituição do nome e os argumentos do compilador no instalador EXE; testa a compilação real e a integridade do MSI incorporado.
+- Corrige o aviso de macOS nas gerações Windows e Linux e adiciona testes de regressão.
+
 ## 2.0.4
 
 - Alinha cores, superfícies, tipografia, campos e estados de foco ao sistema visual do painel remoto; melhora a seleção de plataforma por teclado e telas menores.

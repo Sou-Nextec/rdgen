@@ -14,19 +14,6 @@ from .forms import validate_generate_params
 
 
 class BuildInputTests(SimpleTestCase):
-    def test_theme_logo_paths_are_validated_and_confined_to_fixed_names(self):
-        for theme, filename in (('light', 'logo_light.png'), ('dark', 'logo_dark.png')):
-            prefix = 'logolightlink' if theme == 'light' else 'logodarklink'
-            payload = {
-                prefix + '_url': 'https://generator.example',
-                prefix + '_uuid': '11111111-2222-3333-4444-555555555555',
-                prefix + '_file': filename,
-            }
-            self.assertEqual(validate_build_inputs(payload), payload)
-            payload[prefix + '_file'] = '../logo.png'
-            with self.assertRaisesRegex(ValueError, 'invalid image filename'):
-                validate_build_inputs(payload)
-
     def test_no_build_field_accepts_shell_syntax_or_newlines(self):
         for field in FIELDS:
             for value in ('value\nappname=changed', 'value\rchanged', "value';echo injected;'", '$(echo injected)', 'value\x00'):

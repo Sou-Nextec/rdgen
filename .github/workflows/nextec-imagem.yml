@@ -53,9 +53,12 @@ jobs:
 
       - name: Testes de regressão e segurança
         run: |
+          # Git só é necessário para reproduzir o patch do SDK nos testes.
+          # A imagem de produção permanece sem ferramentas de compilação.
+          printf 'FROM rdgen-nextec:teste\nUSER root\nRUN apk add --no-cache git\nUSER user\n' | docker build -t rdgen-regression:teste -f - .
           docker run --rm --network none -e DB_PATH=/tmp/rdgen-test/db.sqlite3 \
             -v "$PWD/.github/actions/decrypt-secrets:/opt/rdgen/.github/actions/decrypt-secrets:ro" \
-            --entrypoint python rdgen-nextec:teste manage.py test rdgenerator
+            --entrypoint python rdgen-regression:teste manage.py test rdgenerator
 
       - name: Teste de fumaça
         run: |

@@ -171,9 +171,10 @@
         <h2 class="loading-text">Gerando instalador</h2>
         <div class="loading-spinner"></div>
         <div class="progress-bar">
-            <div id="progressBarFill" class="progress-bar-fill"></div>
+            <div id="progressBarFill" class="progress-bar-fill" role="progressbar" aria-label="Etapas concluídas" aria-valuemin="0" aria-valuemax="100"></div>
         </div>
         <p class="status-text">A geração pode levar de 30 a 45 minutos. Você pode deixar esta página aberta ou voltar depois.</p>
+        <p id="progressText" class="status-text" aria-live="polite">Aguardando as etapas do build</p>
         <p class="status-text">Status: <span id="statusText">{{status}}</span></p>
 
         <div class="log-container">
@@ -221,39 +222,37 @@
             }
         }
 
-        // Simulate progress (replace with actual progress tracking if possible)
-        function simulateProgress() {
-            const progressBar = document.getElementById('progressBarFill');
-            const statusText = document.getElementById('statusText');
-            let progress = 0;
-            const stages = [
-                'Iniciando a geração',
-                'Compilando o código-fonte',
-                'Gerando arquivos da plataforma',
-                'Empacotando o aplicativo',
-                'Finalizando a geração'
-            ];
-
-            const progressInterval = setInterval(() => {
-                progress += Math.random() * 20;
-                progressBar.style.width = `${Math.min(progress, 100)}%`;
-                
-                const stageIndex = Math.floor(progress / 20);
-                statusText.textContent = stages[Math.min(stageIndex, stages.length - 1)];
-
-                if (progress >= 100) {
-                    clearInterval(progressInterval);
-                }
-            }, 1000);
-        }
-
         // Call on page load
         updatePlatformUI();
         //simulateProgress();
 
-        setTimeout(function() {
-            window.location.replace('check_for_file?filename={{filename}}&uuid={{uuid}}&platform={{platform}}');
-        }, 30000); // 20000 milliseconds = 20 seconds
+        const query = new URLSearchParams({uuid:'{{uuid|escapejs}}', filename:'{{filename|escapejs}}', platform:'{{platform|escapejs}}'});
+        const terminal = new Set(['success','failure','cancelled','timed_out','skipped','action_required','incomplete']);
+        async function pollBuild() {
+            try {
+                const response = await fetch('api/status?' + query, {credentials:'same-origin', cache:'no-store'});
+                if (!response.ok) throw new Error('Status indisponível');
+                const data = await response.json();
+                const progress = data.progress || {};
+                document.getElementById('statusText').textContent = progress.stage || 'Aguardando execução';
+                const percent = progress.percent;
+                const bar = document.getElementById('progressBarFill');
+                if (Number.isFinite(percent)) {
+                    bar.style.width = percent + '%';
+                    bar.setAttribute('aria-valuenow', percent);
+                    document.getElementById('progressText').textContent = percent + '% das etapas concluídas';
+                }
+                if (terminal.has(data.status)) {
+                    window.location.replace('check_for_file?' + query);
+                    return;
+                }
+            } catch (error) {
+                document.getElementById('statusText').textContent = 'Reconectando ao acompanhamento. A geração continua.';
+            }
+            setTimeout(pollBuild, 15000);
+        }
+        pollBuild();
     </script>
+{% include 'embed.html' %}
 </body>
 </html>

@@ -95,6 +95,7 @@
     </svg>
     <div class="error-container">
         <h2 class="error-header">A geração foi interrompida</h2>
+        {% if failed_step %}<p>Etapa que falhou: <strong>{{ failed_step }}</strong></p>{% endif %}
         
         <div class="warning-box">
             <strong>Atenção:</strong> a geração não terminou com sucesso. Alguns arquivos podem estar ausentes. Você pode baixar abaixo os arquivos que foram concluídos.
@@ -141,5 +142,6 @@
         }
         updatePlatformUI();
     </script>
+{% include 'embed.html' %}
 </body>
 </html>

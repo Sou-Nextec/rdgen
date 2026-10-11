@@ -78,9 +78,11 @@ try {
     New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
     $sequenceFile = Join-Path $stateDir 'manifest-sequence.txt'
     $releaseRoot = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Nextec\Connect\Releases'
-    $lastSequence = 0
+    $lastSequence = [long]0
     if (Test-Path -LiteralPath $sequenceFile) {
-        [void][long]::TryParse((Get-Content -Raw -LiteralPath $sequenceFile).Trim(), [ref]$lastSequence)
+        if (-not [long]::TryParse((Get-Content -Raw -LiteralPath $sequenceFile).Trim(), [ref]$lastSequence)) {
+            throw 'O contador local de sequência está inválido; corrija-o antes de assinar.'
+        }
     } elseif (Test-Path -LiteralPath $releaseRoot) {
         Get-ChildItem -LiteralPath $releaseRoot -Filter 'manifesto-connect.json' -File -Recurse | ForEach-Object {
             try {

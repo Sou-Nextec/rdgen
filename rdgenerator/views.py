@@ -830,9 +830,13 @@ def _branding_rows():
 
 def get_artwork(request, asset):
     """Serve only the named, validated Nextec preview assets."""
-    path = branding.get_path(asset)
+    if asset == 'favicon':
+        path = Path(__file__).resolve().parent.parent / 'nextec' / 'branding' / 'icon.png'
+    else:
+        path = branding.get_path(asset)
     if not path or not path.is_file() or path.is_symlink():
         raise Http404('Artwork not found')
     content_type = 'image/bmp' if path.suffix.lower() == '.bmp' else 'image/png'
     return FileResponse(open(path, 'rb'), content_type=content_type)
+
 

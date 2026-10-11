@@ -6,6 +6,8 @@
     <title>Gerador de clientes · Nextec</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="{% url 'get_artwork' 'favicon' %}">
+    <link rel="apple-touch-icon" href="{% url 'get_artwork' 'favicon' %}">
     <style>
         body {
             font-family: 'Roboto', sans-serif;
@@ -306,6 +308,44 @@
             .platform-choice { flex:1; min-width:0; }
         }
         @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; } }
+        /* Ajustes de consistência para campos, cartões e telas estreitas. */
+        body { overflow-x:hidden; line-height:1.5; -webkit-font-smoothing:antialiased; }
+        .container { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .container > .section, .platform > .section { min-width:0; }
+        .section br { display:none; }
+        .section > label { margin:14px 0 6px; line-height:1.45; }
+        input[type="text"], input[type="password"], input[type="number"], input[type="url"], select, textarea {
+            display:block; width:100%; min-width:0; margin:0 0 12px;
+        }
+        input[type="checkbox"], input[type="radio"] { display:inline-block; width:auto; min-height:0; margin:0 7px 0 0; padding:0; }
+        input[type="file"] { display:block; width:100%; min-width:0; min-height:0; margin:8px 0 12px; padding:8px; }
+        textarea { min-height:132px; resize:vertical; line-height:1.5; }
+        .visually-hidden {
+            position:absolute !important; width:1px !important; height:1px !important; padding:0 !important;
+            margin:-1px !important; overflow:hidden !important; clip:rect(0,0,0,0) !important;
+            white-space:nowrap !important; border:0 !important;
+        }
+        .platform-icons { display:flex; flex-wrap:wrap; }
+        .platform-choice { min-height:44px; }
+        .model-actions { min-width:0; }
+        .model-actions button { min-width:0; }
+        .model-actions select { flex:1 1 220px; }
+        .section .field-help { margin:8px 0 14px; }
+        .section .field-help:last-child { margin-bottom:0; }
+        .section details { color:var(--nx-muted); line-height:1.55; }
+        .notice { border:1px solid #D4C4F4; }
+        .errorlist { display:block; width:min(1120px,calc(100% - 32px)); margin:14px auto; }
+        @media (max-width:860px) { .container { grid-template-columns:1fr; } }
+        @media (max-width:560px) {
+            .platform,.container,.save-load-section-container { width:calc(100% - 28px); }
+            .section,.platform .section { padding:18px; }
+            .model-actions { align-items:stretch; }
+            .model-actions select { flex-basis:100%; }
+            .model-actions button { flex:1 1 calc(50% - 8px); white-space:normal; }
+            .key-row { align-items:stretch; }
+            .key-row button { flex:0 0 auto; }
+            .platform-choice { flex:1 1 140px; min-width:0; }
+        }
       </style>
 </head>
 <body>
@@ -354,7 +394,7 @@
                     <button class="platform-choice active" type="button" data-platform="windows" aria-pressed="true"><i class="fab fa-windows" aria-hidden="true"></i><span>Windows 64 bits</span></button>
                     <button class="platform-choice" type="button" data-platform="linux" aria-pressed="false"><i class="fab fa-linux" aria-hidden="true"></i><span>Linux</span></button>
                 </div>
-                <select name="platform" id="id_platform">
+                    <select name="platform" id="id_platform" class="visually-hidden" aria-hidden="true" tabindex="-1">
                     <option value="windows" selected>Windows 64 bits</option>
                     <option value="linux">Linux</option>
                 </select>
@@ -908,4 +948,5 @@
     </script>
 </body>
 </html>
+
 

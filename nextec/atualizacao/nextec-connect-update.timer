@@ -1,0 +1,13 @@
+[Unit]
+Description=Checagem diária de atualizações Nextec Connect
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=2h
+Persistent=true
+Unit=nextec-connect-update.service
+
+[Install]
+WantedBy=timers.target
+
+

@@ -28,6 +28,8 @@ jobs:
         run: |
           python nextec/atualizacao/test_manifest.py -v
           if ($LASTEXITCODE -ne 0) { throw 'Signature tests failed' }
+          New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'nextec-update') | Out-Null
+          Copy-Item nextec/atualizacao/Instalar-Nextec.ps1 (Join-Path $env:RUNNER_TEMP 'nextec-update/Instalar-Nextec.ps1')
       - uses: actions/checkout@v4
         with:
           repository: rustdesk/rustdesk
@@ -56,7 +58,50 @@ jobs:
         env:
           VERSION: master
         run: |
-          & ./.github/scripts/build-msi.ps1 -AppName Nextec-Connect -SourceRoot "$PWD/source"
+          & ./.github/scripts/build-msi.ps1 -AppName Nextec-Connect -SourceRoot "$PWD/source" -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
           $file = 'source/SignOutput/rustdesk.msi'
           $signature = [BitConverter]::ToString([IO.File]::ReadAllBytes((Resolve-Path $file))[0..7])
           if ($signature -ne 'D0-CF-11-E0-A1-B1-1A-E1') { throw 'Invalid MSI file signature' }
+          $extract = Join-Path $env:RUNNER_TEMP 'nextec-updater-msi-check'
+          $log = Join-Path $env:RUNNER_TEMP 'nextec-updater-msi-check.log'
+          $p = Start-Process msiexec.exe -ArgumentList "/a `"$(Resolve-Path $file)`" /qn TARGETDIR=`"$extract`" /l*v `"$log`"" -Wait -PassThru -WindowStyle Hidden
+          if ($p.ExitCode -ne 0) { Get-Content $log -Tail 30; throw "MSI extraction failed: $($p.ExitCode)" }
+          if (!(Get-ChildItem $extract -Filter 'Instalar-Nextec.ps1' -Recurse)) { throw 'Updater script is missing from MSI payload' }
+
+  deb-package:
+    name: Validar pacote Debian e atualizador Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construir .deb de teste e validar integração do atualizador
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/nextec-deb-fixture"
+          mkdir -p "$work/DEBIAN" "$work/usr/bin"
+          cat > "$work/DEBIAN/control" <<'EOF'
+          Package: nextec-connect
+          Version: 1.0.0
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: Nextec <ti@nex.tec.br>
+          Description: Fixture para validar o pacote do Nextec Connect
+          Depends: libc6
+          EOF
+          printf '#!/bin/sh\nexit 0\n' > "$work/usr/bin/nextec-connect"
+          chmod 0755 "$work/usr/bin/nextec-connect"
+          dpkg-deb --build --root-owner-group "$work" "$RUNNER_TEMP/nextec-connect-test.deb"
+          bash -n nextec/atualizacao/empacotar-deb-atualizador.sh
+          bash nextec/atualizacao/empacotar-deb-atualizador.sh "$RUNNER_TEMP/nextec-connect-test.deb" nextec/atualizacao Nextec-Connect
+          test "$(dpkg-deb -f "$RUNNER_TEMP/nextec-connect-test.deb" Package)" = "nextec-connect"
+          dpkg-deb -f "$RUNNER_TEMP/nextec-connect-test.deb" Depends | grep -q python3
+          extracted="$RUNNER_TEMP/nextec-deb-extracted"
+          mkdir -p "$extracted"
+          dpkg-deb -R "$RUNNER_TEMP/nextec-connect-test.deb" "$extracted"
+          test -x "$extracted/usr/lib/nextec-connect/atualizador-linux.py"
+          test -f "$extracted/usr/lib/systemd/system/nextec-connect-update.service"
+          test -f "$extracted/usr/lib/systemd/system/nextec-connect-update.timer"
+          grep -q 'enable --now nextec-connect-update.timer' "$extracted/DEBIAN/postinst"
+          grep -q 'disable --now nextec-connect-update.timer' "$extracted/DEBIAN/prerm"
+          python3 -m py_compile "$extracted/usr/lib/nextec-connect/atualizador-linux.py"

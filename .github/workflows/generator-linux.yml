@@ -92,6 +92,12 @@ jobs:
         with:
           zip_password: ${{ secrets.ZIP_PASSWORD }}
 
+      - name: Preserve Nextec Linux updater sources
+        if: env.appname == 'Nextec-Connect'
+        run: |
+          mkdir -p "$RUNNER_TEMP/nextec-update"
+          cp nextec/atualizacao/atualizador-linux.py nextec/atualizacao/nextec-connect-update.service nextec/atualizacao/nextec-connect-update.timer nextec/atualizacao/empacotar-deb-atualizador.sh "$RUNNER_TEMP/nextec-update/"
+
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v6
         with:
@@ -139,6 +145,12 @@ jobs:
         with:
           repository: rustdesk/rustdesk
           submodules: recursive
+
+      - name: Restore Nextec Linux updater sources
+        if: env.appname == 'Nextec-Connect'
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.nextec-update"
+          cp "$RUNNER_TEMP/nextec-update/"* "$GITHUB_WORKSPACE/.nextec-update/"
 
       - name: Set Swap Space
         if: ${{ matrix.job.arch == 'x86_64' }}
@@ -628,6 +640,11 @@ jobs:
             for name in *.deb; do
               mv "$name" /workspace/output/"${{ env.filename }}-${{ matrix.job.arch }}.deb"
             done
+            if [[ "${{ env.appname }}" == "Nextec-Connect" ]]; then
+              bash /workspace/.nextec-update/empacotar-deb-atualizador.sh \
+                "/workspace/output/${{ env.filename }}-${{ matrix.job.arch }}.deb" \
+                /workspace/.nextec-update "${{ env.appname }}"
+            fi
 
             # rpm/suse/arch package the flutter BUNDLE (not tmpdeb), so the deb's
             # custom_.txt never reaches them. Copy it into the bundle too, so the

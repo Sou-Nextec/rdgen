@@ -14,7 +14,9 @@ from manifest import validate
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--msi', type=Path, required=True)
+    parser.add_argument('--msi', type=Path, help='MSI do Windows já compilado pelo RDGen.')
+    parser.add_argument('--deb-amd64', type=Path, help='Pacote Nextec Connect .deb para amd64.')
+    parser.add_argument('--deb-arm64', type=Path, help='Pacote Nextec Connect .deb para arm64.')
     parser.add_argument('--versao', required=True)
     parser.add_argument('--sequencia', type=int, required=True)
     parser.add_argument('--chave', type=Path, required=True, help='Mesma chave privada cifrada usada no monitoramento; nunca vai para o servidor.')
@@ -23,19 +25,36 @@ def main():
     openssl = shutil.which('openssl')
     if not openssl:
         raise SystemExit('OpenSSL não encontrado. Use o OpenSSL do Git for Windows.')
-    with args.msi.open('rb') as file:
-        if file.read(8) != bytes.fromhex('d0cf11e0a1b11ae1'):
-            raise SystemExit('O arquivo não é um MSI.')
-        file.seek(0)
-        digest = hashlib.sha256()
-        for block in iter(lambda: file.read(1024 * 1024), b''):
-            digest.update(block)
+    if not any((args.msi, args.deb_amd64, args.deb_arm64)):
+        raise SystemExit('Informe ao menos um instalador: --msi, --deb-amd64 ou --deb-arm64.')
+
+    def asset(path, expected_header, archive_name):
+        if not path:
+            return None
+        with path.open('rb') as file:
+            if file.read(len(expected_header)) != expected_header:
+                raise SystemExit(f'Arquivo inválido: {path}')
+            file.seek(0)
+            digest = hashlib.sha256()
+            for block in iter(lambda: file.read(1024 * 1024), b''):
+                digest.update(block)
+        return {'arquivo': f'files/nextec-acesso-{args.versao}{archive_name}',
+                'sha256': digest.hexdigest(), 'tamanho': path.stat().st_size}
+
+    windows = asset(args.msi, bytes.fromhex('d0cf11e0a1b11ae1'), '.msi')
+    linux = {}
+    ar_header = b'!<arch>\n'
+    if args.deb_amd64:
+        linux['amd64'] = asset(args.deb_amd64, ar_header, '-amd64.deb')
+    if args.deb_arm64:
+        linux['arm64'] = asset(args.deb_arm64, ar_header, '-arm64.deb')
     now = datetime.now(timezone.utc).replace(microsecond=0)
     m = {'produto': 'nextec-connect', 'formato': 1, 'sequencia': args.sequencia,
          'versao': args.versao, 'publicado_em': now.strftime('%Y-%m-%dT%H:%M:%SZ'),
          'valido_ate': (now + timedelta(days=30)).strftime('%Y-%m-%dT%H:%M:%SZ'),
-         'windows': {'arquivo': f'files/nextec-acesso-{args.versao}.msi',
-                     'sha256': digest.hexdigest(), 'tamanho': args.msi.stat().st_size}}
+         'linux': linux}
+    if windows:
+        m['windows'] = windows
     raw = json.dumps(m, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
     with tempfile.TemporaryDirectory() as folder:
         payload, signature = Path(folder) / 'manifesto.json', Path(folder) / 'signature.bin'

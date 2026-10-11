@@ -1,0 +1,18 @@
+[Unit]
+Description=Verificar atualizações assinadas do Nextec Connect
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/python3 /usr/lib/nextec-connect/atualizador-linux.py
+UMask=0077
+PrivateTmp=yes
+ProtectHome=read-only
+ReadWritePaths=/var/cache/nextec-connect /var/lib/nextec-connect /run/lock
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+NoNewPrivileges=no
+TimeoutStartSec=15min
+

@@ -72,6 +72,15 @@ class ManifestTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'divergente'):
             self.verify(self.m, previous_sequence=5, previous_hash='b' * 64)
 
+    def test_signed_linux_packages_are_bound_to_architecture_and_version(self):
+        linux = {'amd64': {'arquivo': 'files/nextec-acesso-2.0.3-amd64.deb', 'sha256': 'b' * 64, 'tamanho': 200},
+                 'arm64': {'arquivo': 'files/nextec-acesso-2.0.3-arm64.deb', 'sha256': 'c' * 64, 'tamanho': 300}}
+        self.verify(dict(self.m, linux=linux))
+        for invalid in (dict(linux, arm64=dict(linux['arm64'], arquivo='files/other.deb')),
+                        dict(linux, x86=dict(linux['amd64']))):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                self.verify(dict(self.m, linux=invalid))
+
     @unittest.skipUnless(os.name == 'nt', 'Windows PowerShell integration')
     def test_windows_powershell_uses_same_signature_contract(self):
         script = Path(__file__).with_name('Manifesto-Connect.ps1')

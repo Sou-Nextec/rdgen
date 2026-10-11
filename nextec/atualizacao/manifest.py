@@ -66,14 +66,31 @@ def validate(raw, signature, *, keys=None, now=None, previous_sequence=0, previo
     now = now or datetime.now(timezone.utc)
     if issued > now + timedelta(minutes=5) or not issued < expiry <= issued + timedelta(days=30) or expiry <= now:
         raise ValueError('Manifesto vencido ou validade inválida.')
-    item = m.get('windows', {})
-    if not isinstance(item, dict) or item.get('arquivo') != f'files/nextec-acesso-{version}.msi':
-        raise ValueError('Caminho do MSI inválido.')
-    if not isinstance(item.get('sha256'), str) or not re.fullmatch('[a-f0-9]{64}', item['sha256']):
-        raise ValueError('Hash inválido.')
-    if type(item.get('tamanho')) is not int or not 8 <= item['tamanho'] <= 300 * 1024 * 1024:
-        raise ValueError('Tamanho do MSI inválido.')
+    assets = 0
+    windows = m.get('windows')
+    if windows is not None:
+        if not isinstance(windows, dict) or windows.get('arquivo') != f'files/nextec-acesso-{version}.msi':
+            raise ValueError('Caminho do MSI inválido.')
+        _validate_asset(windows, 300 * 1024 * 1024)
+        assets += 1
+    linux = m.get('linux', {})
+    if not isinstance(linux, dict) or set(linux) - {'amd64', 'arm64'}:
+        raise ValueError('Arquitetura Linux inválida.')
+    for arch, item in linux.items():
+        if not isinstance(item, dict) or item.get('arquivo') != f'files/nextec-acesso-{version}-{arch}.deb':
+            raise ValueError('Caminho do pacote Linux inválido.')
+        _validate_asset(item, 300 * 1024 * 1024)
+        assets += 1
+    if not assets:
+        raise ValueError('Manifesto sem instaladores.')
     digest = hashlib.sha256(raw).hexdigest()
     if sequence < previous_sequence or (sequence == previous_sequence and previous_hash != digest):
         raise ValueError('Manifesto antigo ou divergente.')
     return m, digest, signer
+
+
+def _validate_asset(item, max_size):
+    if not isinstance(item.get('sha256'), str) or not re.fullmatch('[a-f0-9]{64}', item['sha256']):
+        raise ValueError('Hash inválido.')
+    if type(item.get('tamanho')) is not int or not 8 <= item['tamanho'] <= max_size:
+        raise ValueError('Tamanho inválido.')

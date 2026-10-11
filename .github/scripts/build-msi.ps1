@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory)][string]$AppName,
     [string]$SourceRoot = (Get-Location).Path,
-    [string]$BinaryDirectory
+    [string]$BinaryDirectory,
+    [string]$UpdaterSource
 )
 $ErrorActionPreference = 'Stop'
 if ($AppName -notmatch '^[A-Za-z0-9 _-]+$') { throw 'Invalid application name' }
@@ -19,6 +20,34 @@ try {
     if ($packageName -ne $AppName) { Copy-Item -LiteralPath (Join-Path $BinaryDirectory "$AppName.exe") -Destination (Join-Path $BinaryDirectory "$packageName.exe") -Force }
     python preprocess.py --app-name $packageName --arp -d $BinaryDirectory
     if ($LASTEXITCODE -ne 0) { throw 'MSI preprocessing failed' }
+    if ($AppName -ceq 'Nextec-Connect') {
+        if (!$UpdaterSource) { $UpdaterSource = Join-Path $PSScriptRoot 'nextec-update' }
+        $updater = Join-Path $UpdaterSource 'Instalar-Nextec.ps1'
+        if (!(Test-Path -LiteralPath $updater)) { throw 'Nextec updater script is missing' }
+        $resourceDir = Join-Path $SourceRoot 'res/msi/Package/Resources'
+        New-Item -ItemType Directory -Force -Path $resourceDir | Out-Null
+        Copy-Item -LiteralPath $updater -Destination (Join-Path $resourceDir 'Instalar-Nextec.ps1') -Force
+
+        $packageWxs = Join-Path $SourceRoot 'res/msi/Package/Package.wxs'
+        $xml = [IO.File]::ReadAllText($packageWxs)
+        if (!$xml.Contains('Nextec.RegisterUpdater')) {
+            $component = @'
+        <DirectoryRef Id="INSTALLFOLDER_INNER">
+            <Component Id="Nextec.Updater" Guid="*">
+                <File Id="Nextec.UpdaterScript" Source="Resources\Instalar-Nextec.ps1" KeyPath="yes" />
+            </Component>
+        </DirectoryRef>
+        <CustomAction Id="Nextec.RegisterUpdater" Directory="SystemFolder" ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER_INNER]Instalar-Nextec.ps1&quot; -UrlBase &quot;https://painel-remoto.nex.tec.br/api/nextec/update&quot; -Registrar" Execute="deferred" Impersonate="no" Return="check" />
+'@
+            if (!$xml.Contains('</Feature>') -or !$xml.Contains('</Package>') -or !$xml.Contains('</InstallExecuteSequence>')) {
+                throw 'Unexpected WiX Package.wxs layout; refusing to patch MSI'
+            }
+            $xml = $xml.Replace('</Feature>', "            <ComponentRef Id=`"Nextec.Updater`" />`r`n`t`t</Feature>")
+            $xml = $xml.Replace('</InstallExecuteSequence>', "            <Custom Action=`"Nextec.RegisterUpdater`" After=`"InstallFiles`" Condition=`"NOT REMOVE~=&quot;ALL&quot;`" />`r`n`t`t</InstallExecuteSequence>")
+            $xml = $xml.Replace('</Package>', "$component`r`n`t</Package>")
+            [IO.File]::WriteAllText($packageWxs, $xml, [Text.UTF8Encoding]::new($false))
+        }
+    }
     # Restore native WiX packages explicitly, at the directory referenced by the vcxproj.
     nuget restore CustomActions/packages.config -PackagesDirectory packages -NonInteractive
     if ($LASTEXITCODE -ne 0) { throw 'WiX CustomActions package restore failed' }

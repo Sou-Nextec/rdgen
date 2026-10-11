@@ -28,6 +28,8 @@ jobs:
         run: |
           python nextec/atualizacao/test_manifest.py -v
           if ($LASTEXITCODE -ne 0) { throw 'Signature tests failed' }
+          New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'nextec-update') | Out-Null
+          Copy-Item nextec/atualizacao/Instalar-Nextec.ps1 (Join-Path $env:RUNNER_TEMP 'nextec-update/Instalar-Nextec.ps1')
       - uses: actions/checkout@v4
         with:
           repository: rustdesk/rustdesk
@@ -56,7 +58,12 @@ jobs:
         env:
           VERSION: master
         run: |
-          & ./.github/scripts/build-msi.ps1 -AppName Nextec-Connect -SourceRoot "$PWD/source"
+          & ./.github/scripts/build-msi.ps1 -AppName Nextec-Connect -SourceRoot "$PWD/source" -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
           $file = 'source/SignOutput/rustdesk.msi'
           $signature = [BitConverter]::ToString([IO.File]::ReadAllBytes((Resolve-Path $file))[0..7])
           if ($signature -ne 'D0-CF-11-E0-A1-B1-1A-E1') { throw 'Invalid MSI file signature' }
+          $extract = Join-Path $env:RUNNER_TEMP 'nextec-updater-msi-check'
+          $log = Join-Path $env:RUNNER_TEMP 'nextec-updater-msi-check.log'
+          $p = Start-Process msiexec.exe -ArgumentList "/a `"$(Resolve-Path $file)`" /qn TARGETDIR=`"$extract`" /l*v `"$log`"" -Wait -PassThru -WindowStyle Hidden
+          if ($p.ExitCode -ne 0) { Get-Content $log -Tail 30; throw "MSI extraction failed: $($p.ExitCode)" }
+          if (!(Get-ChildItem $extract -Filter 'Instalar-Nextec.ps1' -Recurse)) { throw 'Updater script is missing from MSI payload' }

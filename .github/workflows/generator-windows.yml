@@ -109,6 +109,9 @@ jobs:
         run: |
           Copy-Item .github/scripts/build-msi.ps1 (Join-Path $env:RUNNER_TEMP 'build-msi.ps1')
           Copy-Item .github/scripts/install-msi-artwork.ps1 (Join-Path $env:RUNNER_TEMP 'install-msi-artwork.ps1')
+          Copy-Item .github/scripts/build-setup-exe.ps1 (Join-Path $env:RUNNER_TEMP 'build-setup-exe.ps1')
+          New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'nextec-update') | Out-Null
+          Copy-Item nextec/atualizacao/Instalar-Nextec.ps1 (Join-Path $env:RUNNER_TEMP 'nextec-update/Instalar-Nextec.ps1')
 
       - name: Finalize and Cleanup zip/json
         if: always() # Run even if previous steps fail
@@ -733,7 +736,13 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         shell: pwsh
         run: |
-          & (Join-Path $env:RUNNER_TEMP 'build-msi.ps1') -AppName $env:appname
+          & (Join-Path $env:RUNNER_TEMP 'build-msi.ps1') -AppName $env:appname -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
+
+      - name: Make EXE an installer for the same MSI
+        if: env.UPLOAD_ARTIFACT == 'true' && env.appname == 'Nextec-Connect'
+        shell: pwsh
+        run: |
+          & (Join-Path $env:RUNNER_TEMP 'build-setup-exe.ps1') -MsiPath './SignOutput/rustdesk.msi' -OutputPath './SignOutput/rustdesk.exe' -DisplayName $env:appname
 
       - name: zip exe and msi
         continue-on-error: true

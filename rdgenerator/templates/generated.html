@@ -147,7 +147,7 @@
                 <p>Geração incompleta. Arquivos ausentes: {{ missing_files|join:", " }}.</p>
             {% endif %}
         </div>
-        {% if platform == 'windows' and panel_updates_url %}<p><a class="panel-link" href="{{ panel_updates_url }}" target="_blank" rel="noopener">Abrir Atualizações do app no painel</a></p><p class="platform-note">Para distribuir este MSI, publique-o no painel e escolha os dispositivos. Os pacotes gerados ainda não instalam a tarefa automática de atualização.</p>{% endif %}
+        {% if platform == 'windows' and panel_updates_url %}<p><a class="panel-link" href="{{ panel_updates_url }}" target="_blank" rel="noopener">Abrir Atualizações do app no painel</a></p><p class="platform-note">O MSI instala a checagem diária. O EXE Nextec-Connect abre o instalador MSI. Para atualizar, envie o MSI ao painel, autorize o manifesto assinado e publique primeiro para um grupo piloto.</p>{% endif %}
     </div>
 
     <div id="platformNote" class="platform-note"></div>

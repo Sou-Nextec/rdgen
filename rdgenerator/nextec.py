@@ -85,7 +85,7 @@ def apply(params):
 
 def default_image(kind):
     """Imagem padrão gerenciada quando nenhuma foi enviada no formulário."""
-    env_name = {'icon': 'NX_ICON_FILE', 'logo': 'NX_LOGO_FILE', 'privacy': 'NX_PRIVACY_FILE'}.get(kind)
+    env_name = {'icon': 'NX_ICON_FILE', 'logo': 'NX_LOGO_FILE', 'logo_light': 'NX_LOGO_LIGHT_FILE', 'logo_dark': 'NX_LOGO_DARK_FILE', 'privacy': 'NX_PRIVACY_FILE'}.get(kind)
     env = _env(env_name) if env_name else ''
     if env:
         path = Path(env)

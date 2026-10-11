@@ -77,15 +77,62 @@ try {
     $stateDir = Join-Path $env:LOCALAPPDATA 'Nextec\Connect'
     New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
     $sequenceFile = Join-Path $stateDir 'manifest-sequence.txt'
-    $sequence = 1
+    $releaseRoot = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Nextec\Connect\Releases'
+    $lastSequence = 0
     if (Test-Path -LiteralPath $sequenceFile) {
-        $lastSequence = 0
-        if ([int]::TryParse((Get-Content -Raw -LiteralPath $sequenceFile).Trim(), [ref]$lastSequence)) {
-            $sequence = $lastSequence + 1
+        [void][long]::TryParse((Get-Content -Raw -LiteralPath $sequenceFile).Trim(), [ref]$lastSequence)
+    } elseif (Test-Path -LiteralPath $releaseRoot) {
+        Get-ChildItem -LiteralPath $releaseRoot -Filter 'manifesto-connect.json' -File -Recurse | ForEach-Object {
+            try {
+                $manifest = Get-Content -Raw -LiteralPath $_.FullName | ConvertFrom-Json
+                if ($manifest.produto -eq 'nextec-connect' -and $manifest.sequencia -gt $lastSequence) {
+                    $lastSequence = [long]$manifest.sequencia
+                }
+            } catch {}
         }
     }
+    if (-not (Test-Path -LiteralPath $sequenceFile) -and $lastSequence -eq 0) {
+        Add-Type -AssemblyName Microsoft.VisualBasic
+        $answer = [Microsoft.VisualBasic.Interaction]::InputBox(
+            'Informe a última sequência já publicada. Digite 0 somente se ainda não publicou nenhuma versão.',
+            'Sequência de segurança do atualizador',
+            '0'
+        )
+        if ($answer -notmatch '^\d+
 
-    $releaseRoot = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Nextec\Connect\Releases'
+    $script = Join-Path $PSScriptRoot 'publicar-connect.py'
+    $arguments = @($pythonArgs) + @($script, '--msi', $msi, '--versao', $version,
+        '--sequencia', "$sequence", '--chave', $keyPath, '--saida', $output)
+    if ($debAmd64) { $arguments += @('--deb-amd64', $debAmd64) }
+    if ($debArm64) { $arguments += @('--deb-arm64', $debArm64) }
+
+    Write-Host ("Versão detectada: " + $version + " | sequência: " + $sequence)
+    Write-Host 'O OpenSSL pedirá a senha da chave cifrada. Ela não será salva.'
+    & $pythonCommand @arguments
+    if ($LASTEXITCODE -ne 0) { throw "A assinatura falhou (código $LASTEXITCODE). A sequência não foi avançada." }
+
+    Set-Content -LiteralPath $sequenceFile -Value $sequence -Encoding ASCII
+    $newline = [Environment]::NewLine
+    [System.Windows.Forms.MessageBox]::Show(
+        ("Manifesto assinado para a versão " + $version + "." + $newline + "Arquivos em:" + $newline + $output),
+        'Nextec Connect',
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Information
+    ) | Out-Null
+    Start-Process explorer.exe -ArgumentList $output
+} catch {
+    [System.Windows.Forms.MessageBox]::Show(
+        $_.Exception.Message,
+        'Falha ao assinar a atualização',
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Error
+    ) | Out-Null
+    exit 1
+}
+) { throw 'Sequência inválida ou operação cancelada.' }
+        $lastSequence = [long]$answer
+    }
+    $sequence = $lastSequence + 1
     $output = Join-Path $releaseRoot "$version-$sequence"
     New-Item -ItemType Directory -Force -Path $releaseRoot | Out-Null
 

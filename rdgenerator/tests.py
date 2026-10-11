@@ -370,18 +370,26 @@ class BrandingAssetsTests(TestCase):
 
         response = Mock(status_code=200)
         response.json.return_value = {'workflow_run_id': 123, 'html_url': 'https://github.com/example/run/123'}
+        saved = {}
+        original_save_png = views.save_png
+
+        def capture_save_png(image, uuid, base_url, filename):
+            image.open()
+            saved[filename] = image.read()
+            image.seek(0)
+            return original_save_png(image, uuid, base_url, filename)
+
         with (
             patch.object(nextec, 'config_problems', return_value=[]),
             patch.object(nextec, 'is_configured', return_value=False),
             patch.object(views, 'validate_generate_params', side_effect=lambda params: (params, {})),
             patch.object(views, 'validate_build_inputs'),
-            patch.object(views, 'save_png', wraps=views.save_png) as save_png,
+            patch.object(views, 'save_png', side_effect=capture_save_png),
             patch.object(views.requests, 'post', return_value=response),
         ):
             result = views.generate_custom_client({'exename': 'Nextec-Connect'}, 'https://gerador.example')
 
         self.assertTrue(result['success'])
-        saved = {call.args[3]: call.args[0].getvalue() for call in save_png.call_args_list}
         for filename, raw in expected.items():
             self.assertEqual(saved[filename], raw)
 

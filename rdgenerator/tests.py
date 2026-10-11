@@ -315,7 +315,7 @@ class BrandingAssetsTests(TestCase):
         self.assertIn('<a href="../../">Gerar cliente</a>', body)
         self.assertIn('<form method="post" enctype="multipart/form-data">', body)
         from .branding import ASSETS
-        self.assertEqual(set(ASSETS), {'icon', 'logo', 'privacy', 'msi_dialog', 'msi_banner'})
+        self.assertEqual(set(ASSETS), {'icon', 'logo', 'logo_light', 'logo_dark', 'privacy', 'msi_dialog', 'msi_banner'})
 
     def test_msi_artwork_is_converted_to_expected_bmp(self):
         for kind, size in (('msi_dialog', (493, 312)), ('msi_banner', (493, 58))):
@@ -359,28 +359,39 @@ class BrandingAssetsTests(TestCase):
         response = client.post('/nextec/imagens/', {'asset': 'icon', 'action': 'upload'})
         self.assertEqual(response.status_code, 403)
 
-    def test_geracao_usa_tela_de_privacidade_salva_como_padrao(self):
+    def test_geracao_usa_artes_padrao_claro_escuro_e_privacidade(self):
         from . import nextec, views
-
-        uploaded = self.image_file('privacy.png', (96, 54), 'PNG')
         from .branding import save_upload
-        managed_path = save_upload('privacy', uploaded)
-        expected = managed_path.read_bytes()
+
+        expected = {}
+        for kind, filename in (('logo_light', 'logo_light.png'), ('logo_dark', 'logo_dark.png'),
+                               ('privacy', 'privacy.png')):
+            expected[filename] = save_upload(kind, self.image_file(filename, (96, 54), 'PNG')).read_bytes()
 
         response = Mock(status_code=200)
         response.json.return_value = {'workflow_run_id': 123, 'html_url': 'https://github.com/example/run/123'}
+        saved = {}
+        original_save_png = views.save_png
+
+        def capture_save_png(image, uuid, base_url, filename):
+            image.open()
+            saved[filename] = image.read()
+            image.seek(0)
+            return original_save_png(image, uuid, base_url, filename)
+
         with (
             patch.object(nextec, 'config_problems', return_value=[]),
             patch.object(nextec, 'is_configured', return_value=False),
             patch.object(views, 'validate_generate_params', side_effect=lambda params: (params, {})),
             patch.object(views, 'validate_build_inputs'),
-            patch.object(views, 'save_png', return_value=('false', 'false', 'false')) as save_png,
+            patch.object(views, 'save_png', side_effect=capture_save_png),
             patch.object(views.requests, 'post', return_value=response),
         ):
             result = views.generate_custom_client({'exename': 'Nextec-Connect'}, 'https://gerador.example')
 
         self.assertTrue(result['success'])
-        self.assertEqual(save_png.call_args_list[2].args[0].read(), expected)
+        for filename, raw in expected.items():
+            self.assertEqual(saved[filename], raw)
 
     def test_save_png_aceita_data_url_base64_bruto_e_arquivo(self):
         import base64

@@ -20,6 +20,18 @@ class BuildInputTests(SimpleTestCase):
                 with self.subTest(field=field, value=value), self.assertRaises(ValueError):
                     validate_build_inputs({field: value})
 
+    def test_theme_logo_paths_are_validated_and_confined_to_fixed_names(self):
+        for theme, filename in (('light', 'logo_light.png'), ('dark', 'logo_dark.png')):
+            payload = {
+                f'logo{theme}link_url': 'https://generator.example',
+                f'logo{theme}link_uuid': '11111111-2222-3333-4444-555555555555',
+                f'logo{theme}link_file': filename,
+            }
+            self.assertEqual(validate_build_inputs(payload), payload)
+            payload[f'logo{theme}link_file'] = '../logo.png'
+            with self.assertRaisesRegex(ValueError, 'invalid image filename'):
+                validate_build_inputs(payload)
+
     def test_unknown_or_non_string_fields_are_rejected(self):
         for payload in ([], {'GITHUB_ENV': '/tmp/evil'}, {'appname': 1}, {'filename': None}):
             with self.subTest(payload=payload), self.assertRaises(ValueError):

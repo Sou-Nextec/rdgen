@@ -11,7 +11,9 @@ MAX_UPLOAD_BYTES = 3 * 1024 * 1024
 MAX_IMAGE_PIXELS = 16_000_000
 ASSETS = {
     'icon': {'filename': 'icon.png', 'format': 'PNG', 'label': 'Ícone do aplicativo', 'dimensions': 'PNG quadrado, até 2048 × 2048 px', 'max_side': 2048},
-    'logo': {'filename': 'logo.png', 'format': 'PNG', 'label': 'Logo do aplicativo', 'dimensions': 'PNG, até 2048 × 2048 px', 'max_side': 2048},
+    'logo': {'filename': 'logo.png', 'format': 'PNG', 'label': 'Logo padrão', 'dimensions': 'PNG, até 2048 × 2048 px', 'max_side': 2048},
+    'logo_light': {'filename': 'logo_light.png', 'format': 'PNG', 'label': 'Logo para tema claro', 'dimensions': 'PNG, até 2048 × 2048 px; fundo transparente recomendado', 'max_side': 2048},
+    'logo_dark': {'filename': 'logo_dark.png', 'format': 'PNG', 'label': 'Logo para tema escuro', 'dimensions': 'PNG, até 2048 × 2048 px; fundo transparente recomendado', 'max_side': 2048},
     'privacy': {'filename': 'privacy.png', 'format': 'PNG', 'label': 'Tela de privacidade', 'dimensions': 'PNG, até 1920 × 1080 px', 'max_width': 1920, 'max_height': 1080},
     'msi_dialog': {'filename': 'WixUIDialogBmp.bmp', 'format': 'BMP', 'label': 'Lateral do instalador MSI', 'dimensions': 'PNG ou BMP, exatamente 493 × 312 px', 'size': (493, 312)},
     'msi_banner': {'filename': 'WixUIBannerBmp.bmp', 'format': 'BMP', 'label': 'Faixa superior do instalador MSI', 'dimensions': 'PNG ou BMP, exatamente 493 × 58 px', 'size': (493, 58)},
@@ -32,7 +34,7 @@ def get_path(kind):
     path = managed_path(kind)
     if path and path.is_file():
         return path
-    if kind in ('icon', 'logo'):
+    if kind in ('icon', 'logo', 'logo_light', 'logo_dark'):
         packaged = Path(__file__).resolve().parent.parent / 'nextec' / 'branding' / ASSETS[kind]['filename']
         return packaged if packaged.is_file() else None
     return None

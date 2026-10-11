@@ -1,5 +1,11 @@
 # Gerador Nextec
 
+## 2.0.8
+
+- Gerencia logos separados para tema claro e escuro e inclui ambos nos builds Windows e Linux; o cliente alterna a arte conforme o tema.
+- Adiciona um assistente local de assinatura que lê a versão do MSI e incrementa a sequência sem enviar a chave privada ao navegador, servidor ou CI.
+
+
 O número nesta página acompanha a experiência do gerador (layout, organização e recursos próprios da Nextec). Ele é independente da versão-base do RustDesk escolhida em cada build e da versão publicada pelo painel para atualização dos clientes.
 
 ## 2.0.7

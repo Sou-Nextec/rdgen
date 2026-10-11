@@ -573,7 +573,13 @@ jobs:
             mkdir -p flutter/tmpdeb/usr/share/rustdesk
             cp ./custom_.txt ./flutter/tmpdeb/usr/share/rustdesk/custom_.txt
             if [[ "${{ env.logolink_url }}" != "false" ]]; then
-              wget -O ./flutter/assets/logo.png ${{ env.logolink_url }}/get_png?filename=${{ env.logolink_file }}"&"uuid=${{ env.logolink_uuid }}
+              wget -O ./flutter/assets/logo.png "${{ env.logolink_url }}/get_png?filename=${{ env.logolink_file }}&uuid=${{ env.logolink_uuid }}"
+            fi
+            if [[ "${{ env.logolightlink_url }}" != "false" ]]; then
+              wget -O ./flutter/assets/logo_light.png "${{ env.logolightlink_url }}/get_png?filename=${{ env.logolightlink_file }}&uuid=${{ env.logolightlink_uuid }}"
+            fi
+            if [[ "${{ env.logodarklink_url }}" != "false" ]]; then
+              wget -O ./flutter/assets/logo_dark.png "${{ env.logodarklink_url }}/get_png?filename=${{ env.logodarklink_file }}&uuid=${{ env.logodarklink_uuid }}"
             fi
             if [[ "${{ env.iconlink_url }}" != "false" ]]; then
               mv ./flutter/assets/icon.svg ./flutter/assets/icon.svg.bak
@@ -1196,7 +1202,13 @@ jobs:
             mkdir -p flutter/tmpdeb/usr/share/rustdesk
             cp ./custom_.txt ./flutter/tmpdeb/usr/share/rustdesk/custom_.txt
             if [[ "${{ env.logolink_url }}" != "false" ]]; then
-              wget -O ./flutter/assets/logo.png ${{ env.logolink_url }}/get_png?filename=${{ env.logolink_file }}"&"uuid=${{ env.logolink_uuid }}
+              wget -O ./flutter/assets/logo.png "${{ env.logolink_url }}/get_png?filename=${{ env.logolink_file }}&uuid=${{ env.logolink_uuid }}"
+            fi
+            if [[ "${{ env.logolightlink_url }}" != "false" ]]; then
+              wget -O ./flutter/assets/logo_light.png "${{ env.logolightlink_url }}/get_png?filename=${{ env.logolightlink_file }}&uuid=${{ env.logolightlink_uuid }}"
+            fi
+            if [[ "${{ env.logodarklink_url }}" != "false" ]]; then
+              wget -O ./flutter/assets/logo_dark.png "${{ env.logodarklink_url }}/get_png?filename=${{ env.logodarklink_file }}&uuid=${{ env.logodarklink_uuid }}"
             fi
             if [[ "${{ env.iconlink_url }}" != "false" ]]; then
               mv ./flutter/assets/icon.svg ./flutter/assets/icon.svg.bak

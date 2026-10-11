@@ -511,7 +511,7 @@ jobs:
           magick ./res/icon.png ./rustdesk/data/flutter_assets/assets/icon.svg
 
       - name: logo stuff
-        if: ${{ env.logolink_url != 'false' }}
+        if: ${{ env.logolink_url != 'false' || env.logolightlink_url != 'false' || env.logodarklink_url != 'false' }}
         uses: nick-fields/retry@v3
         with:
           timeout_minutes: 1
@@ -520,6 +520,8 @@ jobs:
           continue_on_error: true
           command: |
             Invoke-WebRequest -Uri ${{ env.logolink_url }}/get_png?filename=${{ env.logolink_file }}"&"uuid=${{ env.logolink_uuid }} -OutFile ./rustdesk/data/flutter_assets/assets/logo.png
+            if ($env:logolightlink_url -ne 'false') { Invoke-WebRequest -Uri "$($env:logolightlink_url)/get_png?filename=$($env:logolightlink_file)&uuid=$($env:logolightlink_uuid)" -OutFile ./rustdesk/data/flutter_assets/assets/logo_light.png }
+            if ($env:logodarklink_url -ne 'false') { Invoke-WebRequest -Uri "$($env:logodarklink_url)/get_png?filename=$($env:logodarklink_file)&uuid=$($env:logodarklink_uuid)" -OutFile ./rustdesk/data/flutter_assets/assets/logo_dark.png }
 
       - name: find Runner.res
         # Windows: find Runner.res (compiled from ./flutter/windows/runner/Runner.rc), copy to ./Runner.res

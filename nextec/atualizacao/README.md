@@ -2,7 +2,15 @@
 
 Usa a mesma chave RSA 4096 do monitoramento Nextec (ID público `8cb5b1d7f80d20cb`), com RSA PKCS#1 v1.5 e SHA-256. Só a chave pública está neste repositório. O manifesto exige `produto=nextec-connect`; um manifesto do monitoramento não autoriza a instalação do Connect.
 
-No computador em que você já assina o monitoramento:
+No computador em que você já assina o monitoramento, use o assistente local para fazer o caminho curto:
+
+1. Abra `nextec/atualizacao/publicar-connect.ps1` no PowerShell.
+2. Escolha o MSI. O assistente lê a versão direto do pacote e incrementa a sequência local.
+3. Escolha os pacotes Debian se a publicação também incluir Linux.
+4. Na primeira execução, selecione a chave RSA cifrada do monitoramento. O caminho fica salvo no perfil do Windows; a chave e a senha não são copiadas para o painel.
+5. Digite a senha quando o OpenSSL pedir. O assistente grava o manifesto e a assinatura em Documentos\\Nextec\\Connect\\Releases.
+
+O navegador e o servidor não recebem a chave privada. Isso mantém a assinatura local, mas elimina a digitação manual da versão e da sequência. O publicador de linha de comando continua disponível:
 
 ```powershell
 python nextec/atualizacao/publicar-connect.py --msi "C:\Downloads\Client-Nextec-Connect.msi" --versao 2.0.3 --sequencia 1 --chave "D:\Chaves Nextec\nextec-atualizador-privada.pem" --saida "C:\Releases\Connect-2.0.3"

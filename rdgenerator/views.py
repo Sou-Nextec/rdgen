@@ -377,7 +377,7 @@ def generate_custom_client(params, full_url):
         }
 
 
-def _get_run_status(uuid_val, filename='', platform=''):
+def _get_run_status(uuid_val, filename='', platform='', include_progress=False):
     """
     Core status-check logic shared by web form and JSON API.
 
@@ -395,7 +395,7 @@ def _get_run_status(uuid_val, filename='', platform=''):
 
     github_log_url = f"https://github.com/{_settings.GHUSER}/{_settings.REPONAME}/actions/runs/{gh_run.github_run_id}"
 
-    if gh_run.status not in ['success', 'failure', 'cancelled', 'timed_out', 'skipped']:
+    if gh_run.status not in ['success', 'failure', 'cancelled', 'timed_out', 'skipped', 'action_required']:
         headers = {
             "Authorization": f"Bearer {_settings.GHBEARER}",
             "Accept": "application/vnd.github+json"
@@ -426,8 +426,22 @@ def _get_run_status(uuid_val, filename='', platform=''):
             missing = ['arquivo do instalador']
         if missing:
             status = 'incomplete'
+    progress = None
+    if include_progress:
+        from .progress import workflow_progress
+        jobs = []
+        if status != 'success' and _settings.GHBEARER:
+            try:
+                response = requests.get(github_log_url.replace('https://github.com/', 'https://api.github.com/repos/') + '/jobs?per_page=100',
+                                        headers={'Authorization': f'Bearer {_settings.GHBEARER}'}, timeout=(5, 10))
+                if response.status_code == 200:
+                    jobs = response.json().get('jobs', [])
+            except (requests.RequestException, ValueError):
+                pass
+        progress = workflow_progress(jobs, status, bool(files) and not missing)
     return {
         "found": True,
+        "progress": progress,
         "status": status,
         "github_log_url": github_log_url,
         "gh_run": gh_run,
@@ -533,7 +547,7 @@ def check_for_file(request):
     uuid = request.GET.get('uuid')
     platform = request.GET.get('platform')
 
-    result = _get_run_status(uuid, filename, platform)
+    result = _get_run_status(uuid, filename, platform, include_progress=True)
     if not result['found']:
         from django.http import Http404
         raise Http404("Run not found")
@@ -562,6 +576,7 @@ def check_for_file(request):
             'status': result['status'],
             'files': result['files'],
             'missing_files': result['missing_files'],
+            'failed_step': (result.get('progress') or {}).get('failed_step', ''),
         })
         
     else:

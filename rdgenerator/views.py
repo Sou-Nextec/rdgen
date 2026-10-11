@@ -161,14 +161,20 @@ def generate_custom_client(params, full_url, created_by='', profile=''):
     try:
         iconfile = params.get('iconfile') or params.get('iconbase64') or nextec.default_image('icon')
         logofile = params.get('logofile') or params.get('logobase64') or nextec.default_image('logo')
+        logolightfile = nextec.default_image('logo_light')
+        logodarkfile = nextec.default_image('logo_dark')
         privacyfile = params.get('privacyfile') or params.get('privacybase64') or nextec.default_image('privacy')
         iconlink = save_png(iconfile, myuuid, full_url, 'icon.png')
         logolink = save_png(logofile, myuuid, full_url, 'logo.png')
+        logolightlink = save_png(logolightfile, myuuid, full_url, 'logo_light.png')
+        logodarklink = save_png(logodarkfile, myuuid, full_url, 'logo_dark.png')
         privacylink = save_png(privacyfile, myuuid, full_url, 'privacy.png')
     except ValueError as exc:
         return {'success': False, 'error': str(exc), 'status_code': 400}
     iconlink_url, iconlink_uuid, iconlink_file = iconlink or ('false', 'false', 'false')
     logolink_url, logolink_uuid, logolink_file = logolink or ('false', 'false', 'false')
+    logolightlink_url, logolightlink_uuid, logolightlink_file = logolightlink or ('false', 'false', 'false')
+    logodarklink_url, logodarklink_uuid, logodarklink_file = logodarklink or ('false', 'false', 'false')
     privacylink_url, privacylink_uuid, privacylink_file = privacylink or ('false', 'false', 'false')
 
     ###create the custom.txt json here and send in as inputs below
@@ -297,6 +303,12 @@ def generate_custom_client(params, full_url, created_by='', profile=''):
         "logolink_url":logolink_url,
         "logolink_uuid":logolink_uuid,
         "logolink_file":logolink_file,
+        "logolightlink_url":logolightlink_url,
+        "logolightlink_uuid":logolightlink_uuid,
+        "logolightlink_file":logolightlink_file,
+        "logodarklink_url":logodarklink_url,
+        "logodarklink_uuid":logodarklink_uuid,
+        "logodarklink_file":logodarklink_file,
         "privacylink_url":privacylink_url,
         "privacylink_uuid":privacylink_uuid,
         "privacylink_file":privacylink_file,

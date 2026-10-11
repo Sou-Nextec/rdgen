@@ -308,7 +308,7 @@ class BrandingAssetsTests(TestCase):
         response = self.client.get('/nextec/imagens/')
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
-        self.assertIn('Gerador 2.0.3', body)
+        self.assertIn('Gerador 2.0.4', body)
         self.assertIn('Identidade visual', body)
         self.assertIn('<a href="../../">Gerar cliente</a>', body)
         self.assertIn('<form method="post" enctype="multipart/form-data">', body)

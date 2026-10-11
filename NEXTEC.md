@@ -26,6 +26,8 @@ pelo formulário. Os workflows precisam ficar neste repositório; a imagem do ge
 | Banco SQLite em volume (`DB_PATH`), `migrate` na subida, usuário não root, 2 workers | `Dockerfile`, `rdgen/settings.py`, `gunicorn.conf.py` |
 | Imagem `ghcr.io/sou-nextec/rdgen-nextec` com teste de fumaça | `.github/workflows/nextec-imagem.yml` |
 
+Após uma publicação bem-sucedida em `master`, o workflow chama o webhook do Portainer para refazer a stack e buscar a imagem `latest`. Configure `PORTAINER_WEBHOOK_URL` como segredo de Actions neste repositório (ou como segredo da organização com acesso ao repositório). Sem esse segredo, a imagem é publicada, mas a stack não é acionada.
+
 ## Variáveis de ambiente
 
 Originais do rdgen: `GHUSER`, `GHBEARER`, `GHBRANCH`, `REPONAME`, `GENURL`, `ZIP_PASSWORD`, `SH_SECRET`, `SECRET_KEY`, `PROTOCOL`.
@@ -50,7 +52,7 @@ Sem `NX_SERVER_HOST` o gerador se comporta como o original.
 
 ## Versão e imagens
 
-`rdgenerator/VERSION` guarda a versão da experiência do gerador, atualmente `2.0.2`. Ao alterar layout ou recursos próprios,
+`rdgenerator/VERSION` guarda a versão da experiência do gerador, atualmente `2.0.4`. Ao alterar layout ou recursos próprios,
 atualize esse arquivo e acrescente uma entrada em `nextec/CHANGELOG.md`. Essa versão é separada da versão-base RustDesk usada
 no build e da versão do produto publicada na tela de atualizações do painel.
 

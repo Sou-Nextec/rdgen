@@ -114,3 +114,14 @@ jobs:
           push: true
           tags: ${{ steps.v.outputs.tags }}
           cache-from: type=gha
+
+      - name: Atualizar servidor (Portainer)
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+        continue-on-error: true
+        env:
+          PORTAINER_WEBHOOK_URL: ${{ secrets.PORTAINER_WEBHOOK_URL }}
+        run: |
+          [ -n "$PORTAINER_WEBHOOK_URL" ] || { echo "Sem PORTAINER_WEBHOOK_URL: pulando."; exit 0; }
+          code=$(curl -ksS -o /dev/null -w '%{http_code}' -X POST --max-time 60 "$PORTAINER_WEBHOOK_URL")
+          echo "Portainer respondeu HTTP $code"
+          [ "$code" = "204" ] || [ "$code" = "200" ]

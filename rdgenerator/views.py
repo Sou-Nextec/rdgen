@@ -241,10 +241,11 @@ def generate_custom_client(params, full_url, created_by='', profile=''):
         decodedCustom['override-settings']['enable-camera'] = 'Y' if enableCamera else 'N'
         decodedCustom['override-settings']['enable-terminal'] = 'Y' if enableTerminal else 'N'
 
-    # Network settings must be present even when permissions keep their defaults.
-    if direction == 'incoming':
-        decodedCustom['override-settings']['custom-rendezvous-server'] = server
-        decodedCustom['override-settings']['api-server'] = apiServer
+    # Every Nextec client must use our rendezvous and API servers. The API
+    # server registers and updates the device in the management console. Gating
+    # these settings on direction leaves the default "both" client unregistered.
+    decodedCustom['override-settings']['custom-rendezvous-server'] = server
+    decodedCustom['override-settings']['api-server'] = apiServer
 
     if defaultManual:
         for line in defaultManual.splitlines():

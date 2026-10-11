@@ -144,14 +144,14 @@ class GenerationSecurityTests(TestCase):
             self.assertFalse(result['success'])
             response.json.assert_called_once()  # only the successful 200 is parsed
 
-    def test_incoming_client_keeps_server_settings_with_default_permissions(self):
+    def test_default_both_direction_client_uses_nextec_servers(self):
         from .views import generate_custom_client
         response = Mock(status_code=200)
         response.json.return_value = {'workflow_run_id': 123}
         with patch('rdgenerator.views.requests.post', return_value=response):
             result = generate_custom_client({
                 'exename': 'Cliente', 'appname': 'Nextec-Connect',
-                'direction': 'incoming', 'permissionsDorO': 'default',
+                'direction': 'both', 'permissionsDorO': 'default',
                 'serverIP': 'remoto.nex.tec.br',
                 'apiServer': 'https://painel-remoto.nex.tec.br',
             }, 'https://generator.example')

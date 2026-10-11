@@ -61,7 +61,7 @@ internal static class NextecSetup {
         }
     }
 }
-'@.Replace('__HASH__', $hash).Replace('__DISPLAY__', $DisplayName -replace '[^A-Za-z0-9 _-]', '') | Set-Content -LiteralPath $source -Encoding UTF8
+'@.Replace('__HASH__', $hash).Replace('__DISPLAY__', ($DisplayName -replace '[^A-Za-z0-9 _-]', '')) | Set-Content -LiteralPath $source -Encoding UTF8
 @'
 <?xml version="1.0" encoding="utf-8"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
@@ -71,7 +71,7 @@ internal static class NextecSetup {
 $resource = [IO.Path]::GetFullPath($MsiPath)
 $output = [IO.Path]::GetFullPath($OutputPath)
 Remove-Item -LiteralPath $output -Force -ErrorAction SilentlyContinue
-& $compiler /nologo /target:winexe /platform:anycpu /out:$output /win32manifest:$manifest /reference:System.Windows.Forms.dll /reference:System.Security.dll /resource:$resource,Nextec.Client.msi $source
+& $compiler /nologo /target:winexe /platform:anycpu "/out:$output" "/win32manifest:$manifest" /reference:System.Windows.Forms.dll /reference:System.Security.dll "/resource:$resource,Nextec.Client.msi" $source
 if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath $output)) { throw 'Could not compile the Nextec EXE installer wrapper' }
 Write-Output "Built $output with MSI SHA-256 $hash"
 

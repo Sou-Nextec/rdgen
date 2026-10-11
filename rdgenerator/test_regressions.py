@@ -80,3 +80,14 @@ class BuildStatusRegressionTests(TestCase):
         response = self.client.get('/')
         self.assertEqual(response.headers['X-Frame-Options'], 'SAMEORIGIN')
         self.assertIn('nextec-generator-ready', response.content.decode())
+
+
+class WaitingPageRegressionTests(SimpleTestCase):
+    def test_platform_notice_only_appears_for_macos(self):
+        from django.template.loader import render_to_string
+        for platform in ('windows', 'windows-x86', 'linux'):
+            with self.subTest(platform=platform):
+                html = render_to_string('waiting.html', {'platform': platform})
+                self.assertNotIn('macOS: a geração', html)
+        html = render_to_string('waiting.html', {'platform': 'macos'})
+        self.assertIn('macOS: a geração', html)

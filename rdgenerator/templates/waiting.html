@@ -186,9 +186,9 @@
         </div>
     </div>
 
-    <div id="macosNote" class="macos-note">
+    {% if platform == 'macos' %}<div id="macosNote" class="macos-note">
         macOS: a geração do executável pode exigir etapas ou permissões adicionais.
-    </div>
+    </div>{% endif %}
 
     <script>
         // Detect platform and update logo, title, and notes
@@ -224,7 +224,6 @@
 
         // Call on page load
         updatePlatformUI();
-        //simulateProgress();
 
         const query = new URLSearchParams({uuid:'{{uuid|escapejs}}', filename:'{{filename|escapejs}}', platform:'{{platform|escapejs}}'});
         const terminal = new Set(['success','failure','cancelled','timed_out','skipped','action_required','incomplete']);

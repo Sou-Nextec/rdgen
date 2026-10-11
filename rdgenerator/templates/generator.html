@@ -221,54 +221,95 @@
             transform: rotate(360deg);
             color: #0095EA;
         }
-        :root { --nx-navy:#0D0035; --nx-blue:#4901FA; --nx-cyan:#5C50FF; --nx-ink:#211a38; --nx-muted:#655f74; --nx-line:#5C50FF; }
+        :root { color-scheme:light; --nx-navy:#0D0035; --nx-blue:#613CB3; --nx-cyan:#4230E6; --nx-ink:#1A1C1C; --nx-muted:#464556; --nx-line:#4230E6; --nx-bg:#F4F4F4; --nx-surface:#FFFFFF; --nx-field:#EEEEEE; --nx-border:#E2E2E2; --nx-divider:#F3F3F3; --nx-tint:#E9DDFF; --nx-radius-card:20px; --nx-radius-field:14px; --nx-radius-btn:12px; --nx-shadow-card:0 0 32px rgba(26,28,28,.06); }
         *, *::before, *::after { box-sizing:border-box; }
         body { background:#f4f4f4; color:var(--nx-ink); padding:0 0 36px; font-family:'Open Sans',sans-serif; }
         h1 { margin:0; color:white; text-align:left; font-size:23px; }
         h2 { color:var(--nx-navy); }
-        .section { background:#fff; border:1px solid #e4e0ef; border-radius:12px; box-shadow:none; color:var(--nx-ink); min-width:0; }
-        .section label, label { color:#34495e; }
-        input[type="text"], input[type="password"], select, textarea { background:#fff; color:var(--nx-ink); border-color:#c8c0df; max-width:100%; }
+        .section { background:var(--nx-surface); border:1px solid var(--nx-divider); border-radius:var(--nx-radius-card); box-shadow:var(--nx-shadow-card); color:var(--nx-ink); min-width:0; padding:22px; }
+        .section label, label { color:var(--nx-ink); font-weight:600; }
+        input[type="text"], input[type="password"], input[type="number"], input[type="url"], input[type="file"], select, textarea { background:var(--nx-field); color:var(--nx-ink); border:1px solid transparent; border-radius:var(--nx-radius-field); min-height:44px; max-width:100%; padding:10px 12px; font:inherit; transition:border-color .18s ease,background-color .18s ease,box-shadow .18s ease; }
+        input[type="text"]:hover, input[type="password"]:hover, input[type="number"]:hover, input[type="url"]:hover, select:hover, textarea:hover { background:#E8E8E8; }
+        input[readonly], input:disabled, select:disabled, textarea:disabled { background:#E8E8E8 !important; color:#646179 !important; cursor:not-allowed; }
         :is(input,select,textarea,button,a,summary):focus-visible { outline:2px solid var(--nx-line); outline-offset:2px; }
-        input[readonly] { background:#eef4f9 !important; color:#526a7f !important; }
-        button { background:var(--nx-blue); font-weight:650; }
-        button:hover { background:#3700bf; }
-        .platform-icon { color:#7990a4; }
-        .platform-icon:hover, .platform-icon.active { color:var(--nx-blue); }
-        .help-text { color:#45637b; background:#eef6fc; border:1px solid #d6e9f7; animation:none; }
+        input[readonly] { background:#E8E8E8 !important; color:#646179 !important; }
+        button { background:var(--nx-blue); color:#fff; font:inherit; font-weight:650; border-radius:var(--nx-radius-btn); min-height:42px; transition:background-color .18s ease,transform .18s ease,box-shadow .18s ease; }
+        button:hover { background:#513095; box-shadow:0 5px 14px rgba(97,60,179,.18); }
+        button:active { transform:translateY(1px); }
+        .help-text { color:var(--nx-muted); background:var(--nx-tint); border:1px solid #d4c4f4; animation:none; }
         .save-load-section-container { position:static; width:min(1120px,calc(100% - 32px)); margin:18px auto; box-shadow:none; background:transparent; }
         .save-load-section-container .section { padding:12px 16px; }
         .save-load-section { display:flex; gap:8px; flex-wrap:wrap; }
-        .nx-header { background:var(--nx-navy); color:#fff; padding:20px max(24px,calc((100vw - 1120px)/2)); }
-        .nx-header p { margin:5px 0 0; color:#e7e2f6; font-size:13px; }
+        .nx-header { background:var(--nx-navy); color:#fff; padding:24px max(24px,calc((100vw - 1120px)/2)) 20px; }
+        .skip-link { position:absolute; top:8px; left:8px; z-index:101; padding:10px 14px; transform:translateY(-160%); color:#fff; background:var(--nx-blue); border-radius:10px; }
+        .skip-link:focus { transform:translateY(0); }
+        main { display:block; }
+        .nx-header p { margin:6px 0 0; color:#E9E4F4; font-size:14px; line-height:1.55; }
+        .nx-header h1 { font-family:'Open Sans',sans-serif; font-weight:700; letter-spacing:-.025em; font-size:24px; text-wrap:balance; }
         .nx-header-line { display:flex; justify-content:space-between; align-items:center; gap:16px; }
-        .nx-version { border:1px solid #ffffff55; border-radius:999px; padding:5px 11px; font-size:12px; white-space:nowrap; }
+        .nx-version { border:1px solid #ffffff55; border-radius:8px; padding:6px 10px; color:#fff; font-size:12px; white-space:nowrap; }
         .nx-nav { display:flex; gap:8px; margin-top:15px; }
-        .nx-nav a { color:#e7e2f6; padding:7px 11px; border-radius:7px; text-decoration:none; font-size:14px; }
+        .nx-nav a { color:#E9E4F4; padding:9px 12px; border-radius:10px; text-decoration:none; font-size:14px; transition:background-color .18s ease,color .18s ease; }
         .nx-nav a.active,.nx-nav a:hover { color:#fff; background:#ffffff20; }
+        .nx-nav a:focus-visible { outline:3px solid #C9B8F2; outline-offset:2px; }
         .platform,.container { width:min(1120px,calc(100% - 32px)); padding:0; }
-        .container { gap:16px; align-items:start; }
-        .platform { margin-top:18px; }
-        .field-help { margin:0 0 12px; color:var(--nx-muted); font-size:13px; line-height:1.5; }
+        .container { gap:18px; align-items:stretch; }
+        .platform { margin-top:20px; }
+        .platform > h2 { font-size:18px; margin:0 0 16px; color:var(--nx-navy); }
+        .field-help { margin:5px 0 14px; color:var(--nx-muted); font-size:13px; line-height:1.55; max-width:72ch; }
         .field-help strong { color:var(--nx-ink); }
-        .key-row { display:flex; gap:8px; align-items:start; }
+        .key-row { display:flex; gap:8px; align-items:center; }
         .key-row input { min-width:0; flex:1; }
-        .secondary-action { background:#eeeaf8; color:var(--nx-navy); }
-        .secondary-action:hover { background:#e1d9f6; }
+        .secondary-action { background:var(--nx-tint); color:var(--nx-navy); }
+        .secondary-action:hover { background:#DCCBFA; color:var(--nx-navy); }
         .model-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
-        .model-actions select { flex:1; min-width:180px; margin:0; }
+        .model-actions select { flex:1; min-width:220px; margin:0; }
         .model-actions button { white-space:nowrap; }
         .section details { margin:10px 0; }
-        .section summary { cursor:pointer; font-weight:700; color:var(--nx-navy); }
-        .notice { padding:10px 12px; border-radius:8px; background:#f0edfa; color:var(--nx-navy); font-size:13px; }
-        .platform-icons { justify-content:flex-start; gap:28px; }
-        .platform-icon { min-width:32px; }
-        .section h2 { font-family:'Visby CF','Open Sans',sans-serif; }
-        @media (max-width:760px) { .container { grid-template-columns:1fr; } .platform-icons { justify-content:flex-start; } .save-load-section-container { width:calc(100% - 32px); } }
-        @media (max-width:560px) { .nx-header-line { align-items:flex-start; flex-direction:column; gap:8px; } .nx-header { padding:18px 16px; } }
+        .section summary { cursor:pointer; font-weight:650; color:var(--nx-navy); padding:8px 0; }
+        .section details { padding:8px 0; border-top:1px solid var(--nx-divider); }
+        .notice { padding:12px 14px; border-radius:12px; background:var(--nx-tint); color:var(--nx-navy); font-size:13px; }
+        .platform-icons { justify-content:flex-start; gap:10px; margin:0 0 12px; }
+        .platform-icon { color:#646179; }
+        .platform-choice { display:inline-flex; align-items:center; justify-content:center; gap:9px; min-width:132px; padding:10px 14px; color:var(--nx-ink); background:var(--nx-field); border:1px solid var(--nx-border); border-radius:12px; cursor:pointer; }
+        .platform-choice:hover { color:var(--nx-navy); background:var(--nx-tint); border-color:#C8B5ED; }
+        .platform-choice.active { color:var(--nx-navy); background:var(--nx-tint); border-color:#BDA6E8; box-shadow:inset 0 0 0 1px #BDA6E8; }
+        .platform-choice i { font-size:19px; }
+        .platform-choice:focus-visible { outline:3px solid var(--nx-line); outline-offset:2px; }
+        .checkbox-group { grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px; }
+        .checkbox-group label { display:flex; align-items:flex-start; gap:8px; margin:0; padding:10px 12px; background:var(--nx-bg); border:1px solid var(--nx-divider); border-radius:12px; line-height:1.45; cursor:pointer; }
+        .checkbox-group input, input[type="checkbox"], input[type="radio"] { accent-color:var(--nx-blue); }
+        .error, .errorlist { color:#A12B32; }
+        .errorlist { max-width:1120px; padding:12px 16px; background:#FFF0F0; border:1px solid #F1CACA; border-radius:12px; }
+        .password-requirement { color:#694700; background:#FFF5D6; padding:10px 12px; border-radius:10px; line-height:1.5; }
+        .section h2 { font-family:'Open Sans',sans-serif; font-size:18px; letter-spacing:-.01em; color:var(--nx-navy); margin:0 0 16px; }
+        .platform .section { padding:22px; }
+        .platform .section > button[type="submit"] { width:100%; min-height:50px; font-size:16px; }
+        .platform .section > .field-help:last-child { margin-bottom:0; }
+        input[type="file"] { width:100%; padding:8px; }
+        input[type="file"]::file-selector-button { margin-right:10px; padding:8px 12px; color:var(--nx-navy); background:var(--nx-tint); border:0; border-radius:8px; font:inherit; font-weight:600; cursor:pointer; }
+        .preview-image { display:block; object-fit:contain; border-radius:10px; background:var(--nx-bg); padding:6px; }
+        @media (max-width:760px) { .container { grid-template-columns:1fr; } .save-load-section-container { width:calc(100% - 32px); } }
+        @media (max-width:560px) {
+            body { padding-bottom:24px; }
+            .nx-header-line { align-items:flex-start; flex-direction:column; gap:10px; }
+            .nx-header { padding:20px 16px 16px; }
+            .nx-header h1 { font-size:21px; }
+            .nx-nav { flex-wrap:wrap; }
+            .platform,.container,.save-load-section-container { width:calc(100% - 28px); }
+            .section,.platform .section { padding:18px; border-radius:16px; }
+            .model-actions { align-items:stretch; }
+            .model-actions select { flex-basis:100%; min-width:0; }
+            .model-actions button { flex:1 1 calc(50% - 8px); }
+            .key-row { align-items:stretch; }
+            .key-row button { flex:0 0 auto; }
+            .platform-choice { flex:1; min-width:0; }
+        }
+        @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; } }
       </style>
 </head>
 <body>
+    <a class="skip-link" href="#myForm">Pular para as configurações</a>
     <header class="nx-header">
         <div class="nx-header-line">
             <div><h1>Gerador de clientes Nextec</h1><p>Configure o aplicativo e gere o instalador da plataforma escolhida.</p></div>
@@ -281,6 +322,7 @@
         <details class="field-help"><summary>Ajuda: o que cada nome e imagem altera?</summary><p>O nome do arquivo identifica o download. O nome do aplicativo aparece no programa instalado e no atalho. Ícone, logo e tela de privacidade são aplicados ao cliente gerado; não mudam o painel. A versão 1.5.0 é a base do RustDesk, enquanto {{ product_version }} é a versão do gerador.</p></details>
         <p class="field-help">Acesso ao gerador: Cloudflare Access e lista de pessoas autorizadas na implantação.{% if access_email %} Sua conta: {{ access_email }}.{% endif %}</p>
     </header>
+    <main id="main-content">
     <form id="myForm" action="generator" method="post" enctype="multipart/form-data">
         {% csrf_token %}
         <div class="save-load-section-container">
@@ -306,14 +348,11 @@
                 {% endfor %}
             </ul>
         {% endif %}
-        <div class="platform">
-            <h2><i class="fas fa-desktop"></i> Plataforma e versão-base</h2>
-                <div class="platform-icons">
-                    <span class="fa-stack fa-lg">
-                        <i class="fab fa-windows  fa-stack-2x platform-icon active" data-platform="windows"></i>
-                        <strong class="fa-stack-1x text-64">64</strong>
-                    </span>
-                    <i class="fab fa-linux platform-icon" data-platform="linux"></i>
+        <section class="platform" aria-labelledby="platform-heading">
+            <h2 id="platform-heading"><i class="fas fa-desktop" aria-hidden="true"></i> Plataforma e versão-base</h2>
+                <div class="platform-icons" role="group" aria-label="Selecionar plataforma">
+                    <button class="platform-choice active" type="button" data-platform="windows" aria-pressed="true"><i class="fab fa-windows" aria-hidden="true"></i><span>Windows 64 bits</span></button>
+                    <button class="platform-choice" type="button" data-platform="linux" aria-pressed="false"><i class="fab fa-linux" aria-hidden="true"></i><span>Linux</span></button>
                 </div>
                 <select name="platform" id="id_platform">
                     <option value="windows" selected>Windows 64 bits</option>
@@ -323,7 +362,7 @@
                 {{ form.version }}
                 <p class="field-help">1.5.0 é a versão estável escolhida para o cliente. A opção “Escuro” fica em Aparência e funciona com essa versão. “Desenvolvimento” pode mudar ou falhar na compilação.</p>
                 <label for="{{ form.delayFix.id_for_label }}">{{ form.delayFix }} Corrigir atraso ao conectar usando uma API externa</label>
-            </div>
+        </section>
         <div class="container">   
             <div class="section">
                 <h2><i class="fas fa-sliders-h"></i> Aplicativo</h2>
@@ -446,14 +485,25 @@
             </div>
         </div>
     </form>
+    </main>
     <script>
-        document.querySelectorAll('.platform-icon').forEach(icon => {
-            icon.addEventListener('click', function() {
-                document.querySelectorAll('.platform-icon').forEach(i => i.classList.remove('active'));
-                this.classList.add('active');
-                document.getElementById('id_platform').value = this.dataset.platform;
+        const platformSelect = document.getElementById('id_platform');
+        const platformChoices = document.querySelectorAll('.platform-choice');
+        function syncPlatformChoice() {
+            platformChoices.forEach(choice => {
+                const selected = choice.dataset.platform === platformSelect.value;
+                choice.classList.toggle('active', selected);
+                choice.setAttribute('aria-pressed', String(selected));
+            });
+        }
+        platformChoices.forEach(choice => {
+            choice.addEventListener('click', function() {
+                platformSelect.value = this.dataset.platform;
+                syncPlatformChoice();
             });
         });
+        platformSelect.addEventListener('change', syncPlatformChoice);
+        syncPlatformChoice();
         document.getElementById("{{ form.iconfile.id_for_label }}").addEventListener('change', function(event) {
             previewImage(event.target, 'icon-preview');
         });

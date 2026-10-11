@@ -6,6 +6,7 @@ on:
       - '.github/scripts/build-msi.ps1'
       - '.github/workflows/*generator-windows.yml'
       - '.github/workflows/nextec-msi.yml'
+      - 'nextec/atualizacao/**'
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,6 +22,11 @@ jobs:
         source: ['1.5.0', 'master']
     steps:
       - uses: actions/checkout@v4
+      - name: Verificar manifestos de atualizacao com PowerShell Windows
+        shell: pwsh
+        run: |
+          python nextec/atualizacao/test_manifest.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'Signature tests failed' }
       - uses: actions/checkout@v4
         with:
           repository: rustdesk/rustdesk

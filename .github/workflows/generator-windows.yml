@@ -100,7 +100,9 @@ jobs:
 
       - name: Preserve MSI packaging script
         shell: pwsh
-        run: Copy-Item .github/scripts/build-msi.ps1 (Join-Path $env:RUNNER_TEMP 'build-msi.ps1')
+        run: |
+          Copy-Item .github/scripts/build-msi.ps1 (Join-Path $env:RUNNER_TEMP 'build-msi.ps1')
+          Copy-Item .github/scripts/install-msi-artwork.ps1 (Join-Path $env:RUNNER_TEMP 'install-msi-artwork.ps1')
 
       - name: Finalize and Cleanup zip/json
         if: always() # Run even if previous steps fail
@@ -690,6 +692,7 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         shell: pwsh
         run: |
+          & (Join-Path $env:RUNNER_TEMP 'install-msi-artwork.ps1') -GeneratorUrl '${{ secrets.GENURL }}'
           & (Join-Path $env:RUNNER_TEMP 'build-msi.ps1') -AppName $env:appname
 
       - name: zip exe and msi

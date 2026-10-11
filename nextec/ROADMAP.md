@@ -2,21 +2,31 @@
 
 ## Entregue nesta versão do gerador
 
-- Versão própria do gerador em `rdgenerator/VERSION` (`2.0.1`), separada da versão-base do RustDesk e da versão publicada para os clientes.
+- Versão própria do gerador em `rdgenerator/VERSION` (`2.0.3`), separada da versão-base do RustDesk e da versão publicada para os clientes.
 - Interface do gerador e telas de resultado em português, com identidade visual Nextec.
 - Aba **Identidade visual** para enviar, pré-visualizar e restaurar ícone, logo e tela de privacidade. O volume persistente já usado pelo banco mantém os arquivos após recriações do container.
-- Arquivos PNG são validados por tamanho, formato e dimensões antes de serem salvos.
+- Arquivos PNG e artes do MSI são validados por tamanho, formato e dimensões antes de serem salvos.
 - Corrigida a condição lógica da tela de espera para reconhecer corretamente os builds Windows.
 
 ## Próximos itens
 
 ### Prioridade 1 — personalização visual do MSI
 
-**Estado atual:** a tela do instalador tem duas artes configuráveis no WiX: o bitmap lateral do print (493 × 312 px) e a faixa superior (493 × 58 px). O gerador ainda não aplica esses arquivos aos builds.
+**Estado atual:** o gerador recebe as duas artes, valida dimensões, converte para BMP e o fluxo Windows as copia para os recursos WiX antes do MSI. Ainda falta executar um build Windows real e conferir as telas do instalador antes de liberar para produção.
 
 **Bloqueio:** os workflows Windows executam código de repositórios externos em runner próprio e usam segredos no fluxo de upload. A revisão automática de segurança recusou incluir essa alteração porque o build poderia expor os segredos ou comprometer o runner.
 
-**Trabalho:** separar a compilação de código externo do job que usa segredos, usar runner isolado e sem dados persistentes para o build, e liberar ao job de publicação apenas artefatos validados. Depois, habilitar o envio das duas imagens e a prévia no gerador.
+**Trabalho:** separar a compilação de código externo do job que usa segredos, usar runner isolado e sem dados persistentes para o build, e liberar ao job de publicação apenas artefatos validados. Validar a arte no MSI compilado em uma VM Windows.
+
+### Prioridade 1 — publicar o MSI pelo gerador
+
+**Estado atual:** após gerar, o operador baixa o MSI e o envia pela tela Atualizações do app no painel. A publicação direta ainda não existe.
+
+**Trabalho:** criar autorização de serviço restrita à publicação de MSI, exigir manifesto de release assinado por chave própria da Nextec e conferência de hash no cliente, permitir seleção de versão e grupo piloto pelo operador e registrar auditoria. A chave privada fica fora do painel, do gerador e do job que compila código externo; só a chave pública vai no atualizador. Não armazenar token de administrador do painel no gerador.
+
+### Prioridade 2 — geração conjunta Windows e Linux
+
+**Estado atual:** cada plataforma é gerada separadamente. Adiar a geração simultânea até o fluxo Windows estar validado.
 
 ### Prioridade 1 — migração EXE para MSI sem perder a máquina
 
@@ -30,7 +40,7 @@
 
 **Estado atual:** `nextec/atualizacao/Instalar-Nextec.ps1` consulta a versão, confere SHA-256, instala MSI e cria uma tarefa diária como `SYSTEM`. Esse fluxo é executado por um script de instalação separado; os pacotes EXE/MSI gerados pelo RDGen ainda não carregam o agente nem registram essa tarefa. O script atual baixa MSI, então uma instalação feita pelo EXE também precisa da migração descrita acima.
 
-**Trabalho:** incluir um agente de atualização nos dois instaladores, registrar a tarefa com a identidade adequada, validar assinatura digital e hash, tratar máquina offline, falha, rollback e atualização simultânea. Separar três versões: versão do gerador, versão-base RustDesk e versão do cliente Nextec publicado no painel. Testar instalação limpa e atualização silenciosa em Windows antes de ativar rollout.
+**Trabalho:** incluir um agente de atualização nos dois instaladores, registrar a tarefa com a identidade adequada, validar assinatura assimétrica do manifesto e hash do MSI antes de executar, tratar máquina offline, falha, rollback e atualização simultânea. Como ainda não há certificado Authenticode, o primeiro instalador é distribuído sem assinatura do Windows e precisa ser obtido por canal confiável; o manifesto assinado protege as atualizações após a instalação. Separar três versões: versão do gerador, versão-base RustDesk e versão do cliente Nextec publicado no painel. Testar instalação limpa e atualização silenciosa em Windows antes de ativar rollout.
 
 ### Prioridade 1 — endurecer os padrões de configuração
 

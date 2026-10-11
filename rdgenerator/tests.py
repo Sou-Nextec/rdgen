@@ -380,6 +380,38 @@ class BrandingAssetsTests(TestCase):
         self.assertTrue(result['success'])
         self.assertEqual(save_png.call_args_list[2].args[0].read(), expected)
 
+    def test_save_png_aceita_data_url_base64_bruto_e_arquivo(self):
+        import base64
+        from .views import save_png
+        raw = self.image_file('logo.png', (32, 24), 'PNG').read()
+        uuid = '11111111-2222-3333-4444-555555555555'
+        encoded = base64.b64encode(raw).decode('ascii')
+
+        self.assertEqual(save_png(f'data:image/png;base64,{encoded}', uuid, 'https://gerador.example', 'logo.png'),
+                         ('https://gerador.example', uuid, 'logo.png'))
+        self.assertEqual(save_png(encoded, uuid, 'https://gerador.example', 'icon.png'),
+                         ('https://gerador.example', uuid, 'icon.png'))
+        self.assertEqual(save_png(self.image_file('privacy.png', (32, 24), 'PNG'), uuid,
+                                  'https://gerador.example', 'privacy.png'),
+                         ('https://gerador.example', uuid, 'privacy.png'))
+        self.assertEqual((Path('png') / uuid / 'logo.png').read_bytes(), raw)
+
+    def test_save_png_recusa_base64_invalido_sem_criar_arquivo(self):
+        from .views import save_png
+        uuid = '11111111-2222-3333-4444-555555555555'
+        with self.assertRaisesRegex(ValueError, 'Base64 válido'):
+            save_png('imagem-sem-prefixo-e-sem-base64!', uuid, 'https://gerador.example', 'logo.png')
+        self.assertFalse((Path('png') / uuid).exists())
+
+    def test_save_png_recusa_conteudo_que_nao_seja_png(self):
+        import base64
+        from .views import save_png
+        uuid = '11111111-2222-3333-4444-555555555555'
+        encoded = base64.b64encode(b'conteudo nao e imagem').decode('ascii')
+        with self.assertRaisesRegex(ValueError, 'PNG válida'):
+            save_png(encoded, uuid, 'https://gerador.example', 'logo.png')
+        self.assertFalse((Path('png') / uuid).exists())
+
     def test_upload_de_tela_de_privacidade_rejeita_altura_acima_do_limite(self):
         from .branding import save_upload
 

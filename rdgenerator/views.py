@@ -9,6 +9,7 @@ import secrets
 import re
 import requests
 import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -33,6 +34,8 @@ _UUID_RE = re.compile(r'^[0-9a-fA-F-]{36}$')
 _ZIP_RE = re.compile(r'^secrets_[0-9a-fA-F-]{36}\.zip$')
 # limite do arquivo que o GitHub devolve (exe, msi, deb...)
 MAX_CLIENT_BYTES = 600 * 1024 * 1024
+MAX_ARTWORK_BYTES = 3 * 1024 * 1024
+MAX_ARTWORK_PIXELS = 16_000_000
 
 
 def build_token(uuid_val):
@@ -144,41 +147,17 @@ def generate_custom_client(params, full_url):
     myuuid = str(uuid.uuid4())
 
     try:
-        iconfile = params.get('iconfile')
-        if not iconfile:
-            iconfile = params.get('iconbase64')
-        if not iconfile:
-            iconfile = nextec.default_image('icon')
-        iconlink_url, iconlink_uuid, iconlink_file = save_png(iconfile,myuuid,full_url,"icon.png")
-    except:
-        print("failed to get icon, using default")
-        iconlink_url = "false"
-        iconlink_uuid = "false"
-        iconlink_file = "false"
-    try:
-        logofile = params.get('logofile')
-        if not logofile:
-            logofile = params.get('logobase64')
-        if not logofile:
-            logofile = nextec.default_image('logo')
-        logolink_url, logolink_uuid, logolink_file = save_png(logofile,myuuid,full_url,"logo.png")
-    except:
-        print("failed to get logo")
-        logolink_url = "false"
-        logolink_uuid = "false"
-        logolink_file = "false"
-    try:
-        privacyfile = params.get('privacyfile')
-        if not privacyfile:
-            privacyfile = params.get('privacybase64')
-        if not privacyfile:
-            privacyfile = nextec.default_image('privacy')
-        privacylink_url, privacylink_uuid, privacylink_file = save_png(privacyfile,myuuid,full_url,"privacy.png")
-    except:
-        print("failed to get logo")
-        privacylink_url = "false"
-        privacylink_uuid = "false"
-        privacylink_file = "false"
+        iconfile = params.get('iconfile') or params.get('iconbase64') or nextec.default_image('icon')
+        logofile = params.get('logofile') or params.get('logobase64') or nextec.default_image('logo')
+        privacyfile = params.get('privacyfile') or params.get('privacybase64') or nextec.default_image('privacy')
+        iconlink = save_png(iconfile, myuuid, full_url, 'icon.png')
+        logolink = save_png(logofile, myuuid, full_url, 'logo.png')
+        privacylink = save_png(privacyfile, myuuid, full_url, 'privacy.png')
+    except ValueError as exc:
+        return {'success': False, 'error': str(exc), 'status_code': 400}
+    iconlink_url, iconlink_uuid, iconlink_file = iconlink or ('false', 'false', 'false')
+    logolink_url, logolink_uuid, logolink_file = logolink or ('false', 'false', 'false')
+    privacylink_url, privacylink_uuid, privacylink_file = privacylink or ('false', 'false', 'false')
 
     ###create the custom.txt json here and send in as inputs below
     decodedCustom = {}
@@ -708,29 +687,50 @@ def startgh(request):
     return HttpResponse(status=204)
 
 def save_png(file, uuid, domain, name):
-    file_save_path = "png/%s/%s" % (uuid, name)
-    Path("png/%s" % uuid).mkdir(parents=True, exist_ok=True)
+    if not file:
+        return None
+    if not _safe_parts(uuid, name):
+        raise ValueError('Identificador ou nome de imagem inválido.')
 
-    if isinstance(file, str):  # Check if it's a base64 string
+    if isinstance(file, str):
+        value = file.strip()
+        if value.startswith('data:'):
+            header, separator, encoded = value.partition(',')
+            if not separator or not header.lower().endswith(';base64'):
+                raise ValueError('A imagem precisa estar em PNG com codificação Base64 válida.')
+            if header[5:].split(';', 1)[0].lower() != 'image/png':
+                raise ValueError('Envie imagens PNG para o ícone, logo e tela de privacidade.')
+        else:
+            encoded = value
         try:
-            header, encoded = file.split(';base64,')
-            decoded_img = base64.b64decode(encoded)
-            file = ContentFile(decoded_img, name=name) # Create a file-like object
-        except ValueError:
-            print("Invalid base64 data")
-            return None  # Or handle the error as you see fit
-        except Exception as e:  # Catch general exceptions during decoding
-            print(f"Error decoding base64: {e}")
-            return None
-        
-    with open(file_save_path, "wb+") as f:
-        for chunk in file.chunks():
-            f.write(chunk)
-    # imageJson = {}
-    # imageJson['url'] = domain
-    # imageJson['uuid'] = uuid
-    # imageJson['file'] = name
-    #return "%s/%s" % (domain, file_save_path)
+            raw = base64.b64decode(''.join(encoded.split()), validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise ValueError('A imagem enviada não está em Base64 válido.') from exc
+    else:
+        try:
+            if hasattr(file, 'seek'):
+                file.seek(0)
+            raw = file.read()
+            if hasattr(file, 'seek'):
+                file.seek(0)
+        except (AttributeError, OSError) as exc:
+            raise ValueError('Não foi possível ler a imagem enviada.') from exc
+
+    if not raw or len(raw) > MAX_ARTWORK_BYTES:
+        raise ValueError('A imagem deve ter entre 1 byte e 3 MB.')
+    try:
+        with Image.open(io.BytesIO(raw)) as image:
+            if image.format != 'PNG':
+                raise ValueError('Envie imagens PNG para o ícone, logo e tela de privacidade.')
+            if image.width * image.height > MAX_ARTWORK_PIXELS:
+                raise ValueError('A imagem excede o limite de pixels permitido.')
+            image.verify()
+    except (OSError, Image.DecompressionBombError) as exc:
+        raise ValueError('O arquivo enviado não é uma imagem PNG válida.') from exc
+
+    file_save_path = Path('png') / uuid / name
+    file_save_path.parent.mkdir(parents=True, exist_ok=True)
+    file_save_path.write_bytes(raw)
     return domain, uuid, name
 
 @csrf_exempt

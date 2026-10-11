@@ -4,6 +4,7 @@ on:
     branches: [master]
     paths:
       - '.github/scripts/build-msi.ps1'
+      - '.github/scripts/install-msi-artwork.ps1'
       - '.github/workflows/*generator-windows.yml'
       - '.github/workflows/nextec-msi.yml'
       - 'nextec/atualizacao/**'

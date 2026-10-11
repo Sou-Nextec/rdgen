@@ -14,6 +14,9 @@ on:
         default: ''
         type: string
 
+permissions:
+  contents: read
+
 
 env:
   SCITER_RUST_VERSION: "1.75" # https://github.com/rustdesk/rustdesk/discussions/7503, also 1.78 has ABI change which causes our sciter version not working, https://blog.rust-lang.org/2024/03/30/i128-layout-update.html
@@ -27,7 +30,8 @@ env:
   # for arm64 linux because official Dart SDK does not work
   FLUTTER_ELINUX_VERSION: "3.16.9"
   TAG_NAME: "${{ inputs.upload-tag }}"
-  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  # x-gha was removed from vcpkg; use a local binary cache backed by Actions.
+  VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/.vcpkg-binary-cache,readwrite"
   # vcpkg version: 2024.07.12
   VCPKG_COMMIT_ID: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
   ARMV7_VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836"
@@ -46,6 +50,8 @@ jobs:
     uses: ./.github/workflows/fetch-encrypted-secrets.yml
     with:
       zip_url_json: ${{ inputs.zip_url }}
+    secrets:
+      GENERATOR_URL: ${{ secrets.GENURL }}
 
   generate-bridge:
     uses: ./.github/workflows/bridge.yml
@@ -114,13 +120,6 @@ jobs:
           customHeaders: '{"Content-Type": "application/json"}'
           data: '{"uuid": "${{ env.uuid }}"}'
 
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v6
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-      
       - name: Set rdgen value
         if: ${{ env.rdgen == 'true' }}
         run: |
@@ -147,10 +146,17 @@ jobs:
           submodules: recursive
 
       - name: Restore bridge files
-        uses: actions/download-artifact@master
+        uses: actions/download-artifact@v4
         with:
           name: bridge-artifact
           path: ./
+
+      # Fail on Cloudflare Access redirects before installing compilers or
+      # compiling the client. A missing optional artwork (404) remains valid.
+      - name: Validate and prepare MSI artwork
+        shell: pwsh
+        run: |
+          & (Join-Path $env:RUNNER_TEMP 'install-msi-artwork.ps1') -GeneratorUrl '${{ secrets.GENURL }}'
 
       - name: Install ImageMagick on Windows
         run: |
@@ -384,6 +390,8 @@ jobs:
         with:
           channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+          pub-cache: true
 
       # https://github.com/flutter/flutter/issues/155685
       - name: Replace engine with rustdesk custom flutter engine
@@ -413,6 +421,17 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: ${{ matrix.job.os }}
+          cache-on-failure: true
+
+      - name: Restore vcpkg binary packages
+        id: vcpkg-binary-cache
+        uses: actions/cache/restore@v4
+        continue-on-error: true
+        with:
+          path: ${{ github.workspace }}/.vcpkg-binary-cache
+          key: vcpkg-bin-${{ runner.os }}-${{ matrix.job.vcpkg-triplet }}-${{ env.VCPKG_COMMIT_ID }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'res/vcpkg/**') }}
+          restore-keys: |
+            vcpkg-bin-${{ runner.os }}-${{ matrix.job.vcpkg-triplet }}-${{ env.VCPKG_COMMIT_ID }}-
 
       - name: Setup vcpkg with Github Actions binary cache
         uses: lukka/run-vcpkg@v11
@@ -440,6 +459,16 @@ jobs:
           fi
           head -n 100 "${VCPKG_ROOT}/buildtrees/ffmpeg/build-${{ matrix.job.vcpkg-triplet }}-rel-out.log" || true
         shell: bash
+
+      # Save before Rust compilation and packaging. Later failures should not
+      # discard binary packages built successfully in this job.
+      - name: Save vcpkg binary packages
+        if: steps.vcpkg-binary-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: ${{ github.workspace }}/.vcpkg-binary-cache
+          key: ${{ steps.vcpkg-binary-cache.outputs.cache-primary-key }}
           
       - name: magick stuff
         if: ${{ env.iconlink_url != 'false' }}
@@ -685,6 +714,18 @@ jobs:
           mkdir -p ./SignOutput
           mv ./target/release/rustdesk-portable-packer.exe "./SignOutput/rustdesk.exe"
 
+      - name: Preserve compiled Windows payload
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: windows-client-payload-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ./rustdesk/**
+            ./SignOutput/rustdesk.exe
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
 
@@ -692,7 +733,6 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         shell: pwsh
         run: |
-          & (Join-Path $env:RUNNER_TEMP 'install-msi-artwork.ps1') -GeneratorUrl '${{ secrets.GENURL }}'
           & (Join-Path $env:RUNNER_TEMP 'build-msi.ps1') -AppName $env:appname
 
       - name: zip exe and msi

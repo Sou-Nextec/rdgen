@@ -5,7 +5,7 @@ import uuid
 FIELDS = set('server serverPort key apiServer custom uuid token iconlink_url iconlink_uuid '
              'iconlink_file logolink_url logolink_uuid logolink_file privacylink_url '
              'privacylink_uuid privacylink_file appname genurl urlLink downloadLink '
-             'delayFix rdgen xOffline removeNewVersionNotif compname androidappid filename'.split())
+             'delayFix rdgen xOffline removeNewVersionNotif compname androidappid filename package_version'.split())
 UNSAFE = re.compile(r'[&\\|\'"$`\r\n\x00]')
 APP_NAME = re.compile(r'[A-Za-z0-9-]+')
 ANDROID_ID = re.compile(r'[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+')
@@ -23,6 +23,8 @@ def validate_build_inputs(payload):
             continue
         if key == 'appname' and not APP_NAME.fullmatch(value):
             raise ValueError('appname: use letters, digits and hyphen')
+        if key == 'package_version' and not re.fullmatch(r'\d{1,3}\.\d{1,3}\.\d{1,3}', value):
+            raise ValueError('package_version: invalid package version')
         if key == 'androidappid' and not ANDROID_ID.fullmatch(value):
             raise ValueError('androidappid: invalid application ID')
         if key == 'filename' and not re.fullmatch(r'[A-Za-z0-9_-]+', value):

@@ -400,6 +400,13 @@
                 </select>
                 <label for="{{ form.version.id_for_label }}">{{ form.version.label }}:</label>
                 {{ form.version }}
+                <label for="{{ form.package_version.id_for_label }}">Versão do pacote Nextec</label>
+                {{ form.package_version }}{{ form.package_version.errors }}
+                <p class="field-help">Ex.: 2.0.7. Identifica esta combinação de imagens e configurações. Para publicar atualizações, use uma versão nova. A base RustDesk continua independente.</p>
+                <label for="{{ form.profile.id_for_label }}">Destinado a</label>{{ form.profile }}
+                <label for="{{ form.client_name.id_for_label }}">Cliente / carteira (opcional)</label>{{ form.client_name }}
+                <p class="field-help">Ex.: Carteira Bruno. Organiza o histórico; o destino da atualização é escolhido em Atualizações do app.</p>
+                <label for="{{ form.notes.id_for_label }}">O que mudou nesta versão?</label>{{ form.notes }}
                 <p class="field-help">1.5.0 é a versão estável escolhida para o cliente. A opção “Escuro” fica em Aparência e funciona com essa versão. “Desenvolvimento” pode mudar ou falhar na compilação.</p>
                 <label for="{{ form.delayFix.id_for_label }}">{{ form.delayFix }} Corrigir atraso ao conectar usando uma API externa</label>
         </section>

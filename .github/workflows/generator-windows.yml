@@ -741,7 +741,9 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true' && env.appname == 'Nextec-Connect'
         shell: pwsh
         run: |
-          & (Join-Path $env:RUNNER_TEMP 'build-setup-exe.ps1') -MsiPath './SignOutput/rustdesk.msi' -OutputPath './SignOutput/rustdesk.exe' -DisplayName $env:appname
+          Copy-Item './SignOutput/rustdesk.exe' './SignOutput/rustdesk-portable.exe'
+          & (Join-Path $env:RUNNER_TEMP 'build-setup-exe.ps1') -MsiPath './SignOutput/rustdesk.msi' -PortablePath './SignOutput/rustdesk-portable.exe' -OutputPath './SignOutput/rustdesk.exe' -DisplayName $env:appname
+          Remove-Item './SignOutput/rustdesk-portable.exe'
 
       - name: zip exe and msi
         continue-on-error: true

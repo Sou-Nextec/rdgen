@@ -52,7 +52,7 @@ def _safe_parts(uuid_val, filename):
     return True
 
 
-def generate_custom_client(params, full_url):
+def generate_custom_client(params, full_url, created_by='', profile=''):
     """
     Core generation logic shared by web form and JSON API.
 
@@ -72,6 +72,18 @@ def generate_custom_client(params, full_url):
         return {'success': False, 'error': 'Invalid generation parameters.', 'status_code': 400}
     if nextec.is_configured() and not (params.get('key') or '').strip():
         return {'success': False, 'error': 'Chave publica do servidor ausente (NX_KEY ou NX_KEY_FILE).', 'status_code': 400}
+    profile = profile or params.get('profile', '')
+    if profile not in ('', 'default', 'client', 'analysts'):
+        return {'success': False, 'error': 'Perfil inválido.', 'status_code': 400}
+    package_version = params.get('package_version', '')
+    notes = params.get('notes', '')
+    client_label = params.get('client_name', '')
+    if (not isinstance(package_version, str) or len(package_version) > 32
+            or not isinstance(notes, str) or len(notes) > 1000
+            or not isinstance(client_label, str) or len(client_label) > 120):
+        return {'success': False, 'error': 'Metadados da geração inválidos.', 'status_code': 400}
+    if any(ord(char) < 32 and char not in '\t\n\r' for char in package_version + notes + client_label):
+        return {'success': False, 'error': 'Metadados da geração inválidos.', 'status_code': 400}
     user_secret = params.get('sh_secret_field', '')
     selfhosted = (_settings.SH_SECRET == user_secret)
     platform = params.get('platform', 'windows')
@@ -298,6 +310,7 @@ def generate_custom_client(params, full_url):
         "compname": compname,
         "androidappid":androidappid,
         "filename":filename,
+        "package_version": params.get('package_version', ''),
     }
 
     try:
@@ -344,17 +357,29 @@ def generate_custom_client(params, full_url):
         uuid=myuuid,
         filename=filename,
         platform=platform,
-        status="Starting generator...please wait"
+        status="Starting generator...please wait",
+        created_by=created_by,
+        client_name=(client_label.strip() or appname or filename)[:120],
+        profile=profile,
+        rustdesk_version=str(version)[:32],
+        package_version=package_version.strip(),
+        generator_version=nextec.product_version(),
+        notes=notes.strip(),
     )
+    # Register before dispatch so rejected/failed submissions remain visible in history.
+    new_github_run.save(force_insert=True)
     try:
         response = requests.post(url, json=data, headers=headers, timeout=(5, 30))
         if response.status_code == 200:
             github_data = response.json()
             if not github_data.get('workflow_run_id'):
+                new_github_run.status = 'submission_unknown'
+                new_github_run.submission_error = 'O GitHub pode ter aceitado a geração, mas não retornou o identificador. Verifique o histórico antes de tentar novamente.'
+                new_github_run.save(update_fields=['status', 'submission_error'])
                 return {'success': False, 'error': 'GitHub did not return the workflow run ID.', 'status_code': 502}
             new_github_run.github_run_id = github_data.get('workflow_run_id')
             new_github_run.status = "in_progress"
-            new_github_run.save()
+            new_github_run.save(update_fields=['github_run_id', 'status'])
 
             return {
                 "success": True,
@@ -364,15 +389,25 @@ def generate_custom_client(params, full_url):
                 "log_url": github_data.get('html_url')
             }
         else:
+            uncertain = response.status_code >= 500
+            new_github_run.status = 'submission_unknown' if uncertain else 'failure'
+            new_github_run.submission_error = (
+                'O GitHub pode ter aceitado a geração, mas retornou erro. Verifique o histórico antes de tentar novamente.'
+                if uncertain else f'GitHub recusou o início da execução (HTTP {response.status_code}).'
+            )
+            new_github_run.save(update_fields=['status', 'submission_error'])
             return {
                 "success": False,
                 "error": "GitHub rejected the start request",
                 "status_code": 500
             }
-    except Exception as e:
+    except Exception:
+        new_github_run.status = 'submission_unknown'
+        new_github_run.submission_error = 'A conexão foi interrompida durante o envio. O GitHub pode ter aceitado a geração; verifique o histórico antes de tentar novamente.'
+        new_github_run.save(update_fields=['status', 'submission_error'])
         return {
             "success": False,
-            "error": f"Connection error: {str(e)}",
+            "error": "Connection error while starting the build.",
             "status_code": 500
         }
 
@@ -476,7 +511,7 @@ def generator_view(request):
         if form.is_valid():
             params = form.cleaned_data
             full_url = f"{_settings.PROTOCOL}://{request.get_host()}{request.META.get('SCRIPT_NAME', '').rstrip('/')}"
-            result = generate_custom_client(params, full_url)
+            result = generate_custom_client(params, full_url, created_by=nextec.access_user(request))
             if result['success']:
                 return render(request, 'waiting.html', {
                     'filename': result['filename'],

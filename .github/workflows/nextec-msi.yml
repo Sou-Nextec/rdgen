@@ -4,6 +4,9 @@ on:
     branches: [master]
     paths:
       - '.github/scripts/build-msi.ps1'
+      - '.github/scripts/build-setup-exe.ps1'
+      - '.github/scripts/test-setup-exe.ps1'
+      - '.github/scripts/test-msi-install.ps1'
       - '.github/scripts/install-msi-artwork.ps1'
       - '.github/workflows/*generator-windows.yml'
       - '.github/workflows/nextec-msi.yml'
@@ -66,7 +69,7 @@ jobs:
         env:
           VERSION: master
         run: |
-          & ./.github/scripts/build-msi.ps1 -AppName Nextec-Connect -SourceRoot "$PWD/source" -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
+          & ./.github/scripts/build-msi.ps1 -AppName Nextec-Connect -PackageVersion 2.0.7 -SourceRoot "$PWD/source" -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
           $file = 'source/SignOutput/rustdesk.msi'
           $signature = [BitConverter]::ToString([IO.File]::ReadAllBytes((Resolve-Path $file))[0..7])
           if ($signature -ne 'D0-CF-11-E0-A1-B1-1A-E1') { throw 'Invalid MSI file signature' }
@@ -75,6 +78,17 @@ jobs:
           $p = Start-Process msiexec.exe -ArgumentList "/a `"$(Resolve-Path $file)`" /qn TARGETDIR=`"$extract`" /l*v `"$log`"" -Wait -PassThru -WindowStyle Hidden
           if ($p.ExitCode -ne 0) { Get-Content $log -Tail 30; throw "MSI extraction failed: $($p.ExitCode)" }
           if (!(Get-ChildItem $extract -Filter 'Instalar-Nextec.ps1' -Recurse)) { throw 'Updater script is missing from MSI payload' }
+      - name: Instalar e reparar de verdade no Windows Server 2022 isolado
+        shell: pwsh
+        run: ./.github/scripts/test-msi-install.ps1 -MsiPath source/SignOutput/rustdesk.msi
+      - name: Guardar logs de instalação para diagnóstico
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: instalacao-windows-${{ matrix.source }}
+          path: ${{ runner.temp }}/nextec-real-*.log
+          if-no-files-found: ignore
+          retention-days: 7
 
   deb-package:
     name: Validar pacote Debian e atualizador Linux

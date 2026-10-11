@@ -2,6 +2,14 @@
 
 O número nesta página acompanha a experiência do gerador (layout, organização e recursos próprios da Nextec). Ele é independente da versão-base do RustDesk escolhida em cada build e da versão publicada pelo painel para atualização dos clientes.
 
+## 2.0.7
+
+- Histórico persistente de gerações, com versões, perfil, carteira, autoria e erros de submissão sem guardar segredos.
+- Exportação interna autenticada do MSI para Atualizações do painel.
+- EXE com escolha entre execução avulsa sem instalação e instalação pelo MSI; elevação somente ao instalar.
+- Versão do pacote independente da base RustDesk, propagada ao MSI e ao atualizador.
+- Corrige a duração do atraso da tarefa agendada (ISO-8601) e adiciona instalação/repair reais ao teste Windows Server 2022.
+
 ## 2.0.6
 
 - Incorpora o gerador ao painel na mesma origem, acompanhando o tema e a altura do conteúdo.

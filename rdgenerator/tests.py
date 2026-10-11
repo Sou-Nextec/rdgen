@@ -381,7 +381,7 @@ class BrandingAssetsTests(TestCase):
             result = views.generate_custom_client({'exename': 'Nextec-Connect'}, 'https://gerador.example')
 
         self.assertTrue(result['success'])
-        saved = {call.args[3]: call.args[0].read_bytes() for call in save_png.call_args_list}
+        saved = {call.args[3]: call.args[0].getvalue() for call in save_png.call_args_list}
         for filename, raw in expected.items():
             self.assertEqual(saved[filename], raw)
 

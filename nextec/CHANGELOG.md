@@ -6,6 +6,12 @@ O número nesta página acompanha a experiência do gerador (layout, organizaç�
 
 - Alinha cores, superfícies, tipografia, campos e estados de foco ao sistema visual do painel remoto; melhora a seleção de plataforma por teclado e telas menores.
 
+## 2.0.5
+
+- Corrige a largura e o espaçamento dos campos nos cartões e melhora o layout responsivo.
+- Evita exibir o seletor nativo de plataforma duplicado mantendo o valor enviado pelo formulário.
+- Adiciona o favicon Nextec às telas do gerador e de identidade visual.
+
 ## 2.0.3
 
 - Permite enviar as duas artes do MSI (lateral de 493 × 312 px e faixa de 493 × 58 px) na aba Identidade visual. O gerador converte PNG ou BMP validado para BMP e o build usa essas imagens nas próximas gerações.
@@ -25,3 +31,4 @@ O número nesta página acompanha a experiência do gerador (layout, organizaç�
 - Aba persistente para ícone, logo e tela de privacidade.
 - Telas de espera, sucesso e erro traduzidas para português.
 - Chave pública e servidor continuam preenchidos pelo ambiente de implantação.
+

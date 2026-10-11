@@ -52,7 +52,7 @@ Sem `NX_SERVER_HOST` o gerador se comporta como o original.
 
 ## Versão e imagens
 
-`rdgenerator/VERSION` guarda a versão da experiência do gerador, atualmente `2.0.4`. Ao alterar layout ou recursos próprios,
+`rdgenerator/VERSION` guarda a versão da experiência do gerador, atualmente `2.0.5`. Ao alterar layout ou recursos próprios,
 atualize esse arquivo e acrescente uma entrada em `nextec/CHANGELOG.md`. Essa versão é separada da versão-base RustDesk usada
 no build e da versão do produto publicada na tela de atualizações do painel.
 
@@ -155,3 +155,4 @@ Não trocar o healthcheck para esconder a falta de configuração. SECRET_KEY va
 
 `atualizar-servidor.sh` atualiza o rdgen **antigo** (fora da stack) por cron. Fica obsoleto quando o servidor antigo for
 desligado; pode ser removido.
+

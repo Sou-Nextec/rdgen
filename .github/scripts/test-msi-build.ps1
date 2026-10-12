@@ -51,7 +51,7 @@ try {
 
     [xml]$wxs = [IO.File]::ReadAllText($packageWxs)
     $xmlText = $wxs.OuterXml
-    foreach ($id in @('Nextec.PasswordAgent', 'Nextec.PasswordAgentScript', 'Nextec.Updater', 'Nextec.UpdaterScript', 'Nextec.RegisterUpdater')) {
+    foreach ($id in @('Nextec.PasswordAgent', 'Nextec.PasswordAgentScript', 'Nextec.CoordinatorScript', 'Nextec.ProvisionerScript', 'Nextec.RegisterCoordinator', 'Nextec.RemoveCoordinator', 'Nextec.Updater', 'Nextec.UpdaterScript', 'Nextec.RegisterUpdater')) {
         if (!$xmlText.Contains($id)) { throw "WiX output is missing $id" }
     }
     foreach ($id in @('Nextec.PasswordAgent', 'Nextec.Updater')) {

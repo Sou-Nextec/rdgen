@@ -1,0 +1,11 @@
+[Unit]
+Description=Retry Nextec Connect bootstrap authorization every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+Unit=nextec-agent-bootstrap.service
+
+[Install]
+WantedBy=timers.target

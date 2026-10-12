@@ -96,7 +96,7 @@ jobs:
         if: env.appname == 'Nextec-Connect'
         run: |
           mkdir -p "$RUNNER_TEMP/nextec-update"
-          cp nextec/atualizacao/atualizador-linux.py nextec/atualizacao/nextec-connect-update.service nextec/atualizacao/nextec-connect-update.timer nextec/atualizacao/empacotar-deb-atualizador.sh "$RUNNER_TEMP/nextec-update/"
+          cp nextec/atualizacao/atualizador-linux.py nextec/atualizacao/agente-senha-linux.py nextec/atualizacao/coordenador-agente-nextec-linux.py nextec/atualizacao/nextec-connect-*.service nextec/atualizacao/nextec-connect-*.timer nextec/atualizacao/nextec-agent-bootstrap.service nextec/atualizacao/nextec-agent-bootstrap.timer nextec/atualizacao/empacotar-deb-atualizador.sh "$RUNNER_TEMP/nextec-update/"
 
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v6

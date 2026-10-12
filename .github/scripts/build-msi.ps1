@@ -35,6 +35,11 @@ try {
         # Windows PowerShell 5.1 needs a BOM for accented text in scripts.
         [IO.File]::WriteAllText((Join-Path $resourceDir 'Instalar-Nextec.ps1'), [IO.File]::ReadAllText($updater), [Text.UTF8Encoding]::new($true))
         Copy-Item -LiteralPath $agent -Destination (Join-Path $resourceDir 'Agente-Senha-Nextec.ps1') -Force
+        foreach ($scriptName in @('Coordenar-Agente-Nextec.ps1','Provisionar-Agente-Nextec.ps1')) {
+            $source = Join-Path $UpdaterSource $scriptName
+            if (!(Test-Path -LiteralPath $source -PathType Leaf)) { throw "Management component missing: $scriptName" }
+            Copy-Item -LiteralPath $source -Destination (Join-Path $resourceDir $scriptName) -Force
+        }
 
         $packageWxs = Join-Path $SourceRoot 'res/msi/Package/Package.wxs'
         $xml = [IO.File]::ReadAllText($packageWxs)
@@ -44,6 +49,8 @@ try {
         <DirectoryRef Id="INSTALLFOLDER_INNER">
             <Component Id="Nextec.PasswordAgent" Guid="*">
                 <File Id="Nextec.PasswordAgentScript" Source="Resources\Agente-Senha-Nextec.ps1" KeyPath="yes" />
+                <File Id="Nextec.CoordinatorScript" Source="Resources\Coordenar-Agente-Nextec.ps1" />
+                <File Id="Nextec.ProvisionerScript" Source="Resources\Provisionar-Agente-Nextec.ps1" />
             </Component>
         </DirectoryRef>
 '@
@@ -70,6 +77,16 @@ try {
             $xml = $xml.Replace('</Feature>', "            <ComponentRef Id=`"Nextec.Updater`" />`r`n`t`t</Feature>")
             $xml = $xml.Replace('</InstallExecuteSequence>', "            <Custom Action=`"Nextec.RegisterUpdater`" After=`"InstallFiles`" Condition=`"NOT REMOVE~=&quot;ALL&quot;`" />`r`n`t`t</InstallExecuteSequence>")
             $xml = $xml.Replace('</Package>', "$component`r`n`t</Package>")
+            $packageChanged = $true
+        }
+        if (!$xml.Contains('Nextec.RegisterCoordinator')) {
+            $actions = @'
+        <CustomAction Id="Nextec.RegisterCoordinator" Directory="System64Folder" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER_INNER]Coordenar-Agente-Nextec.ps1&quot; -Registrar" Execute="deferred" Impersonate="no" Return="check" />
+        <CustomAction Id="Nextec.RemoveCoordinator" Directory="System64Folder" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER_INNER]Coordenar-Agente-Nextec.ps1&quot; -Remover" Execute="deferred" Impersonate="no" Return="check" />
+        <CustomAction Id="Nextec.RemoveUpdater" Directory="System64Folder" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER_INNER]Instalar-Nextec.ps1&quot; -Remover" Execute="deferred" Impersonate="no" Return="check" />
+'@
+            $xml = $xml.Replace('</Package>', "$actions`r`n`t</Package>")
+            $xml = $xml.Replace('</InstallExecuteSequence>', '            <Custom Action="Nextec.RegisterCoordinator" After="Nextec.RegisterUpdater" Condition="NOT REMOVE~=&quot;ALL&quot;" />' + "`r`n" + '            <Custom Action="Nextec.RemoveCoordinator" Before="Nextec.RemoveUpdater" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />' + "`r`n" + '            <Custom Action="Nextec.RemoveUpdater" Before="RemoveFiles" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />' + "`r`n`t`t</InstallExecuteSequence>")
             $packageChanged = $true
         }
         if ($packageChanged) { [IO.File]::WriteAllText($packageWxs, $xml, [Text.UTF8Encoding]::new($false)) }

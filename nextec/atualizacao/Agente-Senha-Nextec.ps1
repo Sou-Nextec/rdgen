@@ -21,6 +21,7 @@
 [CmdletBinding()]
 param(
   [switch]$Instalar,
+  [switch]$Registrar,
   [switch]$Executar,
   [string]$Painel,
   [string]$ChaveAgente,
@@ -117,7 +118,11 @@ function Get-NextecInstalledClient {
       $exeName = [IO.Path]::GetFileNameWithoutExtension($exePath)
       if ([string]$service.Name -ine $exeName) { continue }
       if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) { continue }
-      [pscustomobject]@{ Service = $service; ExePath = [IO.Path]::GetFullPath($exePath) }
+      $profile = Get-NextecServiceProfileRoot -ServiceAccount ([string]$service.StartName) -WindowsDirectory $WindowsDirectory -ProfileRootBase $ProfileRootBase
+      $configPath = Join-Path (Join-Path $profile $exeName) 'config'
+      if (-not (Test-Path -LiteralPath $configPath -PathType Container)) { continue }
+      if (@(Get-ChildItem -LiteralPath $configPath -File -Filter '*.toml' -ErrorAction SilentlyContinue).Count -eq 0) { continue }
+      [pscustomobject]@{ Service = $service; ExePath = [IO.Path]::GetFullPath($exePath); ConfigRoot = $configPath }
     }
   )
 
@@ -131,17 +136,7 @@ function Get-NextecInstalledClient {
 
   $candidate = $candidates[0]
   $service = $candidate.Service
-  $appName = [IO.Path]::GetFileNameWithoutExtension($candidate.ExePath)
-  $profileRoot = Get-NextecServiceProfileRoot -ServiceAccount ([string]$service.StartName) `
-    -WindowsDirectory $WindowsDirectory -ProfileRootBase $ProfileRootBase
-  $configRoot = Join-Path (Join-Path $profileRoot $appName) 'config'
-  $configFiles = @()
-  if (Test-Path -LiteralPath $configRoot -PathType Container) {
-    $configFiles = @(Get-ChildItem -LiteralPath $configRoot -File -Filter '*.toml' -ErrorAction SilentlyContinue)
-  }
-  if ($configFiles.Count -eq 0) {
-    throw "identity_conflict: configuração do perfil do serviço não encontrada em '$configRoot'."
-  }
+  $configRoot = $candidate.ConfigRoot
 
   if ($PeerIdReader) { $peerId = [string](& $PeerIdReader $service $candidate.ExePath) }
   else { $peerId = [string](Get-NextecPeerId -ExePath $candidate.ExePath) }
@@ -167,7 +162,7 @@ function Escrever([string]$msg) {
 
 function Chamar([string]$caminho, [hashtable]$corpo) {
   $r = Invoke-WebRequest -Uri ($script:PainelUrl + $caminho) -Method Post -ContentType 'application/json' `
-        -Body ($corpo | ConvertTo-Json -Compress) -UseBasicParsing -TimeoutSec 30
+        -Body ($corpo | ConvertTo-Json -Compress) -UseBasicParsing -MaximumRedirection 0 -TimeoutSec 30
   return ([Text.Encoding]::UTF8.GetString($r.RawContentStream.ToArray()).TrimStart([char]0xFEFF) | ConvertFrom-Json)
 }
 
@@ -380,6 +375,38 @@ function Invoke-NextecPasswordCycle([psobject]$Cfg) {
   else { Assert-NextecPasswordApplied -Result (InvocarRustDesk -Argumentos @('--password',$password)) }
   Chamar '/api/nextec/agent/confirm' @{id=$Cfg.id;token=$token} | Out-Null
   Escrever 'Senha aplicada e confirmada no protocolo anterior.'
+}
+
+function Register-NextecPasswordTask {
+  param([Parameter(Mandatory)][string]$Source)
+  $destination = Join-Path $PastaDados 'Agente-Senha-Nextec.ps1'
+  Assert-NextecNoReparsePoints -Path $Source
+  Assert-NextecNoReparsePoints -Path $destination
+  if ([IO.Path]::GetFullPath($Source) -ine [IO.Path]::GetFullPath($destination)) {
+    Copy-Item -LiteralPath $Source -Destination $destination -Force
+  }
+  Set-Acl -LiteralPath $destination -AclObject (New-NextecSecureAcl)
+  $powershellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+  $argument = "-NoProfile -ExecutionPolicy Bypass -File `"$destination`" -Executar"
+  $action = New-ScheduledTaskAction -Execute $powershellExe -Argument $argument
+  $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration (New-TimeSpan -Days 3650)
+  $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 4) -MultipleInstances IgnoreNew
+  Register-ScheduledTask -TaskName $Tarefa -Action $action -Trigger $trigger -Settings $settings -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
+}
+
+if ($Registrar) {
+  if ($Instalar -or $Executar -or $Simular) { throw 'Escolha somente -Registrar para ativar um cadastro existente.' }
+  $admin = (New-Object Security.Principal.WindowsPrincipal ([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  if (-not $admin) { throw 'Execute como administrador.' }
+  ProtegerPastaAgente
+  $cfg = Get-Content -LiteralPath $Config -Raw -Encoding UTF8 | ConvertFrom-Json
+  if ($cfg.painel -cne 'https://painel-remoto.nex.tec.br' -or -not $cfg.token) { throw 'invalid_agent_config' }
+  if ((MeuId) -ne $cfg.id) { throw 'identity_conflict' }
+  Revelar $cfg.token | Out-Null
+  Register-NextecPasswordTask -Source $PSCommandPath
+  Start-ScheduledTask -TaskName $Tarefa
+  Escrever 'Tarefa de senha registrada; primeira sincronizacao iniciada.'
+  return
 }
 
 if ($Instalar) {

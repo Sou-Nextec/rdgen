@@ -25,6 +25,9 @@ if [[ -n "$package_version" ]]; then sed -i "s/^Version:.*/Version: $package_ver
 install -d -m 0755 "$tmp/root/usr/lib/nextec-connect" "$tmp/root/usr/lib/systemd/system"
 sed "s/__PACKAGE_NAME__/$pkg/g" "$updater_dir/atualizador-linux.py" > "$tmp/root/usr/lib/nextec-connect/atualizador-linux.py"
 install -m 0755 "$updater_dir/agente-senha-linux.py" "$tmp/root/usr/lib/nextec-connect/agente-senha-linux.py"
+install -m 0755 "$updater_dir/coordenador-agente-nextec-linux.py" "$tmp/root/usr/lib/nextec-connect/coordenador-agente-nextec-linux.py"
+install -m 0644 "$updater_dir/nextec-agent-bootstrap.service" "$tmp/root/usr/lib/systemd/system/nextec-agent-bootstrap.service"
+install -m 0644 "$updater_dir/nextec-agent-bootstrap.timer" "$tmp/root/usr/lib/systemd/system/nextec-agent-bootstrap.timer"
 install -m 0644 "$updater_dir/nextec-connect-update.service" "$tmp/root/usr/lib/systemd/system/nextec-connect-update.service"
 install -m 0644 "$updater_dir/nextec-connect-update.timer" "$tmp/root/usr/lib/systemd/system/nextec-connect-update.timer"
 install -m 0644 "$updater_dir/nextec-connect-agent.service" "$tmp/root/usr/lib/systemd/system/nextec-connect-agent.service"
@@ -57,10 +60,12 @@ insert_hook() {
 
 insert_hook "$tmp/root/DEBIAN/postinst" 'nextec-connect-update.timer' 'if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then systemctl daemon-reload || true; systemctl enable --now nextec-connect-update.timer || true; fi'
 insert_hook "$tmp/root/DEBIAN/postinst" 'nextec-connect-agent.timer' 'if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then systemctl daemon-reload || true; systemctl enable nextec-connect-agent.timer || true; fi'
+insert_hook "$tmp/root/DEBIAN/postinst" 'nextec-agent-bootstrap.timer' 'if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then systemctl daemon-reload || true; systemctl enable --now nextec-agent-bootstrap.timer || true; fi'
 insert_hook "$tmp/root/DEBIAN/prerm" 'nextec-connect-update.timer' 'if [ "$1" = remove ] && [ -d /run/systemd/system ]; then systemctl disable --now nextec-connect-update.timer || true; fi'
 insert_hook "$tmp/root/DEBIAN/prerm" 'nextec-connect-agent.timer' 'if [ "$1" = remove ] && [ -d /run/systemd/system ]; then systemctl disable --now nextec-connect-agent.timer nextec-connect-agent.service || true; fi'
+insert_hook "$tmp/root/DEBIAN/prerm" 'nextec-agent-bootstrap.timer' 'if [ "$1" = remove ] && [ -d /run/systemd/system ]; then systemctl disable --now nextec-agent-bootstrap.timer nextec-agent-bootstrap.service || true; fi'
 
 rebuilt="$tmp/rebuilt.deb"
-dpkg-deb --build --root-owner-group "$tmp/root" "$rebuilt"
+dpkg-deb -Zxz --build --root-owner-group "$tmp/root" "$rebuilt"
 mv -- "$rebuilt" "$deb"
 echo "Atualizador e agente Linux condicionado adicionados: $deb ($pkg/$arch)"

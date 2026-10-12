@@ -20,6 +20,7 @@ from django.urls import path
 from rdgenerator import views as views
 from rdgenerator import api_views as api_views
 from rdgenerator.artifacts import artifact
+from rdgenerator.signing_helper import signing_helper_download
 from rdgenerator import catalog as catalog
 if django.__version__.split('.')[0]>='4':
     from django.urls import re_path as url
@@ -27,6 +28,7 @@ else:
     from django.conf.urls import  url, include
 
 urlpatterns = [
+    path('nextec/atualizacao/assinador.zip', signing_helper_download, name='signing_helper_download'),
     path('api/artifact', artifact, name='artifact'),
     path('nextec/geracoes/', catalog.generation_catalog, name='generation_catalog'),
     path('nextec/geracoes/<str:uuid>/', catalog.generation_detail, name='generation_detail'),

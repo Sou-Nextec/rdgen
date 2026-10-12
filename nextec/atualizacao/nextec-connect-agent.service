@@ -1,0 +1,26 @@
+[Unit]
+Description=Rotação transacional da senha permanente do Nextec Connect
+ConditionPathExists=/var/lib/nextec-connect/agent-config.json
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+StateDirectory=nextec-connect
+StateDirectoryMode=0755
+ExecStart=/usr/bin/python3 /usr/lib/nextec-connect/agente-senha-linux.py
+TimeoutStartSec=90s
+PrivateTmp=no
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/nextec-connect
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+NoNewPrivileges=yes

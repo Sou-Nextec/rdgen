@@ -34,7 +34,7 @@ def get_path(kind):
     path = managed_path(kind)
     if path and path.is_file():
         return path
-    if kind in ('icon', 'logo', 'logo_light', 'logo_dark'):
+    if kind in ('icon', 'logo', 'logo_light', 'logo_dark', 'msi_dialog', 'msi_banner'):
         packaged = Path(__file__).resolve().parent.parent / 'nextec' / 'branding' / ASSETS[kind]['filename']
         return packaged if packaged.is_file() else None
     return None

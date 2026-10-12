@@ -60,6 +60,12 @@ Na aba **Identidade visual**, ícone, logo e tela de privacidade aceitam PNG e f
 gerador para as próximas gerações. A personalização do bitmap MSI depende de isolar o build Windows dos segredos de
 upload; consulte `nextec/ROADMAP.md`.
 
+**Imagens padrão do MSI:** `nextec/branding/WixUIDialogBmp.bmp` (493 × 312) e `WixUIBannerBmp.bmp` (493 × 58),
+BMP 24 bits, geradas por `python nextec/scripts/gerar_imagens_msi.py` a partir de `nextec/branding/logo.png`.
+Sem upload na aba Identidade visual, `get_artwork/msi_dialog` e `msi_banner` servem essas imagens e todo MSI sai com elas.
+Um upload continua tendo prioridade; remover o upload volta ao padrão Nextec.
+Só entram em produção com Pull and redeploy do gerador.
+
 Os **modelos de configuração** ficam no mesmo banco persistente do gerador, separados pelo e-mail autenticado no
 Cloudflare Access. Senha permanente, chave pública, imagens e ajustes manuais não são armazenados nesses modelos.
 Também é possível exportar ou importar JSON; confira os campos após importar. A geração continua sendo uma plataforma

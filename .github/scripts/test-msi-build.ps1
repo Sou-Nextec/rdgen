@@ -51,6 +51,9 @@ try {
 
     [xml]$wxs = [IO.File]::ReadAllText($packageWxs)
     $xmlText = $wxs.OuterXml
+    foreach ($component in $wxs.SelectNodes('//Component[@Guid="*"]')) {
+        if ($component.SelectNodes('File').Count -ne 1) { throw 'Automatic WiX GUID requires a single unversioned script per component' }
+    }
     foreach ($id in @('Nextec.PasswordAgent', 'Nextec.PasswordAgentScript', 'Nextec.CoordinatorScript', 'Nextec.ProvisionerScript', 'Nextec.RegisterCoordinator', 'Nextec.RemoveCoordinator', 'Nextec.Updater', 'Nextec.UpdaterScript', 'Nextec.RegisterUpdater')) {
         if (!$xmlText.Contains($id)) { throw "WiX output is missing $id" }
     }

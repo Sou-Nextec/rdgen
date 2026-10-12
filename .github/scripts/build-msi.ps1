@@ -49,8 +49,12 @@ try {
         <DirectoryRef Id="INSTALLFOLDER_INNER">
             <Component Id="Nextec.PasswordAgent" Guid="*">
                 <File Id="Nextec.PasswordAgentScript" Source="Resources\Agente-Senha-Nextec.ps1" KeyPath="yes" />
-                <File Id="Nextec.CoordinatorScript" Source="Resources\Coordenar-Agente-Nextec.ps1" />
-                <File Id="Nextec.ProvisionerScript" Source="Resources\Provisionar-Agente-Nextec.ps1" />
+            </Component>
+            <Component Id="Nextec.Coordinator" Guid="*">
+                <File Id="Nextec.CoordinatorScript" Source="Resources\Coordenar-Agente-Nextec.ps1" KeyPath="yes" />
+            </Component>
+            <Component Id="Nextec.Provisioner" Guid="*">
+                <File Id="Nextec.ProvisionerScript" Source="Resources\Provisionar-Agente-Nextec.ps1" KeyPath="yes" />
             </Component>
         </DirectoryRef>
 '@
@@ -58,6 +62,7 @@ try {
                 throw 'Unexpected WiX Package.wxs layout; refusing to add password agent payload'
             }
             $xml = $xml.Replace('</Feature>', "            <ComponentRef Id=`"Nextec.PasswordAgent`" />`r`n`t`t</Feature>")
+            $xml = $xml.Replace('</Feature>', "            <ComponentRef Id=`"Nextec.Coordinator`" />`r`n            <ComponentRef Id=`"Nextec.Provisioner`" />`r`n`t`t</Feature>")
             $xml = $xml.Replace('</Package>', "$agentComponent`r`n`t</Package>")
             $packageChanged = $true
         }

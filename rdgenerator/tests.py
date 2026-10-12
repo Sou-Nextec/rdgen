@@ -330,6 +330,14 @@ class BrandingAssetsTests(TestCase):
                 self.assertEqual(bitmap.format, 'BMP')
                 self.assertEqual(bitmap.size, size)
 
+    def test_msi_artwork_padrao_nextec_sem_upload(self):
+        for kind, size in (('msi_dialog', (493, 312)), ('msi_banner', (493, 58))):
+            response = self.client.get(f'/get_artwork/{kind}')
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response['Content-Type'], 'image/bmp')
+            with Image.open(io.BytesIO(b''.join(response.streaming_content))) as bitmap:
+                self.assertEqual((bitmap.format, bitmap.size, bitmap.mode), ('BMP', size, 'RGB'))
+
     def test_msi_artwork_requires_exact_dimensions(self):
         from .branding import save_upload
         with self.assertRaisesRegex(ValueError, '493 × 312'):

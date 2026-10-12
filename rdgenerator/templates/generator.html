@@ -381,12 +381,13 @@
                 <p id="modelStatus" class="field-help" role="status"></p>
             </div>
         </div>
-        {% if form.iconfile.errors %}
-            <ul class="errorlist">
-                {% for error in form.iconfile.errors %}
-                    <li>{{ error }}</li>
-                {% endfor %}
-            </ul>
+        {% if validation_errors %}
+            <div class="errorlist" role="alert">
+                <p>Revise os campos indicados antes de gerar.</p>
+                <ul>{% for error in validation_errors %}
+                    <li><strong>{{ error.label }}:</strong> {{ error.message }}</li>
+                {% endfor %}</ul>
+            </div>
         {% endif %}
         <section class="platform" aria-labelledby="platform-heading">
             <h2 id="platform-heading"><i class="fas fa-desktop" aria-hidden="true"></i> Plataforma e versão-base</h2>

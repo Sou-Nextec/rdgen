@@ -1,1 +1,2 @@
 *.sh text eol=lf
+nextec/atualizacao/Agente-Senha-Nextec.ps1 -text

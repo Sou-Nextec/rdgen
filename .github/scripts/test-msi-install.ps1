@@ -11,6 +11,11 @@ $log = Join-Path $env:RUNNER_TEMP 'nextec-real-install.log'
 $uninstallLog = Join-Path $env:RUNNER_TEMP 'nextec-real-uninstall.log'
 $agentPath = $null
 
+function Get-NextecAclEntries {
+    param([Security.AccessControl.FileSecurity]$Acl)
+    return $Acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])
+}
+
 function Test-NextecAclGrantsWrite {
     param([Security.AccessControl.FileSystemRights]$Rights)
 
@@ -40,8 +45,8 @@ try {
         throw 'Installed password agent differs from the reviewed package source'
     }
     $agentAcl = Get-Acl -LiteralPath $agentPath
-    foreach ($entry in $agentAcl.Access) {
-        $sid = $entry.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+    foreach ($entry in (Get-NextecAclEntries -Acl $agentAcl)) {
+        $sid = $entry.IdentityReference.Value
         if ($entry.AccessControlType -eq 'Allow' -and
             $sid -notin @('S-1-5-18','S-1-5-32-544') -and
             (Test-NextecAclGrantsWrite -Rights $entry.FileSystemRights)) {
@@ -53,8 +58,8 @@ try {
     $script = Join-Path $env:ProgramData 'Nextec/Acesso/Instalar-Nextec.ps1'
     if (!(Test-Path $script)) { throw 'Installed updater missing' }
     $acl = Get-Acl $script
-    foreach ($entry in $acl.Access) {
-        $sid = $entry.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+    foreach ($entry in (Get-NextecAclEntries -Acl $acl)) {
+        $sid = $entry.IdentityReference.Value
         if ($entry.AccessControlType -eq 'Allow' -and $sid -notin @('S-1-5-18','S-1-5-32-544')) { throw 'Unexpected access to privileged updater script' }
     }
     # Run again to validate repair/reinstallation and idempotent task registration.

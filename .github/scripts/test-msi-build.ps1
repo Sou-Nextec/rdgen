@@ -23,6 +23,14 @@ try {
     $aclPredicateAst = $testAst.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Test-NextecAclGrantsWrite' }, $true)
     if (!$aclPredicateAst) { throw 'ACL write predicate is missing from installation test' }
     . ([scriptblock]::Create($aclPredicateAst.Extent.Text))
+    $aclReaderAst = $testAst.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-NextecAclEntries' }, $true)
+    if (!$aclReaderAst) { throw 'SID ACL reader missing' }
+    . ([scriptblock]::Create($aclReaderAst.Extent.Text))
+    $unknownSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-21-123456789-234567890-345678901-54321')
+    $aclFixture = [Security.AccessControl.FileSecurity]::new()
+    $aclFixture.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($unknownSid, [Security.AccessControl.FileSystemRights]::Read, [Security.AccessControl.AccessControlType]::Allow))
+    $aclEntries = @(Get-NextecAclEntries -Acl $aclFixture)
+    if ($aclEntries.Count -ne 1 -or $aclEntries[0].IdentityReference.Value -ne $unknownSid.Value) { throw 'Unresolvable SID was not preserved by ACL inspection' }
     $rightsType = [Security.AccessControl.FileSystemRights]
     foreach ($readRights in @($rightsType::Read, $rightsType::ReadAndExecute)) {
         if (Test-NextecAclGrantsWrite -Rights $readRights) { throw "Read-only ACL right was treated as write: $readRights" }

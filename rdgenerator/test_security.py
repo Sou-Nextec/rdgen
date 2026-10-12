@@ -108,7 +108,8 @@ class GenerationSecurityTests(TestCase):
         self.assertIn('csrfmiddlewaretoken', page.content.decode())
         token = client.cookies['csrftoken'].value
         response = client.post('/generator', {'csrfmiddlewaretoken': token})
-        self.assertEqual(response.status_code, 200)  # invalid form, but CSRF succeeds
+        self.assertEqual(response.status_code, 400)  # CSRF succeeds; invalid fields are reported
+        self.assertContains(response, 'role="alert"', status_code=400)
 
     def test_upload_callback_still_accepts_build_token_without_csrf(self):
         from django.core.files.uploadedfile import SimpleUploadedFile

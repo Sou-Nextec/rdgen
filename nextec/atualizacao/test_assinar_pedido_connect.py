@@ -77,6 +77,14 @@ class RequestValidationTests(unittest.TestCase):
             self.assertEqual(signer.inspect_msi(path, self.request, property_reader=props), {
                 "sha256": self.request["windows"]["sha256"], "tamanho": len(self.msi)
             })
+            signer.inspect_msi(path, self.request, property_reader=lambda _: {
+                "ProductName": "Nextec-Connect", "ProductVersion": "2.0.3.0"
+            })
+            for invalid in ("2.0.3.1", "2.0.3.00", "2.0.30", "2.0.4.0"):
+                with self.subTest(version=invalid), self.assertRaisesRegex(ValueError, "ProductVersion"):
+                    signer.inspect_msi(path, self.request, property_reader=lambda _: {
+                        "ProductName": "Nextec-Connect", "ProductVersion": invalid
+                    })
             with self.assertRaisesRegex(ValueError, "ProductVersion"):
                 signer.inspect_msi(path, self.request, property_reader=lambda _: {
                     "ProductName": "Nextec-Connect", "ProductVersion": "2.0.4"

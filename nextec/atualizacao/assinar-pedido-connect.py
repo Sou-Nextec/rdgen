@@ -205,7 +205,9 @@ def inspect_msi(msi_path, request, *, property_reader=read_msi_properties):
     properties = property_reader(path)
     if properties.get("ProductName") != APP_NAME:
         raise ValueError("O MSI não é o pacote Nextec-Connect esperado.")
-    if properties.get("ProductVersion") != request["versao"]:
+    # WiX generated packages append a zero revision to the semantic release.
+    # Accept only that exact representation, never arbitrary version prefixes.
+    if properties.get("ProductVersion") not in (request["versao"], request["versao"] + ".0"):
         raise ValueError("ProductVersion do MSI não corresponde à versão pedida.")
     return {"sha256": digest.hexdigest(), "tamanho": size}
 

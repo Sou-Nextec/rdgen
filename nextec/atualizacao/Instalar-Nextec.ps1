@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Instala e mantém atualizado o app de acesso remoto da Nextec (RustDesk personalizado).
 
@@ -38,6 +38,7 @@ param(
   [switch]$Forcar,
   [switch]$SoVerificar,
   [switch]$Registrar,
+  [switch]$Remover,
   [switch]$Silencioso
 )
 
@@ -135,15 +136,115 @@ function Escrever([string]$msg) {
   if (-not $Silencioso) { Write-Host $linha }
 }
 
-function IdDoRustDesk {
-  try {
-    $svc = Get-CimInstance Win32_Service -ErrorAction Stop | Where-Object { $_.PathName -match '--service' -and $_.PathName -match 'Program Files' } | Select-Object -First 1
-    if ($svc -and $svc.PathName -match '^"([^"]+)"') {
-      $saida = & $Matches[1] --get-id 2>&1 | Out-String
-      if ($saida -match '(\d{6,})') { return $Matches[1] }
+function Get-NextecServiceExecutablePath {
+  param([Parameter(Mandatory)]$Service)
+
+  $commandLine = [string]$Service.PathName
+  if ($commandLine -notmatch '(?i)(?:^|\s)--service(?:\s|$)') { return $null }
+  if ($commandLine -match '^\s*"([^"]+\.exe)"(?=\s|$)') { return $Matches[1] }
+  if ($commandLine -match '^\s*(.+?\.exe)(?=\s|$)') { return $Matches[1].Trim('"') }
+  return $null
+}
+
+function Get-NextecServiceProfileRoot {
+  param(
+    [Parameter(Mandatory)][string]$ServiceAccount,
+    [string]$WindowsDirectory = $env:WinDir,
+    [string]$ProfileRootBase
+  )
+
+  $account = $ServiceAccount.Trim().ToLowerInvariant()
+  if ($account -match '^(localservice|nt authority\\localservice)$') {
+    if ($ProfileRootBase) { return (Join-Path $ProfileRootBase 'LocalService\AppData\Roaming') }
+    return (Join-Path $WindowsDirectory 'ServiceProfiles\LocalService\AppData\Roaming')
+  }
+  if ($account -match '^(localsystem|nt authority\\system|system)$') {
+    if ($ProfileRootBase) { return (Join-Path $ProfileRootBase 'SystemProfile\AppData\Roaming') }
+    return (Join-Path $WindowsDirectory 'System32\config\systemprofile\AppData\Roaming')
+  }
+  if ($account -match '^(networkservice|nt authority\\networkservice)$') {
+    if ($ProfileRootBase) { return (Join-Path $ProfileRootBase 'NetworkService\AppData\Roaming') }
+    return (Join-Path $WindowsDirectory 'ServiceProfiles\NetworkService\AppData\Roaming')
+  }
+  throw "identity_conflict: conta de serviço não reconhecida ('$ServiceAccount')."
+}
+
+function Get-NextecPeerId {
+  param([Parameter(Mandatory)][string]$ExePath)
+
+  # No Windows, o CLI consulta o IPC do cliente instalado; APPDATA não escolhe o serviço ativo.
+  $output = (& $ExePath --get-id 2>&1 | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0) {
+    throw "identity_conflict: o cliente não conseguiu consultar o ID via IPC (código $LASTEXITCODE)."
+  }
+  $lines = @($output -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  if ($lines.Count -eq 0 -or $lines[-1] -notmatch '^\d{6,}$') {
+    throw 'identity_conflict: o cliente não retornou um PeerId válido via IPC.'
+  }
+  return $lines[-1]
+}
+
+function Get-NextecInstalledClient {
+  [CmdletBinding()]
+  param(
+    [object[]]$Services,
+    [string]$WindowsDirectory = $env:WinDir,
+    [string]$ProfileRootBase,
+    [scriptblock]$PeerIdReader
+  )
+
+  if ($null -eq $Services) {
+    $Services = @(Get-CimInstance -ClassName Win32_Service -ErrorAction Stop)
+  }
+
+  $candidates = @(
+    foreach ($service in $Services) {
+      $exePath = Get-NextecServiceExecutablePath -Service $service
+      if (-not $exePath) { continue }
+      $exeName = [IO.Path]::GetFileNameWithoutExtension($exePath)
+      if ([string]$service.Name -ine $exeName) { continue }
+      if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) { continue }
+      $profile = Get-NextecServiceProfileRoot -ServiceAccount ([string]$service.StartName) -WindowsDirectory $WindowsDirectory -ProfileRootBase $ProfileRootBase
+      $configPath = Join-Path (Join-Path $profile $exeName) 'config'
+      if (-not (Test-Path -LiteralPath $configPath -PathType Container)) { continue }
+      if (@(Get-ChildItem -LiteralPath $configPath -File -Filter '*.toml' -ErrorAction SilentlyContinue).Count -eq 0) { continue }
+      [pscustomobject]@{ Service = $service; ExePath = [IO.Path]::GetFullPath($exePath); ConfigRoot = $configPath }
     }
-  } catch { }
-  return ''
+  )
+
+  if ($candidates.Count -eq 0) {
+    throw 'identity_conflict: nenhum serviço instalado do RustDesk/Nextec foi encontrado.'
+  }
+  if ($candidates.Count -gt 1) {
+    $names = ($candidates | ForEach-Object { [string]$_.Service.Name }) -join ', '
+    throw "identity_conflict: múltiplos serviços/instalações encontrados ($names). Corrija a instalação antes de continuar."
+  }
+
+  $candidate = $candidates[0]
+  $service = $candidate.Service
+  $configRoot = $candidate.ConfigRoot
+
+  if ($PeerIdReader) { $peerId = [string](& $PeerIdReader $service $candidate.ExePath) }
+  else { $peerId = [string](Get-NextecPeerId -ExePath $candidate.ExePath) }
+  if ($peerId -notmatch '^\d{6,}$') { throw 'identity_conflict: PeerId vazio ou inválido.' }
+
+  $version = [Diagnostics.FileVersionInfo]::GetVersionInfo($candidate.ExePath).FileVersion
+  [pscustomobject]@{
+    ExePath = $candidate.ExePath
+    ServiceName = [string]$service.Name
+    ServiceAccount = [string]$service.StartName
+    ConfigRoot = [IO.Path]::GetFullPath($configRoot)
+    PeerId = $peerId
+    ComponentVersion = [string]$version
+  }
+}
+
+function IdDoRustDesk {
+  try { return (Get-NextecInstalledClient).PeerId }
+  catch {
+    if ($_.Exception.Message -eq 'identity_conflict: nenhum serviço instalado do RustDesk/Nextec foi encontrado.') { return '' }
+    throw
+  }
 }
 
 # coloca a máquina no cliente do comando (depois de instalar, o ID demora alguns segundos para existir)
@@ -255,6 +356,12 @@ try {
   $baseUri = [Uri]$UrlBase
   if (-not $baseUri.IsAbsoluteUri -or $baseUri.Scheme -ne 'https' -or $baseUri.Query -or $baseUri.Fragment -or $baseUri.UserInfo -or $UrlBase.Contains('"')) { throw 'Endereço de atualização inválido; use HTTPS.' }
   $UrlBase = $baseUri.AbsoluteUri.TrimEnd('/')
+  if ($Remover) {
+    if ($Registrar -or $SoVerificar) { throw 'Escolha somente Remover.' }
+    Stop-ScheduledTask -TaskName $Tarefa -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskName $Tarefa -Confirm:$false -ErrorAction SilentlyContinue
+    return
+  }
   # Called by EXE/MSI after installing their trusted, bundled updater.
   # Registration must work offline and never download or install another package.
   if ($Registrar) {

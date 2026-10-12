@@ -41,9 +41,14 @@ jobs:
           & ./.github/scripts/test-msi-build.ps1
           python nextec/atualizacao/test_manifest.py -v
           if ($LASTEXITCODE -ne 0) { throw 'Signature tests failed' }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File nextec/atualizacao/test_signing_session.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Local signing session failed' }
+          python nextec/atualizacao/test_assinar_pedido_connect.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'Local signer tests failed' }
           New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'nextec-update') | Out-Null
           Copy-Item nextec/atualizacao/Instalar-Nextec.ps1 (Join-Path $env:RUNNER_TEMP 'nextec-update/Instalar-Nextec.ps1')
           Copy-Item nextec/atualizacao/Agente-Senha-Nextec.ps1 (Join-Path $env:RUNNER_TEMP 'nextec-update/Agente-Senha-Nextec.ps1')
+          Copy-Item nextec/atualizacao/Coordenar-Agente-Nextec.ps1,nextec/atualizacao/Provisionar-Agente-Nextec.ps1 (Join-Path $env:RUNNER_TEMP 'nextec-update')
           $agentHash = (Get-FileHash nextec/atualizacao/Agente-Senha-Nextec.ps1 -Algorithm SHA256).Hash
           $expectedHash = (Select-String -Path nextec/atualizacao/Agente-Senha-Nextec.provenance.txt -Pattern '^vendored file SHA-256: ([a-f0-9]{64})$').Matches.Groups[1].Value
           if (!$expectedHash -or $agentHash -ne $expectedHash) { throw 'Vendored password agent differs from its recorded source hash' }
@@ -134,6 +139,8 @@ jobs:
           bash -n nextec/atualizacao/empacotar-deb-atualizador.sh
           bash nextec/atualizacao/empacotar-deb-atualizador.sh "$RUNNER_TEMP/nextec-connect-test.deb" nextec/atualizacao Nextec-Connect
           python3 nextec/atualizacao/test_agente_senha_linux.py -v
+          python3 nextec/atualizacao/test_coordenador_agente_linux.py -v
+          python3 nextec/atualizacao/test_assinar_pedido_connect.py -v
           test "$(dpkg-deb -f "$RUNNER_TEMP/nextec-connect-test.deb" Package)" = "nextec-connect"
           dpkg-deb -f "$RUNNER_TEMP/nextec-connect-test.deb" Depends | grep -q python3
           extracted="$RUNNER_TEMP/nextec-deb-extracted"
@@ -141,6 +148,11 @@ jobs:
           dpkg-deb -R "$RUNNER_TEMP/nextec-connect-test.deb" "$extracted"
           test -x "$extracted/usr/lib/nextec-connect/atualizador-linux.py"
           test -x "$extracted/usr/lib/nextec-connect/agente-senha-linux.py"
+          test -x "$extracted/usr/lib/nextec-connect/coordenador-agente-nextec-linux.py"
+          test -f "$extracted/usr/lib/systemd/system/nextec-agent-bootstrap.service"
+          test -f "$extracted/usr/lib/systemd/system/nextec-agent-bootstrap.timer"
+          grep -q 'enable --now nextec-agent-bootstrap.timer' "$extracted/DEBIAN/postinst"
+          grep -q 'disable --now nextec-agent-bootstrap.timer nextec-agent-bootstrap.service' "$extracted/DEBIAN/prerm"
           cmp nextec/atualizacao/agente-senha-linux.py "$extracted/usr/lib/nextec-connect/agente-senha-linux.py"
           test -f "$extracted/usr/lib/systemd/system/nextec-connect-update.service"
           test -f "$extracted/usr/lib/systemd/system/nextec-connect-update.timer"

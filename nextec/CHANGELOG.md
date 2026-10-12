@@ -1,5 +1,12 @@
 # Gerador Nextec
 
+## 2.0.9
+
+- Coordenador de ativação por máquina incorporado no MSI/EXE instalado e no DEB; cadastro inicial usa autorização de 15 minutos, sem credencial global no pacote.
+- Tarefas SYSTEM e timers systemd de gerenciamento, reparo sem mudar identidade e remoção de tarefas na desinstalação verdadeira.
+- Assinador local por duplo clique: chave cifrada, senha em memória por 15 minutos e conferência dos pacotes antes de assinar.
+- Download autenticado do assistente e regressões de recuperação, chave sem cifra, encerramento abrupto e identidade.
+
 ## 2.0.8
 
 - Gerencia logos separados para tema claro e escuro e inclui ambos nos builds Windows e Linux; o cliente alterna a arte conforme o tema.

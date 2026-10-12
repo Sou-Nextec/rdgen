@@ -38,6 +38,16 @@ try {
     }
     $task = Get-ScheduledTask -TaskName 'Nextec Acesso - Atualizacao' -ErrorAction Stop
     if ($task.Principal.UserId -notin @('SYSTEM','S-1-5-18') -or $task.Triggers[0].RandomDelay -ne 'PT2H') { throw 'Updater task is not correctly configured' }
+    $coordinator = Get-ScheduledTask -TaskName 'Nextec Acesso - Cadastro de agente' -ErrorAction Stop
+    if ($coordinator.Principal.UserId -notin @('SYSTEM','S-1-5-18') -or $coordinator.Triggers[0].Repetition.Interval -ne 'PT5M') { throw 'Coordinator task not registered as SYSTEM every five minutes' }
+    $root = Join-Path $env:ProgramData 'Nextec/Acesso'
+    foreach ($component in @('Coordenar-Agente-Nextec.ps1','Provisionar-Agente-Nextec.ps1','Agente-Senha-Nextec.ps1')) {
+        $path = Join-Path $root $component
+        if (!(Test-Path -LiteralPath $path)) { throw "Installed management component absent: $component" }
+        foreach ($entry in (Get-NextecAclEntries -Acl (Get-Acl -LiteralPath $path))) {
+            if ($entry.AccessControlType -eq 'Allow' -and $entry.IdentityReference.Value -notin @('S-1-5-18','S-1-5-32-544')) { throw "Unexpected access to SYSTEM component: $component" }
+        }
+    }
     $agents = @(Get-ChildItem -LiteralPath $env:ProgramFiles -Filter 'Agente-Senha-Nextec.ps1' -File -Recurse -ErrorAction SilentlyContinue)
     if ($agents.Count -ne 1) { throw "Expected one installed password agent payload, found $($agents.Count)" }
     $agentPath = $agents[0].FullName
@@ -70,6 +80,8 @@ try {
 } finally {
     $p = Start-Process msiexec.exe -ArgumentList "/x `"$msi`" /qn /norestart /l*v `"$uninstallLog`"" -Wait -PassThru -WindowStyle Hidden
     if ($p.ExitCode -notin @(0,3010)) { throw "Uninstall failed: $($p.ExitCode)" }
-    Unregister-ScheduledTask -TaskName 'Nextec Acesso - Atualizacao' -Confirm:$false -ErrorAction SilentlyContinue
+    foreach ($taskName in @('Nextec Acesso - Atualizacao','Nextec Acesso - Cadastro de agente','Nextec Acesso - Senha')) {
+        if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) { throw "Uninstall left scheduled task: $taskName" }
+    }
     if ($agentPath -and (Test-Path -LiteralPath $agentPath)) { throw 'MSI uninstall left the password agent payload behind' }
 }

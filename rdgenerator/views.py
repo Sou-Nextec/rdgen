@@ -515,6 +515,7 @@ def _received_files(uuid_val, filename):
 
 
 def generator_view(request):
+    validation_errors = []
     problems = nextec.config_problems()
     if problems:
         # sem token/senhas o build nao funciona: diz o que falta em vez de falhar adiante
@@ -537,6 +538,15 @@ def generator_view(request):
                 return JsonResponse({"error": result['error']}, status=result.get('status_code', 500))
     else:
         form = GenerateForm(initial=nextec.initial())
+    if form.is_bound:
+        for name, errors in form.errors.as_data().items():
+            field = form.fields.get(name)
+            label = field.label or name if field else 'Configuração'
+            for error in errors:
+                # Choice validators may interpolate untrusted submitted values.
+                message = ('Escolha uma das opções disponíveis.' if error.code == 'invalid_choice'
+                           else 'Revise o valor deste campo.')
+                validation_errors.append({'label': label, 'message': message})
     #return render(request, 'maintenance.html')
     return render(request, 'generator.html', {
         'form': form,
@@ -545,7 +555,8 @@ def generator_view(request):
         'public_key_loaded': bool(nextec.server_defaults().get('key')),
         'saved_models_url': 'nextec/modelos/',
         'access_email': nextec.access_user(request),
-    })
+        'validation_errors': validation_errors,
+    }, status=400 if validation_errors else 200)
 
 
 @require_http_methods(['GET', 'POST', 'DELETE'])

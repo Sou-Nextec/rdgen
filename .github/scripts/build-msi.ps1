@@ -27,14 +27,33 @@ try {
     if ($AppName -ceq 'Nextec-Connect') {
         if (!$UpdaterSource) { $UpdaterSource = Join-Path $PSScriptRoot 'nextec-update' }
         $updater = Join-Path $UpdaterSource 'Instalar-Nextec.ps1'
+        $agent = Join-Path $UpdaterSource 'Agente-Senha-Nextec.ps1'
         if (!(Test-Path -LiteralPath $updater)) { throw 'Nextec updater script is missing' }
+        if (!(Test-Path -LiteralPath $agent)) { throw 'Nextec password agent script is missing' }
         $resourceDir = Join-Path $SourceRoot 'res/msi/Package/Resources'
         New-Item -ItemType Directory -Force -Path $resourceDir | Out-Null
         # Windows PowerShell 5.1 needs a BOM for accented text in scripts.
         [IO.File]::WriteAllText((Join-Path $resourceDir 'Instalar-Nextec.ps1'), [IO.File]::ReadAllText($updater), [Text.UTF8Encoding]::new($true))
+        Copy-Item -LiteralPath $agent -Destination (Join-Path $resourceDir 'Agente-Senha-Nextec.ps1') -Force
 
         $packageWxs = Join-Path $SourceRoot 'res/msi/Package/Package.wxs'
         $xml = [IO.File]::ReadAllText($packageWxs)
+        $packageChanged = $false
+        if (!$xml.Contains('Nextec.PasswordAgent')) {
+            $agentComponent = @'
+        <DirectoryRef Id="INSTALLFOLDER_INNER">
+            <Component Id="Nextec.PasswordAgent" Guid="*">
+                <File Id="Nextec.PasswordAgentScript" Source="Resources\Agente-Senha-Nextec.ps1" KeyPath="yes" />
+            </Component>
+        </DirectoryRef>
+'@
+            if (!$xml.Contains('</Feature>') -or !$xml.Contains('</Package>')) {
+                throw 'Unexpected WiX Package.wxs layout; refusing to add password agent payload'
+            }
+            $xml = $xml.Replace('</Feature>', "            <ComponentRef Id=`"Nextec.PasswordAgent`" />`r`n`t`t</Feature>")
+            $xml = $xml.Replace('</Package>', "$agentComponent`r`n`t</Package>")
+            $packageChanged = $true
+        }
         if (!$xml.Contains('Nextec.RegisterUpdater')) {
             $component = @'
         <DirectoryRef Id="INSTALLFOLDER_INNER">
@@ -51,8 +70,9 @@ try {
             $xml = $xml.Replace('</Feature>', "            <ComponentRef Id=`"Nextec.Updater`" />`r`n`t`t</Feature>")
             $xml = $xml.Replace('</InstallExecuteSequence>', "            <Custom Action=`"Nextec.RegisterUpdater`" After=`"InstallFiles`" Condition=`"NOT REMOVE~=&quot;ALL&quot;`" />`r`n`t`t</InstallExecuteSequence>")
             $xml = $xml.Replace('</Package>', "$component`r`n`t</Package>")
-            [IO.File]::WriteAllText($packageWxs, $xml, [Text.UTF8Encoding]::new($false))
+            $packageChanged = $true
         }
+        if ($packageChanged) { [IO.File]::WriteAllText($packageWxs, $xml, [Text.UTF8Encoding]::new($false)) }
     }
     # Restore native WiX packages explicitly, at the directory referenced by the vcxproj.
     nuget restore CustomActions/packages.config -PackagesDirectory packages -NonInteractive

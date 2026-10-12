@@ -1,0 +1,12 @@
+[Unit]
+Description=Verificação de rotação da senha permanente do Nextec Connect
+ConditionPathExists=/var/lib/nextec-connect/agent-config.json
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=nextec-connect-agent.service
+
+[Install]
+WantedBy=timers.target

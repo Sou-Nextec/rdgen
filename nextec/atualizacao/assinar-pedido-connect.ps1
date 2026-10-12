@@ -38,10 +38,15 @@ function Invoke-ConnectSigner([string]$RequestPath, [string]$MsiPath, [string]$A
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = $startInfo
     $script:signerProcess = $process
+    $originalInputEncoding = [Console]::InputEncoding
     try {
+        # Process.Start creates the redirected StandardInput StreamWriter using
+        # Console.InputEncoding on Windows PowerShell 5.1. Pin it before Start
+        # so its preamble is UTF-8 without a BOM, independent of the console page.
+        [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
         if (-not $process.Start()) { throw 'Não foi possível iniciar o assinador local.' }
         Write-ConnectSigningPassphrase -Process $process -Passphrase $securePassphrase
-        $process.StandardInput.Close()
+        $process.StandardInput.BaseStream.Close()
         $remaining = [int][Math]::Floor(([TimeSpan]::FromMinutes(15) - $sessionClock.Elapsed).TotalMilliseconds)
         if ($remaining -le 0 -or -not $process.WaitForExit($remaining)) {
             Stop-ConnectProcessTree -Process $process
@@ -49,10 +54,10 @@ function Invoke-ConnectSigner([string]$RequestPath, [string]$MsiPath, [string]$A
         }
         if ($process.ExitCode -ne 0) { throw "O assinador recusou o pedido ou falhou (código $($process.ExitCode))." }
     } finally {
-        try { $process.StandardInput.Close() } catch {}
+        try { $process.StandardInput.BaseStream.Close() } catch {}
         try { if (-not $process.HasExited) { Stop-ConnectProcessTree -Process $process } } catch {}
         $script:signerProcess = $null
-        $process.Dispose()
+        try { $process.Dispose() } finally { [Console]::InputEncoding = $originalInputEncoding }
     }
 }
 

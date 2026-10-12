@@ -52,35 +52,51 @@ Assert-Equal $disposedSecret $true 'O tick de expiração não descartou o segre
 $timer.Stop(); $timer.Dispose()
 Assert-Equal $timer.Disposed $true 'O timer fake não foi descartado'
 
-$secretText = 'Nextec-çã漢字-' + [guid]::NewGuid().ToString('N')
+$secretText = 'Nextec-' + [char]0x00e7 + [char]0x00e3 + [char]0x6f22 + [char]0x5b57 + '-' + [guid]::NewGuid().ToString('N')
 $secure = ConvertTo-SecureString $secretText -AsPlainText -Force
-$child = New-Object System.Diagnostics.Process
-$startInfo = New-Object System.Diagnostics.ProcessStartInfo
-$startInfo.FileName = (Get-Command powershell.exe).Source
-$childScript = '$bytes=New-Object byte[] 512; $count=[Console]::OpenStandardInput().Read($bytes,0,$bytes.Length); $value=[Text.Encoding]::UTF8.GetString($bytes,0,$count).TrimEnd([char]10,[char]13); $sha=[Security.Cryptography.SHA256]::Create(); $digest=[BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($value))).Replace(''-'',''''); [Console]::Out.WriteLine($digest)'
-$startInfo.Arguments = '-NoProfile -Command "' + $childScript + '"'
-$startInfo.UseShellExecute = $false
-$startInfo.RedirectStandardInput = $true
-$startInfo.RedirectStandardOutput = $true
-$startInfo.RedirectStandardError = $true
-$child.StartInfo = $startInfo
+$originalInputEncoding = [Console]::InputEncoding
+$powershell51 = (Get-Command powershell.exe).Source
+$expectedHash = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($secretText))).Replace('-', '')
+$expectedPayload = "$([Text.Encoding]::UTF8.GetByteCount($secretText)):$expectedHash"
 try {
-    [void]$child.Start()
-    $argsForSigner = Get-ConnectSignerArguments -Helper 'helper.py' -Pedido 'pedido.json' -Msi 'release.msi' -Chave 'encrypted-key.pem' -SaidaRoot 'releases'
-    if (($argsForSigner -join ' ') -match [regex]::Escape($secretText)) { throw 'Senha apareceu nos argumentos' }
-    Write-ConnectSigningPassphrase -Process $child -Passphrase $secure
-    $child.StandardInput.Close()
-    $child.WaitForExit()
-    Assert-Equal $child.ExitCode 0 'O processo de teste de stdin falhou'
-    $output = $child.StandardOutput.ReadToEnd().Trim()
-    $childError = $child.StandardError.ReadToEnd()
-    $expectedHash = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($secretText))).Replace('-', '')
-    Assert-Equal $output $expectedHash 'O processo não recebeu a senha Unicode em UTF-8 pelo stdin'
-    if (($output + $childError) -match [regex]::Escape($secretText)) { throw 'Senha apareceu em stdout/stderr' }
-    if ($startInfo.Arguments -match [regex]::Escape($secretText)) { throw 'Senha apareceu na linha de comando' }
-    Write-Output 'OK: PowerShell 5.1, expiração, timer, descarte e senha Unicode somente em SecureString/stdin UTF-8'
+    foreach ($codePage in @(437, 65001)) {
+        [Console]::InputEncoding = [Text.Encoding]::GetEncoding($codePage)
+        $child = New-Object System.Diagnostics.Process
+        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $startInfo.FileName = $powershell51
+        $childScript = '$inputStream=[Console]::OpenStandardInput(); $buffer=New-Object byte[] 64; $memory=New-Object IO.MemoryStream; while(($read=$inputStream.Read($buffer,0,$buffer.Length)) -gt 0){$memory.Write($buffer,0,$read)}; $bytes=$memory.ToArray(); $length=$bytes.Length; if($length -gt 0 -and $bytes[$length-1] -eq 10){$length--}; $payload=New-Object byte[] $length; [Array]::Copy($bytes,$payload,$length); $sha=[Security.Cryptography.SHA256]::Create(); $digest=[BitConverter]::ToString($sha.ComputeHash($payload)).Replace(''-'',''''); [Console]::Out.WriteLine(([string]$length + '':'' + $digest))'
+        $startInfo.Arguments = '-NoProfile -Command "' + $childScript + '"'
+        $startInfo.UseShellExecute = $false
+        $startInfo.RedirectStandardInput = $true
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $true
+        $child.StartInfo = $startInfo
+        $testOriginalInputEncoding = [Console]::InputEncoding
+        try {
+            # Mirror production: Process.Start creates its redirected writer
+            # from this setting. The ambient page above varies in each case.
+            [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
+            [void]$child.Start()
+            $argsForSigner = Get-ConnectSignerArguments -Helper 'helper.py' -Pedido 'pedido.json' -Msi 'release.msi' -Chave 'encrypted-key.pem' -SaidaRoot 'releases'
+            if (($argsForSigner -join ' ') -match [regex]::Escape($secretText)) { throw 'Senha apareceu nos argumentos' }
+            Write-ConnectSigningPassphrase -Process $child -Passphrase $secure
+            $child.StandardInput.BaseStream.Close()
+            $child.WaitForExit()
+            $output = $child.StandardOutput.ReadToEnd().Trim()
+            $childError = $child.StandardError.ReadToEnd()
+            Assert-Equal $child.ExitCode 0 "O processo de teste de stdin falhou: $childError"
+            Assert-Equal $output $expectedPayload "A senha UTF-8 mudou com o code page $codePage"
+            if (($output + $childError) -match [regex]::Escape($secretText)) { throw 'Senha apareceu em stdout/stderr' }
+            if ($startInfo.Arguments -match [regex]::Escape($secretText)) { throw 'Senha apareceu na linha de comando' }
+        } finally {
+            if (-not $child.HasExited) { $child.Kill(); $child.WaitForExit() }
+            $child.Dispose()
+            [Console]::InputEncoding = $testOriginalInputEncoding
+        }
+    }
+    Write-Output 'OK: PowerShell 5.1, expiração, timer, descarte e senha Unicode em stdin UTF-8 sob CP437 e UTF-8'
 } finally {
     if ($null -ne $secure) { $secure.Dispose() }
-    $child.Dispose()
+    [Console]::InputEncoding = $originalInputEncoding
 }
 

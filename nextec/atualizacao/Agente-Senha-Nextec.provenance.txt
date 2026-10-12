@@ -1,5 +1,5 @@
 Source: https://github.com/Sou-Nextec/rustdesk-api-web
 Commit: 0cb244cb8b89d51e1ccb0fb8e37113f98072c5ef
 Path: nextec/atualizacao/Agente-Senha-Nextec.ps1
-SHA256: 8af22f4911ed97bf4d76100216e2ee9ef66edd1fc9cef037aec9d9ec0bae54a8
+vendored file SHA-256: 8af22f4911ed97bf4d76100216e2ee9ef66edd1fc9cef037aec9d9ec0bae54a8
 State: transaction_v1 agent, protected journal; registration still requires authorized provisioning.

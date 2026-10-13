@@ -119,6 +119,11 @@ try {
     if ($actualHash -ne $expectedHash) { throw 'MSI resource differs from the reviewed password agent source' }
     if (!$xmlText.Contains('Source="Resources\inscricao.json"')) { throw 'Enrollment component must point to inscricao.json' }
     if ($xmlText.Contains($enrollKey)) { throw 'Enrollment key must never be embedded in Package.wxs or a custom action' }
+    # O agente vai em qualquer app cujo nome termine em Nextec-Connect (ex.: Client-Nextec-Connect), nao so no nome exato.
+    $gate = [regex]::Match([IO.File]::ReadAllText($buildScript), "if \(\`$AppName -imatch '([^']+)'\)").Groups[1].Value
+    if (!$gate) { throw 'Nextec payload gate not found in build-msi.ps1' }
+    foreach ($n in @('Nextec-Connect', 'Client-Nextec-Connect')) { if ($n -notmatch $gate) { throw "Nextec payload gate rejects $n" } }
+    foreach ($n in @('Suporte Nextec', 'Nextec-Connect-Old', 'RustDesk')) { if ($n -match $gate) { throw "Nextec payload gate accepts $n" } }
     Write-Output 'PASS: repeatable WiX payload registration, exact inert agent resource, enrollment file separate from script hashes, warning without key'
 } finally {
     Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue

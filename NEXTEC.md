@@ -193,3 +193,9 @@ Não trocar o healthcheck para esconder a falta de configuração. SECRET_KEY va
 `atualizar-servidor.sh` atualiza o rdgen **antigo** (fora da stack) por cron. Fica obsoleto quando o servidor antigo for
 desligado; pode ser removido.
 
+
+## Gerador simplificado e exclusão de itens (13/10/2026)
+
+- `generator.html`: modo simples por padrão (plataforma, nome do instalador e do app, cliente, versão do pacote, ícone, notas); servidor, segurança, aparência, permissões e modelos ficam em "Avançado", recolhido. Erro em campo avançado abre a seção e aparece no campo. Nenhum campo exigido pelo build foi removido.
+- Exclusão: `DELETE /nextec/geracoes/<uuid>/excluir/` e `POST /nextec/geracoes/excluir/` (`{"uuids": [...]}` ou `{"scope": "failed"}`). Exige identidade do Access e o cabeçalho `X-Nextec-Acao: excluir`. Recusa item em andamento (409 `in_progress`) e item já baixado para Atualizações sem `?confirmar=1` / `confirm_imported` (409 `imported`). Apaga só `exe/<uuid>`, `png/<uuid>` e `temp_zips/secrets_<uuid>.zip`; registra no logger `rdgenerator.audit`.
+- Migração 0006 (`imported_at`): rode `python manage.py migrate` ao atualizar.

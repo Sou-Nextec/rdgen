@@ -526,8 +526,15 @@ def _received_files(uuid_val, filename):
             and _safe_parts(uuid_val, path.name)]
 
 
+# Campos do bloco principal; um erro fora deles abre a seção Avançado.
+SIMPLE_FIELDS = {'exename', 'appname', 'client_name', 'package_version', 'profile', 'iconfile', 'notes', 'platform'}
+# Mensagens destes campos são fixas em português (nunca ecoam o valor enviado).
+SAFE_MESSAGE_FIELDS = {'exename', 'appname', 'serverPort', 'key', 'iconfile', 'compname'}
+
+
 def generator_view(request):
     validation_errors = []
+    field_errors = {}
     problems = nextec.config_problems()
     if problems:
         # sem token/senhas o build nao funciona: diz o que falta em vez de falhar adiante
@@ -560,6 +567,8 @@ def generator_view(request):
                 message = ('Escolha uma das opções disponíveis.' if error.code == 'invalid_choice'
                            else 'Revise o valor deste campo.')
                 validation_errors.append({'label': label, 'message': message})
+                field_errors.setdefault(name, message if error.code == 'invalid_choice' else (
+                    error.message if name in SAFE_MESSAGE_FIELDS and '%' not in str(error.message) else message))
     #return render(request, 'maintenance.html')
     return render(request, 'generator.html', {
         'form': form,
@@ -570,6 +579,8 @@ def generator_view(request):
         'access_email': nextec.access_user(request),
         'enrollment_warning': nextec.enrollment_warning(nextec.server_defaults().get('apiServer', '')) if nextec.is_configured() else '',
         'validation_errors': validation_errors,
+        'field_errors': field_errors,
+        'advanced_open': bool(set(field_errors) - SIMPLE_FIELDS),
     }, status=400 if validation_errors else 200)
 
 

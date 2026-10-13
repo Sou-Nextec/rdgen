@@ -64,6 +64,11 @@ try {
         if ($enrollment.v -ne 1 -or $enrollment.chave -ne $EnrollmentKey -or $enrollment.painel -ne $EnrollmentPanel) { throw 'Installed enrollment file content differs from the build input' }
         $install = [IO.File]::ReadAllText($log)
         if ($install.Contains($EnrollmentKey)) { throw 'Enrollment key leaked to the installation log' }
+        # Integrado: o Provisionar INSTALADO le a chave do inscricao.json INSTALADO e faz o POST self-enroll (painel falso local).
+        $integrated = Join-Path $PSScriptRoot '../../nextec/atualizacao/test_self_enroll_installed.ps1'
+        $integratedOutput = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $integrated -InstallDir (Split-Path -Parent $agentPath) 2>&1 | Out-String)
+        if ($LASTEXITCODE -ne 0 -or $integratedOutput -notmatch 'PASS: installed self-enrollment') { throw "Installed self-enrollment integration test failed: $integratedOutput" }
+        if ($integratedOutput.Contains($EnrollmentKey)) { throw 'Enrollment key leaked to integration test output' }
     } elseif (Test-Path -LiteralPath $enrollmentPath) {
         throw 'inscricao.json must not be installed when the build had no enrollment key'
     }

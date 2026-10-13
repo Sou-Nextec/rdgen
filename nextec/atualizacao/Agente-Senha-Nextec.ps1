@@ -307,6 +307,19 @@ function Confirm-NextecOperation([psobject]$Cfg, [psobject]$Operation, [string]$
 function Invoke-NextecPasswordCycle([psobject]$Cfg) {
   $token = Revelar $Cfg.token
   $state = Chamar '/api/nextec/agent/sync' @{id=$Cfg.id;token=$token;capabilities=@('transaction_v1')}
+  if ($state.pending_approval -and -not $state.managed) {
+    # Inscricao global: a maquina ja esta no painel, mas ainda sem atribuicao. Nunca rotaciona.
+    if ($Cfg.enrollment_state -ne 'pending_approval') {
+      Set-NextecStateValue $Cfg 'enrollment_state' 'pending_approval'
+      Save-NextecAgentState $Cfg
+    }
+    Escrever 'Aguardando atribuicao no painel; nenhuma senha foi aplicada.'
+    return
+  }
+  if ($Cfg.enrollment_state) {
+    Set-NextecStateValue $Cfg 'enrollment_state' $null
+    Save-NextecAgentState $Cfg
+  }
   if (-not $state.transaction_v1 -and $Cfg.protocol_version -eq 1) {
     throw 'protocol_downgrade: o painel nao suporta o protocolo de senha ja negociado.'
   }

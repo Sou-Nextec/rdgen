@@ -1,4 +1,4 @@
-#requires -version 5.1
+﻿#requires -version 5.1
 [CmdletBinding()]
 param(
   [switch]$Registrar,
@@ -71,6 +71,15 @@ function Register-NextecCoordinatorTask {
     [pscustomobject]@{ Source=$workerSource; Destination=$workerPath }
     [pscustomobject]@{ Source=$agentSource; Destination=$agentPath }
   )
+  # inscricao.json (MSI global) e opcional: so entra na copia quando existe na origem.
+  $enrollSource = Join-Path $SourceRoot 'inscricao.json'
+  $enrollPath = Join-Path $Root 'inscricao.json'
+  $hasEnrollment = Test-Path -LiteralPath $enrollSource -PathType Leaf
+  if ($hasEnrollment) {
+    Assert-NextecCoordinatorPath -Path $enrollSource
+    if ((Get-Item -LiteralPath $enrollSource -Force).Length -gt 4096) { throw 'invalid_input' }
+    $pairs = @($pairs) + @([pscustomobject]@{ Source=$enrollSource; Destination=$enrollPath })
+  }
   foreach ($pair in $pairs) {
     $source = $pair.Source
     if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw 'component_missing' }

@@ -83,7 +83,7 @@ jobs:
           VERSION: master
           # chave de TESTE (nao e segredo): prova que o inscricao.json entra no pacote
           enroll_key: nx1.1790000000.TesteSomenteCiAbCdEf0123456789
-          enroll_panel: https://painel.teste.exemplo
+          enroll_panel: https://painel-remoto.nex.tec.br
         run: |
           & ./.github/scripts/build-msi.ps1 -AppName Nextec-Connect -PackageVersion 2.0.7 -SourceRoot "$PWD/source" -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
           $file = 'source/SignOutput/rustdesk.msi'
@@ -110,7 +110,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'EXE wrapper did not preserve the tested MSI and agent payload' }
       - name: Instalar e reparar de verdade no Windows Server 2022 isolado
         shell: pwsh
-        run: ./.github/scripts/test-msi-install.ps1 -MsiPath source/SignOutput/rustdesk.msi -AgentSha256 $env:NEXTEC_AGENT_SHA256 -EnrollmentKey nx1.1790000000.TesteSomenteCiAbCdEf0123456789 -EnrollmentPanel https://painel.teste.exemplo
+        run: ./.github/scripts/test-msi-install.ps1 -MsiPath source/SignOutput/rustdesk.msi -AgentSha256 $env:NEXTEC_AGENT_SHA256 -EnrollmentKey nx1.1790000000.TesteSomenteCiAbCdEf0123456789 -EnrollmentPanel https://painel-remoto.nex.tec.br
       - name: Guardar logs de instalação para diagnóstico
         if: always()
         uses: actions/upload-artifact@v4
@@ -162,16 +162,21 @@ jobs:
           out=$(enroll_key= enroll_panel= bash nextec/atualizacao/inscricao-linux.sh gerar "$RUNNER_TEMP/sem.json")
           echo "$out" | grep -q 'SEM inscricao.json'
           test ! -e "$RUNNER_TEMP/sem.json"
-          out=$(enroll_key="$key" enroll_panel=https://painel.teste.exemplo bash nextec/atualizacao/inscricao-linux.sh gerar "$RUNNER_TEMP/inscricao.json")
+          out=$(enroll_key="$key" enroll_panel=https://painel-remoto.nex.tec.br bash nextec/atualizacao/inscricao-linux.sh gerar "$RUNNER_TEMP/inscricao.json")
           ! echo "$out" | grep -qF "$key"
           out=$(bash nextec/atualizacao/inscricao-linux.sh incorporar "$RUNNER_TEMP/nextec-connect-test.deb" "$RUNNER_TEMP/inscricao.json")
           ! echo "$out" | grep -qF "$key"
           after="$RUNNER_TEMP/nextec-deb-enroll"
           mkdir -p "$after"
           dpkg-deb -R "$RUNNER_TEMP/nextec-connect-test.deb" "$after"
-          test "$(stat -c %a "$after/etc/nextec/inscricao.json")" = 600
-          grep -qF "$key" "$after/etc/nextec/inscricao.json"
-          grep -qF '"painel":"https://painel.teste.exemplo"' "$after/etc/nextec/inscricao.json"
+          test ! -e "$after/etc/nextec/inscricao.json"
+          # fonte lida pelo coordenador: ao lado dele, root:root 0600
+          test "$(stat -c %a "$after/usr/lib/nextec-connect/inscricao.json")" = 600
+          dpkg-deb --contents "$RUNNER_TEMP/nextec-connect-test.deb" | grep "usr/lib/nextec-connect/inscricao.json" | grep -q "^-rw------- root/root"
+          NEXTEC_TEST_DEB="$RUNNER_TEMP/nextec-connect-test.deb" NEXTEC_TEST_KEY="$key" python3 nextec/atualizacao/test_inscricao_deb_linux.py -v
+          python3 nextec/atualizacao/test_inscricao_global_linux.py -v
+          grep -qF "$key" "$after/usr/lib/nextec-connect/inscricao.json"
+          grep -qF '"painel":"https://painel-remoto.nex.tec.br"' "$after/usr/lib/nextec-connect/inscricao.json"
           test -x "$after/usr/lib/nextec-connect/atualizador-linux.py"
           cmp "$extracted/usr/lib/nextec-connect/agente-senha-linux.py" "$after/usr/lib/nextec-connect/agente-senha-linux.py"
           cmp "$extracted/usr/lib/nextec-connect/coordenador-agente-nextec-linux.py" "$after/usr/lib/nextec-connect/coordenador-agente-nextec-linux.py"

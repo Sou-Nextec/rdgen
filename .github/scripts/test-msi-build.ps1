@@ -77,6 +77,15 @@ try {
     foreach ($name in $scriptNames) {
         if ((Get-FileHash -LiteralPath (Join-Path $resourceDir $name) -Algorithm SHA256).Hash -ne $hashesBefore[$name]) { throw "Script hash changed by enrollment: $name" }
     }
+    # Os componentes empacotados sao exatamente as fontes revisadas (inclusive Coordenar/Provisionar).
+    foreach ($name in $scriptNames) {
+        if ((Get-FileHash -LiteralPath (Join-Path $resourceDir $name) -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath (Join-Path $updaterSource $name) -Algorithm SHA256).Hash) { throw "MSI resource differs from the reviewed source: $name" }
+    }
+    # Integrado: o Provisionar empacotado le a chave do inscricao.json empacotado e faz o POST self-enroll.
+    $integrated = Join-Path $updaterSource 'test_self_enroll_installed.ps1'
+    $integratedOutput = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $integrated -InstallDir $resourceDir 2>&1 | Out-String)
+    if ($LASTEXITCODE -ne 0 -or $integratedOutput -notmatch 'PASS: installed self-enrollment') { throw "Packaged self-enrollment integration test failed: $integratedOutput" }
+    if ($integratedOutput.Contains($enrollKey)) { throw 'Enrollment key leaked to integration test output' }
     # Chave mal formada e recusada sem repetir o valor.
     $env:enroll_key = 'nx1.1.curta'; $env:enroll_panel = $enrollPanel
     $rejected = $false

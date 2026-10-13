@@ -9,7 +9,10 @@ TMP_DIR=''
 cleanup() { [[ -z "$TMP_DIR" ]] || rm -rf -- "$TMP_DIR"; }
 trap cleanup EXIT
 
-DEST_DIR=/etc/nextec
+# Fonte que o coordenador Linux realmente le (INSCRICAO_SOURCE = ao lado do script); ele copia depois
+# para /var/lib/nextec-connect/inscricao.json. So existe no .deb do Nextec-Connect.
+DEST_DIR=/usr/lib/nextec-connect
+COORDINATOR=coordenador-agente-nextec-linux.py
 DEST_NAME=inscricao.json
 KEY_RE='^nx1\.[0-9]{1,12}\.[A-Za-z0-9_-]{16,128}$'
 PANEL_RE='^https?://[]A-Za-z0-9._:[-]+(/[A-Za-z0-9._~%/-]*)?$'
@@ -43,11 +46,15 @@ incorporar() {
   TMP_DIR=$(mktemp -d)
   local tmp=$TMP_DIR
   dpkg-deb -R "$deb" "$tmp/root"
+  if [[ ! -f "$tmp/root$DEST_DIR/$COORDINATOR" ]]; then
+    echo "::warning title=Pacote sem inscricao automatica::$(basename -- "$deb") nao contem o coordenador Nextec; inscricao.json nao sera instalado."
+    return 0
+  fi
   install -d -m 0755 "$tmp/root$DEST_DIR"
   install -m 0600 -- "$json" "$tmp/root$DEST_DIR/$DEST_NAME"
   dpkg-deb -Zxz --build --root-owner-group "$tmp/root" "$tmp/novo.deb"
   mv -- "$tmp/novo.deb" "$deb"
-  echo "Inscricao global incorporada ao pacote ($DEST_DIR/$DEST_NAME, modo 0600)."
+  echo "Inscricao global incorporada ao pacote ($DEST_DIR/$DEST_NAME, root:root 0600)."
 }
 
 case "${1:-}" in

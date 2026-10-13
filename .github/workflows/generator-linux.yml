@@ -664,9 +664,12 @@ jobs:
               bash /workspace/.nextec-update/empacotar-deb-atualizador.sh \
                 "/workspace/output/${{ env.filename }}-${{ matrix.job.arch }}.deb" \
                 /workspace/.nextec-update "${{ env.appname }}"
+              # Inscricao global: instala /usr/lib/nextec-connect/inscricao.json (root:root 0600), a fonte que o
+              # coordenador Linux le; so o Nextec-Connect leva o coordenador, entao so ele leva a chave.
+              bash /workspace/.nextec-update/inscricao-linux.sh incorporar \
+                "/workspace/output/${{ env.filename }}-${{ matrix.job.arch }}.deb" \
+                /workspace/.nextec-update/inscricao.json
             fi
-            # Inscricao global: instala /etc/nextec/inscricao.json (0600) em todo .deb quando a chave foi fornecida.
-            bash /workspace/.nextec-update/inscricao-linux.sh incorporar               "/workspace/output/${{ env.filename }}-${{ matrix.job.arch }}.deb"               /workspace/.nextec-update/inscricao.json
 
             # rpm/suse/arch package the flutter BUNDLE (not tmpdeb), so the deb's
             # custom_.txt never reaches them. Copy it into the bundle too, so the

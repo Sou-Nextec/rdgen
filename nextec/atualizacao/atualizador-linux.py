@@ -7,6 +7,7 @@ import json
 import os
 import platform
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -16,7 +17,40 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-BASE_URL = "https://painel-remoto.nex.tec.br/api/nextec/update"
+
+def _configured_panel(paths):
+    """Painel https gravado no build em inscricao.json (instalado pelo pacote, dono root, sem escrita de grupo/outros).
+
+    Nunca vem da rede nem de variavel de ambiente. Vazio = painel nao configurado (o componente nao age)."""
+    for path in paths:
+        try:
+            info = os.lstat(path)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid not in (0, os.geteuid()) or info.st_mode & 0o022:
+                continue
+            with open(path, "r", encoding="utf-8") as handle:
+                raw = handle.read(4097)
+            if len(raw) > 4096:
+                continue
+            value = json.loads(raw)
+            panel = value.get("painel") if isinstance(value, dict) else None
+            if not isinstance(panel, str):
+                continue
+            parsed = urllib.parse.urlsplit(panel)
+            if (parsed.scheme != "https" or parsed.port not in (None, 443) or parsed.username or parsed.password
+                    or parsed.query or parsed.fragment or parsed.path not in ("", "/")
+                    or not re.fullmatch(r"[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?", parsed.hostname or "")):
+                continue
+            return "https://" + parsed.hostname
+        except (OSError, ValueError, UnicodeError, AttributeError):
+            continue
+    return ""
+
+
+_PANEL_SOURCES = (Path(__file__).resolve().with_name("inscricao.json"), Path("/var/lib/nextec-connect/inscricao.json"))
+
+PANEL = _configured_panel(_PANEL_SOURCES)
+PANEL_HOST = urllib.parse.urlsplit(PANEL).hostname or ""
+BASE_URL = PANEL + "/api/nextec/update"
 PACKAGE = "__PACKAGE_NAME__"
 STATE = Path("/var/lib/nextec-connect/update-state.json")
 LOCK = Path("/run/lock/nextec-connect-update.lock")
@@ -63,12 +97,12 @@ def arch_name():
 
 
 def request_bytes(url, limit):
-    if not url.startswith("https://painel-remoto.nex.tec.br/"):
+    if not PANEL or not url.startswith(PANEL + "/"):
         raise ValueError("Servidor de atualização inválido.")
     req = urllib.request.Request(url, headers={"Cache-Control": "no-store", "User-Agent": "Nextec-Connect-Updater/1"})
     with urllib.request.urlopen(req, timeout=30) as response:
         final = urllib.parse.urlsplit(response.geturl())
-        if response.status != 200 or final.scheme != "https" or final.hostname != "painel-remoto.nex.tec.br" or int(response.headers.get("Content-Length", "0") or 0) > limit:
+        if response.status != 200 or final.scheme != "https" or final.hostname != PANEL_HOST or int(response.headers.get("Content-Length", "0") or 0) > limit:
             raise ValueError("Resposta ou tamanho inválido do servidor.")
         data = response.read(limit + 1)
     if len(data) > limit:
@@ -93,6 +127,9 @@ def get_peer_id():
 def update():
     if os.geteuid() != 0:
         raise PermissionError("O atualizador precisa rodar como root.")
+    if not PANEL:
+        print("Painel não configurado neste pacote (inscricao.json ausente ou inválido); nada a atualizar.")
+        return
     LOCK.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
     with LOCK.open("w") as lock:
         try:
@@ -133,7 +170,7 @@ def update():
                 req = urllib.request.Request(url, headers={"User-Agent": "Nextec-Connect-Updater/1"})
                 with urllib.request.urlopen(req, timeout=30) as response:
                     final = urllib.parse.urlsplit(response.geturl())
-                    if response.status != 200 or final.scheme != "https" or final.hostname != "painel-remoto.nex.tec.br":
+                    if response.status != 200 or final.scheme != "https" or final.hostname != PANEL_HOST:
                         raise ValueError("Download do pacote falhou.")
                     while True:
                         block = response.read(1024 * 1024)

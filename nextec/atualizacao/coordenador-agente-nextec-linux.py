@@ -12,11 +12,43 @@ import secrets
 import stat
 import subprocess
 import sys
+import urllib.parse
 from pathlib import Path
 
 
-PANEL = "https://painel-remoto.nex.tec.br"
-PANEL_HOST = "painel-remoto.nex.tec.br"
+def _configured_panel(paths):
+    """Painel https gravado no build em inscricao.json (instalado pelo pacote, dono root, sem escrita de grupo/outros).
+
+    Nunca vem da rede nem de variavel de ambiente. Vazio = painel nao configurado (o componente nao age)."""
+    for path in paths:
+        try:
+            info = os.lstat(path)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid not in (0, os.geteuid()) or info.st_mode & 0o022:
+                continue
+            with open(path, "r", encoding="utf-8") as handle:
+                raw = handle.read(4097)
+            if len(raw) > 4096:
+                continue
+            value = json.loads(raw)
+            panel = value.get("painel") if isinstance(value, dict) else None
+            if not isinstance(panel, str):
+                continue
+            parsed = urllib.parse.urlsplit(panel)
+            if (parsed.scheme != "https" or parsed.port not in (None, 443) or parsed.username or parsed.password
+                    or parsed.query or parsed.fragment or parsed.path not in ("", "/")
+                    or not re.fullmatch(r"[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?", parsed.hostname or "")):
+                continue
+            return "https://" + parsed.hostname
+        except (OSError, ValueError, UnicodeError, AttributeError):
+            continue
+    return ""
+
+
+_PANEL_SOURCES = (Path(__file__).resolve().with_name("inscricao.json"), Path("/var/lib/nextec-connect/inscricao.json"))
+
+
+PANEL = _configured_panel(_PANEL_SOURCES)
+PANEL_HOST = urllib.parse.urlsplit(PANEL).hostname or ""
 BOOTSTRAP_PATH = Path("/var/lib/nextec-connect/bootstrap.json")
 JOURNAL_PATH = Path("/var/lib/nextec-connect/provisionamento-agente.json")
 CONFIG_PATH = Path("/var/lib/nextec-connect/agent-config.json")
@@ -367,6 +399,8 @@ def run_cycle(*, agent=None, bootstrap_path=BOOTSTRAP_PATH, journal_path=JOURNAL
               enrollment_source=INSCRICAO_SOURCE, enrollment_path=INSCRICAO_PATH,
               self_state_path=SELF_STATE_PATH, enrollment_read=None, uuid_reader=machine_uuid,
               self_post=None):
+    if not PANEL:
+        raise CoordinatorError("panel_not_configured")
     agent = agent or load_agent_module()
     now = now or datetime.datetime.now(datetime.timezone.utc)
     secure_read = secure_read or (lambda path: _read_secure_json(agent, path, expected_uid, anchor))

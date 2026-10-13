@@ -97,7 +97,7 @@ try {
     [xml]$wxs = [IO.File]::ReadAllText($packageWxs)
     $xmlText = $wxs.OuterXml
     foreach ($component in $wxs.SelectNodes('//Component[@Guid="*"]')) {
-        if ($component.SelectNodes('File').Count -ne 1) { throw 'Automatic WiX GUID requires a single unversioned script per component' }
+        if ($component.SelectNodes('File').Count + $component.SelectNodes('RegistryKey').Count -ne 1) { throw 'Automatic WiX GUID requires a single unversioned script or registry key per component' }
     }
     foreach ($id in @('Nextec.PasswordAgent', 'Nextec.PasswordAgentScript', 'Nextec.CoordinatorScript', 'Nextec.ProvisionerScript', 'Nextec.RegisterCoordinator', 'Nextec.RemoveCoordinator', 'Nextec.Updater', 'Nextec.UpdaterScript', 'Nextec.RegisterUpdater')) {
         if (!$xmlText.Contains($id)) { throw "WiX output is missing $id" }
@@ -105,7 +105,7 @@ try {
     foreach ($id in @('Nextec.Enrollment', 'Nextec.EnrollmentFile')) {
         if (!$xmlText.Contains($id)) { throw "WiX output is missing $id" }
     }
-    foreach ($id in @('Nextec.PasswordAgent', 'Nextec.Updater', 'Nextec.Enrollment')) {
+    foreach ($id in @('Nextec.PasswordAgent', 'Nextec.Updater', 'Nextec.Enrollment', 'Nextec.AgentMarker', 'Nextec.AgentRegistry')) {
         if ([regex]::Matches($xmlText, "Component Id=`"$id`"").Count -ne 1) { throw "WiX component $id was duplicated on rebuild" }
         if ([regex]::Matches($xmlText, "ComponentRef Id=`"$id`"").Count -ne 1) { throw "WiX feature reference $id was duplicated on rebuild" }
     }
@@ -119,11 +119,61 @@ try {
     if ($actualHash -ne $expectedHash) { throw 'MSI resource differs from the reviewed password agent source' }
     if (!$xmlText.Contains('Source="Resources\inscricao.json"')) { throw 'Enrollment component must point to inscricao.json' }
     if ($xmlText.Contains($enrollKey)) { throw 'Enrollment key must never be embedded in Package.wxs or a custom action' }
-    # O agente vai em qualquer app cujo nome termine em Nextec-Connect (ex.: Client-Nextec-Connect), nao so no nome exato.
-    $gate = [regex]::Match([IO.File]::ReadAllText($buildScript), "if \(\`$AppName -imatch '([^']+)'\)").Groups[1].Value
-    if (!$gate) { throw 'Nextec payload gate not found in build-msi.ps1' }
-    foreach ($n in @('Nextec-Connect', 'Client-Nextec-Connect')) { if ($n -notmatch $gate) { throw "Nextec payload gate rejects $n" } }
-    foreach ($n in @('Suporte Nextec', 'Nextec-Connect-Old', 'RustDesk')) { if ($n -match $gate) { throw "Nextec payload gate accepts $n" } }
+    # Nome livre: o agente depende so do flag nx_agent (IncludeAgent), nunca do nome do app. Fixture limpo por caso.
+    $upgradeCodeFixture = '1d2a3b4c-5e6f-4a1b-8c2d-0123456789ab'
+    $cases = @(
+        @{ Name = 'XPTO'; Flag = 'true'; Agent = $true; Panel = 'https://painel.xpto.example' },
+        @{ Name = 'XPTO'; Flag = ''; Agent = $true; Panel = 'https://painel.xpto.example' },
+        @{ Name = 'Client-Nextec-Connect'; Flag = 'true'; Agent = $true; Panel = 'https://suporte.cliente.example' },
+        @{ Name = 'Nextec-Connect'; Flag = 'true'; Agent = $true; Panel = 'https://painel.xpto.example' },
+        @{ Name = 'Nextec-Connect'; Flag = 'false'; Agent = $false; Panel = 'https://painel.xpto.example' },
+        @{ Name = 'Suporte-XPTO'; Flag = 'false'; Agent = $false; Panel = 'https://painel.xpto.example' },
+        @{ Name = 'XPTO'; Flag = 'true'; Agent = $true; Panel = 'http://painel.xpto.example' }
+    )
+    foreach ($case in $cases) {
+        $label = "$($case.Name) flag='$($case.Flag)'"
+        $caseRoot = Join-Path $fixture ('case-' + [Guid]::NewGuid().ToString('N'))
+        $caseBinary = Join-Path $caseRoot 'rustdesk'
+        $caseWxs = Join-Path $caseRoot 'res/msi/Package/Package.wxs'
+        New-Item -ItemType Directory -Force $caseBinary, (Split-Path $caseWxs) | Out-Null
+        [IO.File]::WriteAllText((Join-Path $caseBinary ($case.Name + '.exe')), 'fixture')
+        [IO.File]::WriteAllText($caseWxs, '<Wix><?define UpgradeCode = "{' + $upgradeCodeFixture.ToUpperInvariant() + '}"?><Package><Feature></Feature><InstallExecuteSequence></InstallExecuteSequence></Package></Wix>')
+        $env:enroll_key = $enrollKey; $env:enroll_panel = $case.Panel
+        try {
+            & $buildScript -AppName $case.Name -IncludeAgent $case.Flag -PackageVersion '2.0.7' -SourceRoot $caseRoot -BinaryDirectory $caseBinary -UpdaterSource $updaterSource | Out-Null
+        } finally { Remove-Item Env:enroll_key, Env:enroll_panel -ErrorAction SilentlyContinue }
+        $caseText = [IO.File]::ReadAllText($caseWxs)
+        $caseResources = Join-Path $caseRoot 'res/msi/Package/Resources'
+        $caseMarker = Join-Path $caseResources 'nextec-marker.json'
+        if ($caseText -match 'nex\.tec\.br') { throw "Fixed domain found in MSI ($label)" }
+        if ($caseText.Contains($enrollKey)) { throw "Enrollment key embedded in Package.wxs ($label)" }
+        if ($case.Agent) {
+            foreach ($id in @('Nextec.PasswordAgent', 'Nextec.Coordinator', 'Nextec.Provisioner', 'Nextec.RegisterUpdater', 'Nextec.RegisterCoordinator', 'Nextec.AgentMarker', 'Nextec.AgentRegistry')) {
+                if (!$caseText.Contains($id)) { throw "Agent payload is missing $id ($label)" }
+            }
+            if (!(Test-Path -LiteralPath (Join-Path $caseResources 'Coordenar-Agente-Nextec.ps1'))) { throw "Coordinator script not packaged ($label)" }
+            if (!(Test-Path -LiteralPath $caseMarker)) { throw "nextec-marker.json missing ($label)" }
+            $markerData = [IO.File]::ReadAllText($caseMarker) | ConvertFrom-Json
+            if ($markerData.v -ne 1 -or $markerData.app -ne $case.Name -or $markerData.upgrade_code -ne $upgradeCodeFixture) { throw "nextec-marker.json content is wrong ($label)" }
+            [xml]$caseXml = $caseText
+            $registry = $caseXml.SelectSingleNode('//RegistryKey[@Key="SOFTWARE\Nextec\Agente"]')
+            if (!$registry -or $registry.Root -ne 'HKLM') { throw "HKLM\SOFTWARE\Nextec\Agente registration missing ($label)" }
+            $values = @{}
+            foreach ($v in $registry.SelectNodes('RegistryValue')) { $values[$v.Name] = $v.Value }
+            if ($values['AppName'] -ne $case.Name -or $values['InstallDir'] -ne '[INSTALLFOLDER_INNER]') { throw "Registry values are wrong ($label)" }
+            $expectedUrl = $case.Panel + '/api/nextec/update'
+            if ($case.Panel.StartsWith('https://')) {
+                if (!$caseText.Contains('-UrlBase &quot;' + $expectedUrl + '&quot;')) { throw "Updater does not use the build panel ($label)" }
+            } elseif ($caseText.Contains('-UrlBase')) { throw "Updater received a non-https panel ($label)" }
+        } else {
+            foreach ($id in @('Nextec.', 'Instalar-Nextec', 'Agente-Senha', 'Coordenar-Agente', 'Provisionar-Agente')) {
+                if ($caseText.Contains($id)) { throw "Support app must not carry the agent: found $id ($label)" }
+            }
+            if (Test-Path -LiteralPath $caseMarker) { throw "Support app must not carry nextec-marker.json ($label)" }
+            if (Test-Path -LiteralPath (Join-Path $caseResources 'inscricao.json')) { throw "Support app must not carry the enrollment key ($label)" }
+        }
+    }
+    if ([IO.File]::ReadAllText($buildScript) -match "AppName\s+-imatch") { throw 'build-msi.ps1 still decides the agent by app name' }
     Write-Output 'PASS: repeatable WiX payload registration, exact inert agent resource, enrollment file separate from script hashes, warning without key'
 } finally {
     Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue

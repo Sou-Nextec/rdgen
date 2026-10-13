@@ -122,6 +122,27 @@ def apply(params):
     return params
 
 
+_TRUE = ('1', 'true', 'yes', 'sim', 'on')
+_FALSE = ('0', 'false', 'no', 'nao', 'não', 'off')
+
+
+def agent_enabled(params):
+    """Flag nx_agent do build: inclui o agente (Coordenar/Provisionar/Agente-Senha, atualizador, registro) no pacote.
+
+    Ligado por padrao para o cliente de acesso. So fica desligado para o app de suporte avulso, ou seja, quando
+    `nx_agent` vem explicito como falso, ou quando a instalacao esta desativada (app apenas executavel, sem nada para
+    manter no equipamento). O NOME do app nunca entra na decisao: pode ser qualquer um."""
+    raw = params.get('nx_agent')
+    if isinstance(raw, bool):
+        return raw
+    value = str(raw).strip().lower() if raw is not None else ''
+    if value in _TRUE:
+        return True
+    if value in _FALSE:
+        return False
+    return params.get('installation', 'installationY') != 'installationN'
+
+
 def default_image(kind):
     """Imagem padrão gerenciada quando nenhuma foi enviada no formulário."""
     env_name = {'icon': 'NX_ICON_FILE', 'logo': 'NX_LOGO_FILE', 'logo_light': 'NX_LOGO_LIGHT_FILE', 'logo_dark': 'NX_LOGO_DARK_FILE', 'privacy': 'NX_PRIVACY_FILE'}.get(kind)

@@ -97,6 +97,9 @@ jobs:
           $agent = Get-ChildItem $extract -Filter 'Agente-Senha-Nextec.ps1' -Recurse | Select-Object -First 1
           if (!$agent) { throw 'Password agent is missing from MSI payload' }
           if ((Get-FileHash $agent.FullName -Algorithm SHA256).Hash -ne $env:NEXTEC_AGENT_SHA256) { throw 'Password agent payload differs from reviewed source' }
+          $marker = Get-ChildItem $extract -Filter 'nextec-marker.json' -Recurse | Select-Object -First 1
+          if (!$marker) { throw 'Installation marker is missing from MSI payload' }
+          if ((Get-Content $marker.FullName -Raw | ConvertFrom-Json).app -ne 'Nextec-Connect') { throw 'Installation marker has the wrong app name' }
           $enrollment = Get-ChildItem $extract -Filter 'inscricao.json' -Recurse | Select-Object -First 1
           if (!$enrollment) { throw 'Enrollment file is missing from MSI payload' }
           $data = Get-Content $enrollment.FullName -Raw | ConvertFrom-Json
@@ -149,6 +152,7 @@ jobs:
           python3 nextec/atualizacao/test_agente_senha_linux.py -v
           python3 nextec/atualizacao/test_coordenador_agente_linux.py -v
           python3 nextec/atualizacao/test_assinar_pedido_connect.py -v
+          python3 nextec/atualizacao/test_painel_configuravel_linux.py -v
           test "$(dpkg-deb -f "$RUNNER_TEMP/nextec-connect-test.deb" Package)" = "nextec-connect"
           dpkg-deb -f "$RUNNER_TEMP/nextec-connect-test.deb" Depends | grep -q python3
           extracted="$RUNNER_TEMP/nextec-deb-extracted"
@@ -200,3 +204,11 @@ jobs:
           test ! -e "$extracted/var/lib/nextec-connect/agent-config.json"
           python3 -m py_compile "$extracted/usr/lib/nextec-connect/atualizador-linux.py"
           python3 -m py_compile "$extracted/usr/lib/nextec-connect/agente-senha-linux.py"
+          # nome livre: marcador de instalacao independente do nome e sem dominio fixo nos scripts
+          test "$(cat "$extracted/usr/lib/nextec-connect/nextec-marker.json")" = '{"v":1,"app":"Nextec-Connect","upgrade_code":"nextec-connect"}'
+          ! grep -rq 'nex\.tec\.br' "$extracted/usr/lib/nextec-connect"/*.py
+          sed -i 's/^Package: .*/Package: xpto/' "$work/DEBIAN/control"
+          dpkg-deb --build --root-owner-group "$work" "$RUNNER_TEMP/xpto.deb"
+          bash nextec/atualizacao/empacotar-deb-atualizador.sh "$RUNNER_TEMP/xpto.deb" nextec/atualizacao XPTO
+          xpto="$RUNNER_TEMP/xpto-extracted"; mkdir -p "$xpto"; dpkg-deb -R "$RUNNER_TEMP/xpto.deb" "$xpto"
+          test "$(cat "$xpto/usr/lib/nextec-connect/nextec-marker.json")" = '{"v":1,"app":"XPTO","upgrade_code":"xpto"}'

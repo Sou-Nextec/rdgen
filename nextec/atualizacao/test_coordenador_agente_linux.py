@@ -14,6 +14,9 @@ SOURCE = Path(__file__).with_name("coordenador-agente-nextec-linux.py")
 SPEC = importlib.util.spec_from_file_location("nextec_coordinator_test", str(SOURCE))
 coordinator = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(coordinator)
+# O painel vem do build (inscricao.json); nos testes o valor e fixado explicitamente, com host de exemplo.
+coordinator.PANEL = "https://painel-remoto.nex.tec.br"
+coordinator.PANEL_HOST = "painel-remoto.nex.tec.br"
 
 
 class AgentError(Exception):

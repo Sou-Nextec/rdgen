@@ -15,10 +15,41 @@ import urllib.request
 from pathlib import Path
 
 
+def _configured_panel(paths):
+    """Painel https gravado no build em inscricao.json (instalado pelo pacote, dono root, sem escrita de grupo/outros).
+
+    Nunca vem da rede nem de variavel de ambiente. Vazio = painel nao configurado (o componente nao age)."""
+    for path in paths:
+        try:
+            info = os.lstat(path)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid not in (0, os.geteuid()) or info.st_mode & 0o022:
+                continue
+            with open(path, "r", encoding="utf-8") as handle:
+                raw = handle.read(4097)
+            if len(raw) > 4096:
+                continue
+            value = json.loads(raw)
+            panel = value.get("painel") if isinstance(value, dict) else None
+            if not isinstance(panel, str):
+                continue
+            parsed = urllib.parse.urlsplit(panel)
+            if (parsed.scheme != "https" or parsed.port not in (None, 443) or parsed.username or parsed.password
+                    or parsed.query or parsed.fragment or parsed.path not in ("", "/")
+                    or not re.fullmatch(r"[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?", parsed.hostname or "")):
+                continue
+            return "https://" + parsed.hostname
+        except (OSError, ValueError, UnicodeError, AttributeError):
+            continue
+    return ""
+
+
+_PANEL_SOURCES = (Path(__file__).resolve().with_name("inscricao.json"), Path("/var/lib/nextec-connect/inscricao.json"))
+
+
 CONFIG_PATH = Path("/var/lib/nextec-connect/agent-config.json")
 JOURNAL_PATH = Path("/var/lib/nextec-connect/agent-applied.json")
 LOCK_PATH = Path("/var/lib/nextec-connect/agent.lock")
-PANEL_HOST = "painel-remoto.nex.tec.br"
+PANEL_HOST = urllib.parse.urlsplit(_configured_panel(_PANEL_SOURCES)).hostname or ""
 MAX_HTTP_BYTES = 32 * 1024
 HTTP_TIMEOUT_SECONDS = 15
 ID_PATTERN = re.compile(r"^[0-9]{6,32}$")

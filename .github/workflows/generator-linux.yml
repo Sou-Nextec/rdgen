@@ -93,7 +93,7 @@ jobs:
           zip_password: ${{ secrets.ZIP_PASSWORD }}
 
       - name: Preserve Nextec Linux updater sources
-        if: env.appname == 'Nextec-Connect'
+        if: env.nx_agent != 'false'
         run: |
           mkdir -p "$RUNNER_TEMP/nextec-update"
           cp nextec/atualizacao/atualizador-linux.py nextec/atualizacao/agente-senha-linux.py nextec/atualizacao/coordenador-agente-nextec-linux.py nextec/atualizacao/nextec-connect-*.service nextec/atualizacao/nextec-connect-*.timer nextec/atualizacao/nextec-agent-bootstrap.service nextec/atualizacao/nextec-agent-bootstrap.timer nextec/atualizacao/empacotar-deb-atualizador.sh "$RUNNER_TEMP/nextec-update/"
@@ -155,7 +155,7 @@ jobs:
           submodules: recursive
 
       - name: Restore Nextec Linux updater sources
-        if: env.appname == 'Nextec-Connect'
+        if: env.nx_agent != 'false'
         run: |
           mkdir -p "$GITHUB_WORKSPACE/.nextec-update"
           cp "$RUNNER_TEMP/nextec-update/"* "$GITHUB_WORKSPACE/.nextec-update/"
@@ -660,12 +660,12 @@ jobs:
             for name in *.deb; do
               mv "$name" /workspace/output/"${{ env.filename }}-${{ matrix.job.arch }}.deb"
             done
-            if [[ "${{ env.appname }}" == "Nextec-Connect" ]]; then
+            if [[ "${{ env.nx_agent }}" != "false" ]]; then
               bash /workspace/.nextec-update/empacotar-deb-atualizador.sh \
                 "/workspace/output/${{ env.filename }}-${{ matrix.job.arch }}.deb" \
                 /workspace/.nextec-update "${{ env.appname }}"
               # Inscricao global: instala /usr/lib/nextec-connect/inscricao.json (root:root 0600), a fonte que o
-              # coordenador Linux le; so o Nextec-Connect leva o coordenador, entao so ele leva a chave.
+              # coordenador Linux le; so o pacote com agente (nx_agent) leva o coordenador, entao so ele leva a chave.
               bash /workspace/.nextec-update/inscricao-linux.sh incorporar \
                 "/workspace/output/${{ env.filename }}-${{ matrix.job.arch }}.deb" \
                 /workspace/.nextec-update/inscricao.json

@@ -158,7 +158,12 @@ class GenerationDeleteTests(TestCase):
         run = GithubRun.objects.create(uuid=uuid, status=status, filename='Cliente', platform='windows', **kwargs)
         for base in ('exe', 'png'):
             Path(base, uuid).mkdir(parents=True)
-            Path(base, uuid, 'Cliente.msi' if base == 'exe' else 'icon.png').write_bytes(b'x')
+            if base == 'exe':
+                # Instalador completo no Windows: EXE e MSI (senão o item é "incompleto" e conta como falha).
+                Path(base, uuid, 'Cliente.msi').write_bytes(b'x')
+                Path(base, uuid, 'Cliente.exe').write_bytes(b'x')
+            else:
+                Path(base, uuid, 'icon.png').write_bytes(b'x')
         Path('temp_zips').mkdir(exist_ok=True)
         Path('temp_zips', f'secrets_{uuid}.zip').write_bytes(b'z')
         return run

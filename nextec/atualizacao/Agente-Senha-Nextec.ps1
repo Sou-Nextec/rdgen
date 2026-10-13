@@ -280,7 +280,7 @@ function Save-NextecAgentState([psobject]$State) {
   $temp = Join-Path $PastaDados ('agente-state-' + [Guid]::NewGuid().ToString('N') + '.tmp')
   try {
     [IO.File]::WriteAllText($temp, ($State | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($true))
-    if (Test-Path -LiteralPath $Config) { [IO.File]::Replace($temp, $Config, $null) }
+    if (Test-Path -LiteralPath $Config) { [IO.File]::Replace($temp, $Config, [NullString]::Value) }
     else { [IO.File]::Move($temp, $Config) }
   } finally {
     if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Force }

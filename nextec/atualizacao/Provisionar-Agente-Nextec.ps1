@@ -105,7 +105,7 @@ function Write-NextecProtectedJson {
     [IO.File]::WriteAllText($temp, ($Value | ConvertTo-Json -Depth 6 -Compress), [Text.UTF8Encoding]::new($false))
     if (Test-Path -LiteralPath $Path) {
       Assert-NextecProvisionPath -Path $Path
-      [IO.File]::Replace($temp, $Path, $null)
+      [IO.File]::Replace($temp, $Path, [NullString]::Value)
     } else { [IO.File]::Move($temp, $Path) }
     Set-Acl -LiteralPath $Path -AclObject (New-NextecProvisionAcl)
   } finally { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue }

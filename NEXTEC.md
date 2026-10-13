@@ -57,7 +57,7 @@ Sem `NX_SERVER_HOST` o gerador se comporta como o original.
 A cada build o gerador busca a chave vigente no painel (`GET {NX_PANEL_INTERNAL_URL}/api/nextec/gen/enroll-key`, timeout de 3 s, cabeçalho
 `X-Nextec-Gen-Secret` com o `SH_SECRET`, que é o mesmo `NX_RDGEN_SHARED_SECRET` da API; sem redirecionamento; nem a chave nem o segredo vão a log).
 Se a busca falhar, usa `NX_ENROLL_KEY` do ambiente. Com uma chave válida, coloca `enroll_key` e `enroll_panel` (URL de `NX_API_SERVER`) no `secrets_<uuid>.zip` cifrado.
-Exige o patch `0032-gen-enroll-key.patch` na API do painel (painel 2.11.8 ou mais novo).
+Exige o patch `0033-gen-enroll-key.patch` na API do painel (painel 2.11.8 ou mais novo).
 O workflow (mascarados no Actions) grava `{"v":1,"painel":"<URL>","chave":"<chave>"}` e o instala assim:
 
 - MSI e EXE (que embute o MSI): `inscricao.json` ao lado dos scripts, componente `Nextec.Enrollment`, sem alterar os hashes dos scripts.

@@ -1,5 +1,11 @@
 # Gerador Nextec
 
+## 2.2.0
+
+- A chave de inscrição agora é obtida automaticamente: a cada build o gerador a busca no painel pela rede interna (`http://rustdesk:21114/api/nextec/gen/enroll-key`, timeout de 3 s, segredo compartilhado `SH_SECRET`). Girar a chave no painel não exige mexer na stack nem no Portainer.
+- `NX_ENROLL_KEY` virou override opcional, usado só quando a busca falha; `NX_PANEL_INTERNAL_URL` ajusta (ou, vazio, desliga) a busca. Nem a chave nem o segredo são gravados em banco, modelos ou logs.
+- Requer o painel 2.11.8 (patch `0032-gen-enroll-key.patch`). Testes com painel falso: sucesso, rede falha, segredo errado, chave malformada e fallback.
+
 ## 2.1.0
 
 - Inscrição global: todo instalador (MSI, EXE e DEB) leva `inscricao.json` com `{"v":1,"painel","chave"}` para a máquina se inscrever sozinha no painel.

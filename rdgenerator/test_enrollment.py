@@ -3,7 +3,9 @@ import io
 import json
 import os
 import tempfile
+import threading
 from contextlib import redirect_stderr, redirect_stdout
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -26,6 +28,7 @@ class EnrollmentTests(TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         os.chdir(self.tmp.name)
         self.addCleanup(self.cleanup)
+        nextec._fetch_cache.update(at=0.0, key='', ok=False)
 
     def cleanup(self):
         os.chdir(self.old)
@@ -33,7 +36,7 @@ class EnrollmentTests(TestCase):
 
     def env(self, **values):
         base = {'NX_SERVER_HOST': 'remoto.nex.tec.br', 'NX_KEY': 'CHAVEPUBLICA=', 'NX_KEY_FILE': '',
-                'NX_API_SERVER': PANEL, 'NX_ENROLL_KEY': ''}
+                'NX_API_SERVER': PANEL, 'NX_ENROLL_KEY': '', 'NX_PANEL_INTERNAL_URL': ''}
         base.update(values)
         return patch.dict(os.environ, base)
 
@@ -101,6 +104,92 @@ class EnrollmentTests(TestCase):
         self.assertNotIn('enroll_key', self.zip_inputs(result))
         self.assertNotIn(bad, json.dumps(result))
         self.assertTrue(result['avisos'])
+
+    @staticmethod
+    def fake_panel(status=200, key=KEY, secret='outra-forte'):
+        """Servidor falso do painel: confere o cabecalho do segredo e devolve a chave."""
+        seen = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen.append((self.path, self.headers.get('X-Nextec-Gen-Secret')))
+                if self.headers.get('X-Nextec-Gen-Secret') != secret:
+                    code, body = 401, {'error': 'gen_secret_invalid'}
+                else:
+                    code, body = status, ({'enroll_key': key, 'epoch': 3} if status == 200 else {'error': 'x'})
+                raw = json.dumps(body).encode()
+                self.send_response(code)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
+            def log_message(self, *args):
+                pass
+
+        server = HTTPServer(('127.0.0.1', 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        return server, seen, 'http://127.0.0.1:%d' % server.server_address[1]
+
+    def test_busca_automatica_no_painel_embute_a_chave_sem_vazar(self):
+        server, seen, url = self.fake_panel()
+        self.addCleanup(server.shutdown)
+        with self.env(NX_PANEL_INTERNAL_URL=url):
+            result, post, output = self.generate()
+            self.assertNotIn(KEY, json.dumps(result))
+            self.assertNotIn(KEY, output)
+            self.assertNotIn('outra-forte', output)
+        self.assertTrue(result['success'], result)
+        self.assertEqual(result['avisos'], [])
+        self.assertEqual(self.zip_inputs(result)['enroll_key'], KEY)
+        self.assertEqual(seen[0], ('/api/nextec/gen/enroll-key', 'outra-forte'))
+        self.assertFalse(SavedModel.objects.filter(settings__icontains=KEY).exists())
+
+    def test_painel_vence_o_override_do_ambiente(self):
+        server, seen, url = self.fake_panel()
+        self.addCleanup(server.shutdown)
+        old = 'nx1.1.ZzZzZz0123456789_-ZzZzZz0123456789'
+        with self.env(NX_PANEL_INTERNAL_URL=url, NX_ENROLL_KEY=old):
+            result, post, output = self.generate()
+        self.assertEqual(self.zip_inputs(result)['enroll_key'], KEY)
+
+    def test_rede_falha_cai_no_override_do_ambiente(self):
+        server, seen, url = self.fake_panel()
+        url = url  # porta fechada logo abaixo
+        server.shutdown()
+        server.server_close()
+        with self.env(NX_PANEL_INTERNAL_URL=url, NX_ENROLL_KEY=KEY):
+            result, post, output = self.generate()
+        self.assertTrue(result['success'], result)
+        self.assertEqual(self.zip_inputs(result)['enroll_key'], KEY)
+        self.assertNotIn(KEY, output)
+
+    def test_rede_falha_sem_override_avisa_e_gera_sem_inscricao(self):
+        server, seen, url = self.fake_panel()
+        server.shutdown()
+        server.server_close()
+        with self.env(NX_PANEL_INTERNAL_URL=url):
+            result, post, output = self.generate()
+        self.assertTrue(result['success'], result)
+        self.assertFalse(result['enrollment'])
+        self.assertTrue(result['avisos'])
+        self.assertNotIn('enroll_key', self.zip_inputs(result))
+
+    def test_segredo_errado_no_painel_cai_no_override_e_nao_vaza(self):
+        server, seen, url = self.fake_panel(secret='outro-segredo')
+        self.addCleanup(server.shutdown)
+        with self.env(NX_PANEL_INTERNAL_URL=url, NX_ENROLL_KEY=KEY):
+            result, post, output = self.generate()
+        self.assertEqual(self.zip_inputs(result)['enroll_key'], KEY)
+        self.assertIn('HTTP 401', output)
+        self.assertNotIn('outra-forte', output)
+
+    def test_resposta_do_painel_com_chave_malformada_e_ignorada(self):
+        server, seen, url = self.fake_panel(key='nx1.1.curta;echo')
+        self.addCleanup(server.shutdown)
+        with self.env(NX_PANEL_INTERNAL_URL=url):
+            result, post, output = self.generate()
+        self.assertNotIn('enroll_key', self.zip_inputs(result))
 
     def test_sem_servidor_nextec_o_gerador_original_nao_avisa(self):
         with self.env(NX_SERVER_HOST='', NX_KEY='', NX_API_SERVER='', NX_ENROLL_KEY=''):

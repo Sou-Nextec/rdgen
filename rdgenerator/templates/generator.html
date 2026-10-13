@@ -439,6 +439,7 @@
                     <label for="{{ form.key.id_for_label }}">Chave pública</label>
                     <div class="key-row">{{ form.key }}<button type="button" class="secondary-action" id="toggleKey" aria-label="Mostrar chave pública">Mostrar</button></div>
                     {% if public_key_loaded %}<p class="field-help">Chave pública carregada do servidor. Você pode conferir com “Mostrar”.</p>{% else %}<p class="field-help error">Chave pública não foi carregada. Confira o arquivo montado em NX_KEY_FILE antes de gerar.</p>{% endif %}
+                    {% if enrollment_warning %}<p class="field-help error">{{ enrollment_warning }}</p>{% endif %}
                     <label for="{{ form.apiServer.id_for_label }}">API:</label>
                     {{ form.apiServer }}<br><br>
                     <label for="{{ form.urlLink.id_for_label }}">Endereço dos links:</label>

@@ -1,7 +1,9 @@
 #!/usr/bin/python3
 """One-shot Linux bootstrap coordinator for the Nextec RustDesk agent."""
 import argparse
+import base64
 import datetime
+import hashlib
 import importlib.util
 import json
 import os
@@ -19,6 +21,17 @@ BOOTSTRAP_PATH = Path("/var/lib/nextec-connect/bootstrap.json")
 JOURNAL_PATH = Path("/var/lib/nextec-connect/provisionamento-agente.json")
 CONFIG_PATH = Path("/var/lib/nextec-connect/agent-config.json")
 AGENT_PATH = Path(__file__).resolve().with_name("agente-senha-linux.py")
+# Inscricao global: o pacote instala inscricao.json ao lado deste script; o coordenador
+# guarda uma copia 0600 no diretorio de estado e mantem o diario da inscricao propria.
+INSCRICAO_SOURCE = Path(__file__).resolve().with_name("inscricao.json")
+INSCRICAO_PATH = Path("/var/lib/nextec-connect/inscricao.json")
+SELF_STATE_PATH = Path("/var/lib/nextec-connect/inscricao-estado.json")
+MACHINE_ID_PATHS = (Path("/var/lib/dbus/machine-id"), Path("/etc/machine-id"))
+ENROLL_KEY_RE = re.compile(r"^[\x21-\x7e]{16,256}$")
+SELF_STATE_FIELDS = {"state", "chave_sha256", "proposed_token", "attempts", "next_try_utc", "blocked_until_utc"}
+SELF_BACKOFF_BASE = 300
+SELF_BACKOFF_MAX = 3600
+SELF_BLOCK_SECONDS = 24 * 3600
 MAX_BOOTSTRAP_BYTES = 4096
 BOOTSTRAP_RE = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 ID_RE = re.compile(r"^[0-9]{6,64}$")
@@ -196,10 +209,164 @@ def _age_seconds(created_utc, now):
     return (now - created.astimezone(datetime.timezone.utc)).total_seconds()
 
 
+def parse_enrollment(raw):
+    """Strict inscricao.json {v,painel,chave}; never echoes the key."""
+    if len(raw) > MAX_BOOTSTRAP_BYTES:
+        raise CoordinatorError("invalid_input")
+    try:
+        value = json.loads(raw.decode("utf-8-sig"), object_pairs_hook=_duplicate_rejector)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CoordinatorError("invalid_input") from exc
+    if not isinstance(value, dict) or set(value) != {"v", "painel", "chave"}:
+        raise CoordinatorError("invalid_input")
+    if isinstance(value["v"], bool) or value["v"] != 1:
+        raise CoordinatorError("invalid_input")
+    if not isinstance(value["painel"], str) or not isinstance(value["chave"], str):
+        raise CoordinatorError("invalid_input")
+    if value["painel"] != PANEL:
+        raise CoordinatorError("invalid_panel")
+    if not ENROLL_KEY_RE.fullmatch(value["chave"]):
+        raise CoordinatorError("invalid_input")
+    return {"v": 1, "painel": PANEL, "chave": value["chave"]}
+
+
+def read_enrollment_source(agent, path=INSCRICAO_SOURCE, expected_uid=0, anchor=Path("/")):
+    """Read the package-owned file, or None when this build has no enrollment file."""
+    if not os.path.lexists(path):
+        return None
+    agent.validate_secure_path(path, expected_uid, anchor)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(str(path), flags)
+        with os.fdopen(descriptor, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != expected_uid or info.st_mode & 0o022:
+                raise CoordinatorError("unsafe_authorization_file")
+            raw = stream.read(MAX_BOOTSTRAP_BYTES + 1)
+    except OSError as exc:
+        raise CoordinatorError("authorization_read_failed") from exc
+    return parse_enrollment(raw)
+
+
+def machine_uuid(paths=MACHINE_ID_PATHS):
+    """Same uuid the RustDesk client reports: standard base64 of the trimmed machine-id."""
+    for path in paths:
+        try:
+            value = Path(path).read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if value:
+            encoded = base64.b64encode(value.encode("utf-8")).decode("ascii")
+            if len(encoded) <= UUID_MAX:
+                return encoded
+    raise CoordinatorError("service_identity_unavailable")
+
+
+def _iso(moment):
+    return moment.astimezone(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _parse_iso(value):
+    if not value:
+        return None
+    parsed = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise CoordinatorError("invalid_journal")
+    return parsed.astimezone(datetime.timezone.utc)
+
+
+def _validate_self_state(value):
+    if (not isinstance(value, dict) or set(value) != SELF_STATE_FIELDS
+            or value["state"] not in ("self", "manual", "blocked")
+            or not isinstance(value["chave_sha256"], str)
+            or not isinstance(value["proposed_token"], str)
+            or (value["proposed_token"] and not TOKEN_RE.fullmatch(value["proposed_token"]))
+            or not isinstance(value["attempts"], int) or isinstance(value["attempts"], bool)
+            or not isinstance(value["next_try_utc"], str) or not isinstance(value["blocked_until_utc"], str)):
+        raise CoordinatorError("invalid_journal")
+    try:
+        _parse_iso(value["next_try_utc"])
+        _parse_iso(value["blocked_until_utc"])
+    except ValueError as exc:
+        raise CoordinatorError("invalid_journal") from exc
+    return value
+
+
+def post_self_enroll(agent, payload):
+    return agent.post_json(PANEL, "/api/nextec/agent/self-enroll", payload)
+
+
+def self_enroll_cycle(agent, identity, now, *, enrollment, secure_read, atomic_write, state_path,
+                      config_path, post, token_factory, uuid_reader):
+    """Self-enrollment with no bootstrap code. Raises fixed status codes, never secrets."""
+    if enrollment is None:
+        raise CoordinatorError("manual_authorization_required")
+    now = now.astimezone(datetime.timezone.utc)
+    key_hash = hashlib.sha256(enrollment["chave"].encode("utf-8")).hexdigest()
+    state = _validate_self_state(secure_read(state_path)) if os.path.lexists(state_path) else None
+    if state and state["chave_sha256"] != key_hash:
+        state = None
+    if state:
+        if state["state"] == "manual":
+            raise CoordinatorError("manual_authorization_required")
+        blocked_until = _parse_iso(state["blocked_until_utc"])
+        if state["state"] == "blocked" and blocked_until and now < blocked_until:
+            raise CoordinatorError("self_blocked")
+        next_try = _parse_iso(state["next_try_utc"])
+        if state["state"] == "self" and state["attempts"] > 0 and next_try and now < next_try:
+            raise CoordinatorError("self_backoff")
+    if state is None or not state["proposed_token"]:
+        proposed = token_factory()
+        if not isinstance(proposed, str) or not TOKEN_RE.fullmatch(proposed):
+            raise CoordinatorError("token_generation_failed")
+        state = {"state": "self", "chave_sha256": key_hash, "proposed_token": proposed,
+                 "attempts": 0, "next_try_utc": "", "blocked_until_utc": ""}
+    else:
+        state = dict(state, state="self")
+    # The proposed token is durable before the request: a replay resends the same id/uuid/token.
+    atomic_write(state_path, state)
+
+    payload = {"enroll_key": enrollment["chave"], "id": identity["id"],
+               "uuid": uuid_reader(), "proposed_token": state["proposed_token"]}
+    try:
+        response = post(payload)
+    except agent.AgentError as exc:
+        code = str(exc)
+        match = re.fullmatch(r"api_http_([0-9]{3})", code)
+        status = int(match.group(1)) if match else None
+        if status in (401, 409):
+            atomic_write(state_path, dict(state, state="manual"))
+            raise CoordinatorError("manual_authorization_required") from exc
+        if status == 403:
+            until = _iso(now + datetime.timedelta(seconds=SELF_BLOCK_SECONDS))
+            atomic_write(state_path, dict(state, state="blocked", blocked_until_utc=until))
+            raise CoordinatorError("self_blocked") from exc
+        if status is not None or code == "api_request_failed":
+            attempts = min(state["attempts"] + 1, 10)
+            delay = min(SELF_BACKOFF_MAX, SELF_BACKOFF_BASE * (2 ** (attempts - 1))) - 30
+            atomic_write(state_path, dict(state, attempts=attempts,
+                                          next_try_utc=_iso(now + datetime.timedelta(seconds=delay))))
+            if status == 404:
+                raise CoordinatorError("peer_not_registered") from exc
+            if status == 429:
+                raise CoordinatorError("rate_limited") from exc
+            raise CoordinatorError("network_retry") from exc
+        raise CoordinatorError("protocol_error") from exc
+    if (not isinstance(response, dict) or response.get("token") != state["proposed_token"]
+            or response.get("state") not in ("pending", "assigned")):
+        raise CoordinatorError("protocol_error")
+    if os.path.lexists(config_path):
+        raise CoordinatorError("already_enrolled")
+    return state
+
+
 def run_cycle(*, agent=None, bootstrap_path=BOOTSTRAP_PATH, journal_path=JOURNAL_PATH,
               config_path=CONFIG_PATH, expected_uid=0, anchor=Path("/"), now=None,
               discover=discover_local_identity, post=None, token_factory=None,
-              secure_read=None, atomic_write=None, secure_remove=None, authorization_read=None):
+              secure_read=None, atomic_write=None, secure_remove=None, authorization_read=None,
+              enrollment_source=INSCRICAO_SOURCE, enrollment_path=INSCRICAO_PATH,
+              self_state_path=SELF_STATE_PATH, enrollment_read=None, uuid_reader=machine_uuid,
+              self_post=None):
     agent = agent or load_agent_module()
     now = now or datetime.datetime.now(datetime.timezone.utc)
     secure_read = secure_read or (lambda path: _read_secure_json(agent, path, expected_uid, anchor))
@@ -208,6 +375,7 @@ def run_cycle(*, agent=None, bootstrap_path=BOOTSTRAP_PATH, journal_path=JOURNAL
     authorization_read = authorization_read or (lambda path: read_authorization(agent, path, expected_uid, anchor))
     post = post or (lambda payload: post_bootstrap(agent, payload))
     token_factory = token_factory or (lambda: secrets.token_urlsafe(32))
+    self_post = self_post or (lambda payload: post_self_enroll(agent, payload))
 
     identity = discover(agent)
     if not ID_RE.fullmatch(identity.get("id", "")):
@@ -227,6 +395,15 @@ def run_cycle(*, agent=None, bootstrap_path=BOOTSTRAP_PATH, journal_path=JOURNAL
                 and config.get("service_name") == identity["service_name"]
                 and isinstance(config.get("token"), str)
                 and getattr(agent, "TOKEN_PATTERN", TOKEN_RE).fullmatch(config["token"])):
+            if os.path.lexists(self_state_path):
+                # Self-enrollment finished but was interrupted before the proposed token was dropped.
+                try:
+                    pending = _validate_self_state(secure_read(self_state_path))
+                except CoordinatorError:
+                    pending = None
+                if pending and pending["proposed_token"] and pending["proposed_token"] == config["token"]:
+                    atomic_write(self_state_path, dict(pending, proposed_token="", attempts=0,
+                                                       next_try_utc="", blocked_until_utc=""))
             return "already_configured"
         raise CoordinatorError("already_enrolled")
 
@@ -253,7 +430,32 @@ def run_cycle(*, agent=None, bootstrap_path=BOOTSTRAP_PATH, journal_path=JOURNAL
 
     if journal is None:
         if authorization is None:
-            raise CoordinatorError("manual_authorization_required")
+            # No bootstrap.json and no agent config: global self-enrollment from inscricao.json.
+            if enrollment_read is not None:
+                enrollment = enrollment_read(enrollment_source)
+            else:
+                enrollment = read_enrollment_source(agent, enrollment_source, expected_uid, anchor)
+            if enrollment is not None:
+                try:
+                    stored = secure_read(enrollment_path) if os.path.lexists(enrollment_path) else None
+                except CoordinatorError:
+                    stored = None
+                if stored != enrollment:
+                    atomic_write(enrollment_path, enrollment)
+            state = self_enroll_cycle(
+                agent, identity, now, enrollment=enrollment, secure_read=secure_read,
+                atomic_write=atomic_write, state_path=self_state_path, config_path=config_path,
+                post=self_post, token_factory=token_factory, uuid_reader=uuid_reader)
+            atomic_write(config_path, {
+                "panel": PANEL,
+                "id": identity["id"],
+                "token": state["proposed_token"],
+                "exe_path": identity["exe_path"],
+                "service_name": identity["service_name"],
+            })
+            atomic_write(self_state_path, dict(state, proposed_token="", attempts=0,
+                                               next_try_utc="", blocked_until_utc=""))
+            return "complete"
         if authorization["id"] != identity["id"]:
             raise CoordinatorError("identity_conflict")
         proposed = token_factory()

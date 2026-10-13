@@ -3,7 +3,10 @@ param(
     [string]$SourceRoot = (Get-Location).Path,
     [string]$BinaryDirectory,
     [string]$UpdaterSource,
-    [string]$PackageVersion = $env:package_version
+    [string]$PackageVersion = $env:package_version,
+    # Chave de inscricao global e URL do painel (secrets do build, ja mascarados no Actions). Nunca sao impressos.
+    [string]$EnrollmentKey = $env:enroll_key,
+    [string]$EnrollmentPanel = $env:enroll_panel
 )
 $ErrorActionPreference = 'Stop'
 if ($AppName -notmatch '^[A-Za-z0-9 _-]+$') { throw 'Invalid application name' }
@@ -95,6 +98,35 @@ try {
             $packageChanged = $true
         }
         if ($packageChanged) { [IO.File]::WriteAllText($packageWxs, $xml, [Text.UTF8Encoding]::new($false)) }
+    }
+    # Inscricao global: Resources\inscricao.json vai em componente proprio, fora dos scripts assinados (hash intacto).
+    $enrollmentFile = Join-Path $SourceRoot 'res/msi/Package/Resources/inscricao.json'
+    if ($EnrollmentKey -or $EnrollmentPanel) {
+        if ($EnrollmentKey -notmatch '^nx1\.[0-9]{1,12}\.[A-Za-z0-9_-]{16,128}$') { throw 'Invalid enrollment key format' }
+        if ($EnrollmentPanel -notmatch '^https?://[A-Za-z0-9._:\[\]-]+(/[A-Za-z0-9._~%/-]*)?$') { throw 'Invalid enrollment panel URL' }
+        $resourceDir = Split-Path -Parent $enrollmentFile
+        New-Item -ItemType Directory -Force -Path $resourceDir | Out-Null
+        $enrollment = [ordered]@{ v = 1; painel = $EnrollmentPanel.TrimEnd('/'); chave = $EnrollmentKey } | ConvertTo-Json -Compress
+        [IO.File]::WriteAllText($enrollmentFile, $enrollment, [Text.UTF8Encoding]::new($false))
+        $packageWxs = Join-Path $SourceRoot 'res/msi/Package/Package.wxs'
+        $xml = [IO.File]::ReadAllText($packageWxs)
+        if (!$xml.Contains('Nextec.Enrollment')) {
+            if (!$xml.Contains('</Feature>') -or !$xml.Contains('</Package>')) { throw 'Unexpected WiX Package.wxs layout; refusing to add enrollment payload' }
+            $component = @'
+        <DirectoryRef Id="INSTALLFOLDER_INNER">
+            <Component Id="Nextec.Enrollment" Guid="*">
+                <File Id="Nextec.EnrollmentFile" Source="Resources\inscricao.json" KeyPath="yes" />
+            </Component>
+        </DirectoryRef>
+'@
+            $xml = $xml.Replace('</Feature>', "            <ComponentRef Id=`"Nextec.Enrollment`" />`r`n`t`t</Feature>")
+            $xml = $xml.Replace('</Package>', "$component`r`n`t</Package>")
+            [IO.File]::WriteAllText($packageWxs, $xml, [Text.UTF8Encoding]::new($false))
+        }
+        Write-Output 'Inscricao global incorporada ao instalador (Resources\inscricao.json).'
+    } else {
+        Remove-Item -LiteralPath $enrollmentFile -Force -ErrorAction SilentlyContinue
+        Write-Output '::warning title=Instalador sem inscricao automatica::A chave de inscricao global (NX_ENROLL_KEY) nao foi fornecida; o instalador sera gerado SEM inscricao.json.'
     }
     # Restore native WiX packages explicitly, at the directory referenced by the vcxproj.
     nuget restore CustomActions/packages.config -PackagesDirectory packages -NonInteractive

@@ -326,6 +326,16 @@ def generate_custom_client(params, full_url, created_by='', profile=''):
         "package_version": params.get('package_version', ''),
     }
 
+    # Chave de inscricao global: vem so do ambiente, entra apenas no pacote cifrado do build (nunca em banco/log/resposta).
+    enrollment_problem = nextec.enrollment_warning(apiServer)
+    enroll_key = ''
+    if not enrollment_problem:
+        enroll_key = nextec.enroll_key()
+        inputs_raw['enroll_key'] = enroll_key
+        inputs_raw['enroll_panel'] = nextec.enroll_panel(apiServer)
+    # sem servidor Nextec configurado o gerador e o original: nao ha o que avisar
+    avisos = [enrollment_problem] if enrollment_problem and nextec.is_configured() else []
+
     try:
         validate_build_inputs(inputs_raw)
     except ValueError as exc:
@@ -399,7 +409,9 @@ def generate_custom_client(params, full_url, created_by='', profile=''):
                 "uuid": myuuid,
                 "filename": filename,
                 "platform": platform,
-                "log_url": github_data.get('html_url')
+                "log_url": github_data.get('html_url'),
+                "enrollment": bool(enroll_key),
+                "avisos": avisos,
             }
         else:
             uncertain = response.status_code >= 500
@@ -532,7 +544,8 @@ def generator_view(request):
                     'uuid': result['uuid'],
                     'status': "Starting generator...please wait",
                     'platform': result['platform'],
-                    'log_url': result['log_url']
+                    'log_url': result['log_url'],
+                    'avisos': result.get('avisos', []),
                 })
             else:
                 return JsonResponse({"error": result['error']}, status=result.get('status_code', 500))
@@ -555,6 +568,7 @@ def generator_view(request):
         'public_key_loaded': bool(nextec.server_defaults().get('key')),
         'saved_models_url': 'nextec/modelos/',
         'access_email': nextec.access_user(request),
+        'enrollment_warning': nextec.enrollment_warning(nextec.server_defaults().get('apiServer', '')) if nextec.is_configured() else '',
         'validation_errors': validation_errors,
     }, status=400 if validation_errors else 200)
 

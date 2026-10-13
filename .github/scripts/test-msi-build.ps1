@@ -43,11 +43,56 @@ try {
     [IO.File]::WriteAllText((Join-Path $binaryDirectory 'Nextec-Connect.exe'), 'fixture')
     [IO.File]::WriteAllText($packageWxs, '<Wix><Package><Feature></Feature><InstallExecuteSequence></InstallExecuteSequence></Package></Wix>')
 
+    $resourceDir = Join-Path $sourceRoot 'res/msi/Package/Resources'
+    $enrollmentResource = Join-Path $resourceDir 'inscricao.json'
+    $enrollKey = 'nx1.1790000000.AbCdEf0123456789_-AbCdEf0123456789'
+    $enrollPanel = 'https://painel-remoto.nex.tec.br'
+    $scriptNames = @('Agente-Senha-Nextec.ps1', 'Coordenar-Agente-Nextec.ps1', 'Provisionar-Agente-Nextec.ps1')
+
+    # 1) Sem chave: o build continua, avisa com clareza e nao produz inscricao.json nem componente.
+    $env:enroll_key = ''; $env:enroll_panel = ''
+    $noKeyOutput = (& $buildScript -AppName 'Nextec-Connect' -PackageVersion '2.0.7' -SourceRoot $sourceRoot `
+            -BinaryDirectory $binaryDirectory -UpdaterSource $updaterSource *>&1 | Out-String)
+    if ($LASTEXITCODE -ne 0) { throw 'MSI fixture build without enrollment key returned a failure code' }
+    if ($noKeyOutput -notmatch 'SEM inscricao\.json') { throw 'Missing-key warning was not printed' }
+    if (Test-Path -LiteralPath $enrollmentResource) { throw 'inscricao.json must not exist without a key' }
+    if ([IO.File]::ReadAllText($packageWxs).Contains('Nextec.Enrollment')) { throw 'Enrollment component must not exist without a key' }
+    $hashesBefore = @{}
+    foreach ($name in $scriptNames) { $hashesBefore[$name] = (Get-FileHash -LiteralPath (Join-Path $resourceDir $name) -Algorithm SHA256).Hash }
+
+    # 2) Com chave (duas vezes, para provar que e repetivel): arquivo instalado, hashes dos scripts iguais.
+    $env:enroll_key = $enrollKey; $env:enroll_panel = $enrollPanel
+    $withKeyOutput = ''
     1..2 | ForEach-Object {
-        & $buildScript -AppName 'Nextec-Connect' -PackageVersion '2.0.7' -SourceRoot $sourceRoot `
-            -BinaryDirectory $binaryDirectory -UpdaterSource $updaterSource | Out-Null
+        $withKeyOutput += (& $buildScript -AppName 'Nextec-Connect' -PackageVersion '2.0.7' -SourceRoot $sourceRoot `
+                -BinaryDirectory $binaryDirectory -UpdaterSource $updaterSource *>&1 | Out-String)
         if ($LASTEXITCODE -ne 0) { throw 'MSI fixture build returned a failure code' }
     }
+    Remove-Item Env:enroll_key, Env:enroll_panel -ErrorAction SilentlyContinue
+    if ($withKeyOutput.Contains($enrollKey) -or $noKeyOutput.Contains($enrollKey)) { throw 'Enrollment key leaked to build output' }
+    if ($withKeyOutput -match 'SEM inscricao\.json') { throw 'Warning printed although the key was supplied' }
+    if (!(Test-Path -LiteralPath $enrollmentResource)) { throw 'inscricao.json resource is missing' }
+    $enrollment = [IO.File]::ReadAllText($enrollmentResource) | ConvertFrom-Json
+    if ($enrollment.v -ne 1 -or $enrollment.painel -ne $enrollPanel -or $enrollment.chave -ne $enrollKey) { throw 'inscricao.json content is wrong' }
+    foreach ($name in $scriptNames) {
+        if ((Get-FileHash -LiteralPath (Join-Path $resourceDir $name) -Algorithm SHA256).Hash -ne $hashesBefore[$name]) { throw "Script hash changed by enrollment: $name" }
+    }
+    # Os componentes empacotados sao exatamente as fontes revisadas (inclusive Coordenar/Provisionar).
+    foreach ($name in $scriptNames) {
+        if ((Get-FileHash -LiteralPath (Join-Path $resourceDir $name) -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath (Join-Path $updaterSource $name) -Algorithm SHA256).Hash) { throw "MSI resource differs from the reviewed source: $name" }
+    }
+    # Integrado: o Provisionar empacotado le a chave do inscricao.json empacotado e faz o POST self-enroll.
+    $integrated = Join-Path $updaterSource 'test_self_enroll_installed.ps1'
+    $integratedOutput = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $integrated -InstallDir $resourceDir 2>&1 | Out-String)
+    if ($LASTEXITCODE -ne 0 -or $integratedOutput -notmatch 'PASS: installed self-enrollment') { throw "Packaged self-enrollment integration test failed: $integratedOutput" }
+    if ($integratedOutput.Contains($enrollKey)) { throw 'Enrollment key leaked to integration test output' }
+    # Chave mal formada e recusada sem repetir o valor.
+    $env:enroll_key = 'nx1.1.curta'; $env:enroll_panel = $enrollPanel
+    $rejected = $false
+    try { & $buildScript -AppName 'Nextec-Connect' -SourceRoot $sourceRoot -BinaryDirectory $binaryDirectory -UpdaterSource $updaterSource | Out-Null }
+    catch { $rejected = ($_.Exception.Message -eq 'Invalid enrollment key format') }
+    Remove-Item Env:enroll_key, Env:enroll_panel -ErrorAction SilentlyContinue
+    if (!$rejected) { throw 'Malformed enrollment key was accepted' }
 
     [xml]$wxs = [IO.File]::ReadAllText($packageWxs)
     $xmlText = $wxs.OuterXml
@@ -57,7 +102,10 @@ try {
     foreach ($id in @('Nextec.PasswordAgent', 'Nextec.PasswordAgentScript', 'Nextec.CoordinatorScript', 'Nextec.ProvisionerScript', 'Nextec.RegisterCoordinator', 'Nextec.RemoveCoordinator', 'Nextec.Updater', 'Nextec.UpdaterScript', 'Nextec.RegisterUpdater')) {
         if (!$xmlText.Contains($id)) { throw "WiX output is missing $id" }
     }
-    foreach ($id in @('Nextec.PasswordAgent', 'Nextec.Updater')) {
+    foreach ($id in @('Nextec.Enrollment', 'Nextec.EnrollmentFile')) {
+        if (!$xmlText.Contains($id)) { throw "WiX output is missing $id" }
+    }
+    foreach ($id in @('Nextec.PasswordAgent', 'Nextec.Updater', 'Nextec.Enrollment')) {
         if ([regex]::Matches($xmlText, "Component Id=`"$id`"").Count -ne 1) { throw "WiX component $id was duplicated on rebuild" }
         if ([regex]::Matches($xmlText, "ComponentRef Id=`"$id`"").Count -ne 1) { throw "WiX feature reference $id was duplicated on rebuild" }
     }
@@ -69,7 +117,9 @@ try {
     $expectedHash = (Get-FileHash -LiteralPath $agentSource -Algorithm SHA256).Hash
     $actualHash = (Get-FileHash -LiteralPath $agentResource -Algorithm SHA256).Hash
     if ($actualHash -ne $expectedHash) { throw 'MSI resource differs from the reviewed password agent source' }
-    Write-Output 'PASS: repeatable WiX payload registration, exact inert agent resource, no enrollment credentials'
+    if (!$xmlText.Contains('Source="Resources\inscricao.json"')) { throw 'Enrollment component must point to inscricao.json' }
+    if ($xmlText.Contains($enrollKey)) { throw 'Enrollment key must never be embedded in Package.wxs or a custom action' }
+    Write-Output 'PASS: repeatable WiX payload registration, exact inert agent resource, enrollment file separate from script hashes, warning without key'
 } finally {
     Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue
 }

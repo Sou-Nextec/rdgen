@@ -1,7 +1,10 @@
 param(
     [Parameter(Mandatory)][string]$MsiPath,
     [string]$Version = '2.0.7',
-    [string]$AgentSha256 = ''
+    [string]$AgentSha256 = '',
+    # Quando o MSI foi construido com a chave de inscricao de teste, exige o arquivo instalado e o seu conteudo.
+    [string]$EnrollmentKey = '',
+    [string]$EnrollmentPanel = ''
 )
 $ErrorActionPreference = 'Stop'
 # Run only on disposable GitHub Windows runners, never on a user's computer.
@@ -54,6 +57,21 @@ try {
     if ($AgentSha256 -and (Get-FileHash -LiteralPath $agentPath -Algorithm SHA256).Hash -ne $AgentSha256) {
         throw 'Installed password agent differs from the reviewed package source'
     }
+    $enrollmentPath = Join-Path (Split-Path -Parent $agentPath) 'inscricao.json'
+    if ($EnrollmentKey) {
+        if (!(Test-Path -LiteralPath $enrollmentPath -PathType Leaf)) { throw 'Installed enrollment file inscricao.json is missing' }
+        $enrollment = [IO.File]::ReadAllText($enrollmentPath) | ConvertFrom-Json
+        if ($enrollment.v -ne 1 -or $enrollment.chave -ne $EnrollmentKey -or $enrollment.painel -ne $EnrollmentPanel) { throw 'Installed enrollment file content differs from the build input' }
+        $install = [IO.File]::ReadAllText($log)
+        if ($install.Contains($EnrollmentKey)) { throw 'Enrollment key leaked to the installation log' }
+        # Integrado: o Provisionar INSTALADO le a chave do inscricao.json INSTALADO e faz o POST self-enroll (painel falso local).
+        $integrated = Join-Path $PSScriptRoot '../../nextec/atualizacao/test_self_enroll_installed.ps1'
+        $integratedOutput = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $integrated -InstallDir (Split-Path -Parent $agentPath) 2>&1 | Out-String)
+        if ($LASTEXITCODE -ne 0 -or $integratedOutput -notmatch 'PASS: installed self-enrollment') { throw "Installed self-enrollment integration test failed: $integratedOutput" }
+        if ($integratedOutput.Contains($EnrollmentKey)) { throw 'Enrollment key leaked to integration test output' }
+    } elseif (Test-Path -LiteralPath $enrollmentPath) {
+        throw 'inscricao.json must not be installed when the build had no enrollment key'
+    }
     $agentAcl = Get-Acl -LiteralPath $agentPath
     foreach ($entry in (Get-NextecAclEntries -Acl $agentAcl)) {
         $sid = $entry.IdentityReference.Value
@@ -84,4 +102,5 @@ try {
         if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) { throw "Uninstall left scheduled task: $taskName" }
     }
     if ($agentPath -and (Test-Path -LiteralPath $agentPath)) { throw 'MSI uninstall left the password agent payload behind' }
+    if ($agentPath -and (Test-Path -LiteralPath (Join-Path (Split-Path -Parent $agentPath) 'inscricao.json'))) { throw 'MSI uninstall left inscricao.json behind' }
 }

@@ -10,8 +10,10 @@ na stack. Sem NX_SERVER_HOST nada muda: o gerador se comporta como o original.
   NX_URL_LINK, NX_DOWNLOAD_LINK, NX_COMPANY, NX_APP_NAME
   NX_LOCK_SERVER    1 (padrao) trava host, porta, API, chave, links e empresa: nem o formulario nem a API mudam
   NX_ICON_FILE, NX_LOGO_FILE   imagens padrao (PNG) usadas quando nenhuma for enviada
+  NX_ENROLL_KEY     chave de inscricao global (nx1.<epoca>.<hmac>) embutida em todo instalador; nunca vai ao banco
 """
 import os
+import re
 from pathlib import Path
 
 from django.core.files.base import ContentFile
@@ -48,6 +50,43 @@ def server_defaults():
         'appname': _env('NX_APP_NAME'),
     }
     return {k: v for k, v in values.items() if v}
+
+
+ENROLL_KEY_RE = re.compile(r'nx1\.[0-9]{1,12}\.[A-Za-z0-9_-]{16,128}')
+_ENROLL_PANEL_RE = re.compile(r'https?://[A-Za-z0-9._:\[\]-]+(?:/[A-Za-z0-9._~%/-]*)?')
+
+
+def enroll_key():
+    """Chave de inscricao global (NX_ENROLL_KEY). Vazia quando ausente ou com formato invalido.
+
+    Nunca deve ser gravada em banco, modelo salvo, log ou resposta: so entra no pacote cifrado do build.
+    """
+    value = _env('NX_ENROLL_KEY')
+    return value if ENROLL_KEY_RE.fullmatch(value) else ''
+
+
+def enroll_panel(api_server=''):
+    """URL do painel para a inscricao: NX_API_SERVER, ou o apiServer do build quando for uma URL http(s)."""
+    for candidate in (_env('NX_API_SERVER'), (api_server or '').strip()):
+        candidate = candidate.rstrip('/')
+        if candidate and _ENROLL_PANEL_RE.fullmatch(candidate):
+            return candidate
+    return ''
+
+
+def enrollment_warning(api_server=''):
+    """Aviso (sem a chave) quando o instalador sair sem inscricao automatica; vazio quando tudo certo."""
+    raw = _env('NX_ENROLL_KEY')
+    if not raw:
+        return ('Inscrição automática desativada: NX_ENROLL_KEY não está configurada no gerador. '
+                'O instalador será gerado sem inscricao.json e a máquina não se inscreverá sozinha no painel.')
+    if not ENROLL_KEY_RE.fullmatch(raw):
+        return ('Inscrição automática desativada: NX_ENROLL_KEY tem formato inválido (esperado nx1.<época>.<assinatura>). '
+                'O instalador será gerado sem inscricao.json.')
+    if not enroll_panel(api_server):
+        return ('Inscrição automática desativada: a URL do painel (NX_API_SERVER) não foi definida. '
+                'O instalador será gerado sem inscricao.json.')
+    return ''
 
 
 def is_configured():

@@ -1,5 +1,6 @@
 Source: https://github.com/Sou-Nextec/rustdesk-api-web
-Commit: ef276a9da5a0409197c92351ac3d0877df50a1d9
+Commit: 788de16e70d9b90182fe9fc073ca81a37a2327af (branch fix/provisionar-replace-5-1, PR Sou-Nextec/rustdesk-api-web#73)
 Path: nextec/atualizacao/Agente-Senha-Nextec.ps1
-vendored file SHA-256: 6fede643b3308ce429c6c8f4bce556918c1d158d041d70bb652a08ebbed75415
-State: transaction_v1 agent; per-device authorized bootstrap coordinator, fixed identity and no HTTP redirects.
+vendored file SHA-256: c0d29be5ad8636c4f7b75b9154881d93a3eeeda391054d7376d6b1af00c85da9
+State: transaction_v1 agent; per-device authorized bootstrap coordinator, fixed identity, no HTTP redirects; global enrollment (self-enroll via inscricao.json) never rotates an unassigned device.
+Vendored together at the same commit (byte-identical): Coordenar-Agente-Nextec.ps1, Provisionar-Agente-Nextec.ps1, coordenador-agente-nextec-linux.py, test_inscricao_global_linux.py.

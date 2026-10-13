@@ -742,7 +742,7 @@ jobs:
           & (Join-Path $env:RUNNER_TEMP 'build-msi.ps1') -AppName $env:appname -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
 
       - name: Make EXE an installer for the same MSI
-        if: env.UPLOAD_ARTIFACT == 'true' && env.appname == 'Nextec-Connect'
+        if: env.UPLOAD_ARTIFACT == 'true' && endsWith(env.appname, 'Nextec-Connect')
         shell: pwsh
         run: |
           Copy-Item './SignOutput/rustdesk.exe' './SignOutput/rustdesk-portable.exe'

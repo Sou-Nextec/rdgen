@@ -27,7 +27,7 @@ try {
     if ($PackageVersion) { $preprocessArgs += @('--version', $PackageVersion, '--revision-version', '0') }
     python @preprocessArgs
     if ($LASTEXITCODE -ne 0) { throw 'MSI preprocessing failed' }
-    if ($AppName -ceq 'Nextec-Connect') {
+    if ($AppName -imatch '(^|-)Nextec-Connect$') {
         if (!$UpdaterSource) { $UpdaterSource = Join-Path $PSScriptRoot 'nextec-update' }
         $updater = Join-Path $UpdaterSource 'Instalar-Nextec.ps1'
         $agent = Join-Path $UpdaterSource 'Agente-Senha-Nextec.ps1'

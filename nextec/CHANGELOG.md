@@ -1,5 +1,12 @@
 # Gerador Nextec
 
+## 2.1.0
+
+- Inscrição global: todo instalador (MSI, EXE e DEB) leva `inscricao.json` com `{"v":1,"painel","chave"}` para a máquina se inscrever sozinha no painel.
+- A chave vem da variável `NX_ENROLL_KEY` do contêiner e viaja só no pacote cifrado do build; não é gravada em banco, modelos, exportações, logs nem erros.
+- Sem `NX_ENROLL_KEY` o build continua e gera instalador sem `inscricao.json`, com aviso no formulário, na espera e na saída do build.
+- No MSI/EXE o arquivo é o componente `Nextec.Enrollment`, fora dos scripts assinados (hashes preservados); no DEB fica em `/etc/nextec/inscricao.json`, modo 0600.
+
 ## 2.0.9
 
 - Coordenador de ativação por máquina incorporado no MSI/EXE instalado e no DEB; cadastro inicial usa autorização de 15 minutos, sem credencial global no pacote.

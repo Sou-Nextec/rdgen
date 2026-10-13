@@ -41,6 +41,7 @@ Da Nextec:
 | `DB_PATH` | Arquivo do banco (padrão da imagem: `/opt/rdgen/data/db.sqlite3`) |
 | `NX_SERVER_HOST`, `NX_SERVER_PORT`, `NX_API_SERVER` | Servidor de ID (porta vazia = 21116) e URL do painel |
 | `NX_KEY` ou `NX_KEY_FILE` | Chave pública do servidor (texto, ou caminho do `id_ed25519.pub` montado só leitura) |
+| `NX_ENROLL_KEY` | Chave de inscrição global (`nx1.<época>.<assinatura>`) embutida em todo instalador. Opcional; sem ela o instalador sai sem inscrição automática e o gerador avisa. Nunca vai ao banco, a modelos nem a logs |
 | `NX_URL_LINK`, `NX_DOWNLOAD_LINK`, `NX_COMPANY`, `NX_APP_NAME` | Links, empresa e nome padrão do app |
 | `NX_LOCK_SERVER` | `1` (padrão) trava os campos acima, no formulário e no servidor |
 | `NX_ICON_FILE`, `NX_LOGO_FILE` | Imagens padrão (PNG quadrado) quando nenhuma é enviada |
@@ -50,9 +51,20 @@ Da Nextec:
 
 Sem `NX_SERVER_HOST` o gerador se comporta como o original.
 
+## Inscrição global das máquinas
+
+Com `NX_ENROLL_KEY` definida, o gerador coloca `enroll_key` e `enroll_panel` (URL de `NX_API_SERVER`) no `secrets_<uuid>.zip` cifrado.
+O workflow (mascarados no Actions) grava `{"v":1,"painel":"<URL>","chave":"<chave>"}` e o instala assim:
+
+- MSI e EXE (que embute o MSI): `inscricao.json` ao lado dos scripts, componente `Nextec.Enrollment`, sem alterar os hashes dos scripts.
+- DEB: `/etc/nextec/inscricao.json`, modo 0600 (`nextec/atualizacao/inscricao-linux.sh`).
+
+Sem a variável, o build segue e o instalador sai sem o arquivo, com aviso na tela e na saída do build. A chave é o segredo que autoriza
+inscrição: rotacione-a no painel se um instalador vazar.
+
 ## Versão e imagens
 
-`rdgenerator/VERSION` guarda a versão da experiência do gerador, atualmente `2.0.5`. Ao alterar layout ou recursos próprios,
+`rdgenerator/VERSION` guarda a versão da experiência do gerador, atualmente `2.1.0`. Ao alterar layout ou recursos próprios,
 atualize esse arquivo e acrescente uma entrada em `nextec/CHANGELOG.md`. Essa versão é separada da versão-base RustDesk usada
 no build e da versão do produto publicada na tela de atualizações do painel.
 

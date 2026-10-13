@@ -10,6 +10,7 @@ on:
       - '.github/scripts/test-msi-install.ps1'
       - '.github/scripts/install-msi-artwork.ps1'
       - '.github/workflows/*generator-windows.yml'
+      - '.github/workflows/generator-linux.yml'
       - '.github/workflows/nextec-msi.yml'
       - 'nextec/atualizacao/**'
   workflow_dispatch:
@@ -80,6 +81,9 @@ jobs:
         shell: pwsh
         env:
           VERSION: master
+          # chave de TESTE (nao e segredo): prova que o inscricao.json entra no pacote
+          enroll_key: nx1.1790000000.TesteSomenteCiAbCdEf0123456789
+          enroll_panel: https://painel.teste.exemplo
         run: |
           & ./.github/scripts/build-msi.ps1 -AppName Nextec-Connect -PackageVersion 2.0.7 -SourceRoot "$PWD/source" -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
           $file = 'source/SignOutput/rustdesk.msi'
@@ -93,6 +97,10 @@ jobs:
           $agent = Get-ChildItem $extract -Filter 'Agente-Senha-Nextec.ps1' -Recurse | Select-Object -First 1
           if (!$agent) { throw 'Password agent is missing from MSI payload' }
           if ((Get-FileHash $agent.FullName -Algorithm SHA256).Hash -ne $env:NEXTEC_AGENT_SHA256) { throw 'Password agent payload differs from reviewed source' }
+          $enrollment = Get-ChildItem $extract -Filter 'inscricao.json' -Recurse | Select-Object -First 1
+          if (!$enrollment) { throw 'Enrollment file is missing from MSI payload' }
+          $data = Get-Content $enrollment.FullName -Raw | ConvertFrom-Json
+          if ($data.v -ne 1 -or $data.painel -ne $env:enroll_panel -or $data.chave -ne $env:enroll_key) { throw 'Enrollment payload differs from build input' }
       - name: Verificar EXE wrapper com o MSI e agente reais
         shell: pwsh
         run: |
@@ -102,7 +110,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'EXE wrapper did not preserve the tested MSI and agent payload' }
       - name: Instalar e reparar de verdade no Windows Server 2022 isolado
         shell: pwsh
-        run: ./.github/scripts/test-msi-install.ps1 -MsiPath source/SignOutput/rustdesk.msi -AgentSha256 $env:NEXTEC_AGENT_SHA256
+        run: ./.github/scripts/test-msi-install.ps1 -MsiPath source/SignOutput/rustdesk.msi -AgentSha256 $env:NEXTEC_AGENT_SHA256 -EnrollmentKey nx1.1790000000.TesteSomenteCiAbCdEf0123456789 -EnrollmentPanel https://painel.teste.exemplo
       - name: Guardar logs de instalação para diagnóstico
         if: always()
         uses: actions/upload-artifact@v4
@@ -148,6 +156,25 @@ jobs:
           dpkg-deb -R "$RUNNER_TEMP/nextec-connect-test.deb" "$extracted"
           test -x "$extracted/usr/lib/nextec-connect/atualizador-linux.py"
           test -x "$extracted/usr/lib/nextec-connect/agente-senha-linux.py"
+          # inscricao global: gerar (com e sem chave), incorporar, modo 0600 e sem a chave na saida
+          bash -n nextec/atualizacao/inscricao-linux.sh
+          key='nx1.1790000000.TesteSomenteCiAbCdEf0123456789'
+          out=$(enroll_key= enroll_panel= bash nextec/atualizacao/inscricao-linux.sh gerar "$RUNNER_TEMP/sem.json")
+          echo "$out" | grep -q 'SEM inscricao.json'
+          test ! -e "$RUNNER_TEMP/sem.json"
+          out=$(enroll_key="$key" enroll_panel=https://painel.teste.exemplo bash nextec/atualizacao/inscricao-linux.sh gerar "$RUNNER_TEMP/inscricao.json")
+          ! echo "$out" | grep -qF "$key"
+          out=$(bash nextec/atualizacao/inscricao-linux.sh incorporar "$RUNNER_TEMP/nextec-connect-test.deb" "$RUNNER_TEMP/inscricao.json")
+          ! echo "$out" | grep -qF "$key"
+          after="$RUNNER_TEMP/nextec-deb-enroll"
+          mkdir -p "$after"
+          dpkg-deb -R "$RUNNER_TEMP/nextec-connect-test.deb" "$after"
+          test "$(stat -c %a "$after/etc/nextec/inscricao.json")" = 600
+          grep -qF "$key" "$after/etc/nextec/inscricao.json"
+          grep -qF '"painel":"https://painel.teste.exemplo"' "$after/etc/nextec/inscricao.json"
+          test -x "$after/usr/lib/nextec-connect/atualizador-linux.py"
+          cmp "$extracted/usr/lib/nextec-connect/agente-senha-linux.py" "$after/usr/lib/nextec-connect/agente-senha-linux.py"
+          cmp "$extracted/usr/lib/nextec-connect/coordenador-agente-nextec-linux.py" "$after/usr/lib/nextec-connect/coordenador-agente-nextec-linux.py"
           test -x "$extracted/usr/lib/nextec-connect/coordenador-agente-nextec-linux.py"
           test -f "$extracted/usr/lib/systemd/system/nextec-agent-bootstrap.service"
           test -f "$extracted/usr/lib/systemd/system/nextec-agent-bootstrap.timer"

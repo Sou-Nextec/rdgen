@@ -7,7 +7,8 @@ FIELDS = set('server serverPort key apiServer custom uuid token iconlink_url ico
              'logolightlink_url logolightlink_uuid logolightlink_file '
              'logodarklink_url logodarklink_uuid logodarklink_file '
              'privacylink_url privacylink_uuid privacylink_file appname genurl urlLink downloadLink '
-             'delayFix rdgen xOffline removeNewVersionNotif compname androidappid filename package_version'.split())
+             'delayFix rdgen xOffline removeNewVersionNotif compname androidappid filename package_version '
+             'enroll_key enroll_panel'.split())
 UNSAFE = re.compile(r'[&\\|\'"$`\r\n\x00]')
 APP_NAME = re.compile(r'[A-Za-z0-9-]+')
 ANDROID_ID = re.compile(r'[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+')
@@ -39,7 +40,9 @@ def validate_build_inputs(payload):
             raise ValueError(f'{key}: invalid encoded value')
         if key == 'token' and not re.fullmatch(r'[A-Za-z0-9_-]+', value):
             raise ValueError('token: invalid build token')
-        if key in ('apiServer', 'genurl', 'urlLink', 'downloadLink') or key.endswith('_url'):
+        if key == 'enroll_key' and not re.fullmatch(r'nx1\.[0-9]{1,12}\.[A-Za-z0-9_-]{16,128}', value):
+            raise ValueError('enroll_key: invalid enrollment key')
+        if key in ('apiServer', 'genurl', 'urlLink', 'downloadLink', 'enroll_panel') or key.endswith('_url'):
             if not re.fullmatch(r'[A-Za-z0-9._:/?%#=+@~\[\]-]+', value):
                 raise ValueError(f'{key}: invalid build URL')
         if key == 'uuid' or key.endswith('_uuid'):

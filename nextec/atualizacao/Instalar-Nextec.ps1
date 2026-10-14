@@ -332,6 +332,23 @@ function Get-NextecInstalledClient {
   }
 }
 
+# Sessao remota em andamento: o RustDesk mantem um processo `--cm` (gerenciador de conexao) enquanto alguem esta conectado.
+# Atualizar nessa hora reinicia o servico e derruba o tecnico. Sem ExePath vale qualquer cliente RustDesk.
+function Test-NextecSessaoAtiva {
+  param([object[]]$Processos, [string]$ExePath = '')
+  if ($null -eq $Processos) {
+    try { $Processos = @(Get-CimInstance -ClassName Win32_Process -ErrorAction Stop) } catch { return $false }
+  }
+  foreach ($p in $Processos) {
+    $linha = [string]$p.CommandLine
+    if ($linha -notmatch '(?i)\s--cm(-no-ui)?(\s|"|$)') { continue }
+    $dono = [string]$p.ExecutablePath
+    if ($ExePath -and $dono -and ($dono -ine $ExePath)) { continue }
+    return $true
+  }
+  return $false
+}
+
 function IdDoRustDesk {
   try { return (Get-NextecInstalledClient).PeerId }
   catch {
@@ -512,6 +529,17 @@ try {
   $precisa = $Forcar -or (-not $instalada) -or ([version]$alvo.versao -ne [version]$instalada)
   if (-not $precisa) { Escrever 'Já está na versão publicada. Nada a fazer.'; return }
 
+  # Não derruba um atendimento: com sessão remota ativa a atualização fica para a próxima verificação (diária).
+  # Confere antes de baixar (não gasta o download) e de novo logo antes do msiexec (uma sessão pode ter começado
+  # durante o download). -Forcar ignora (uso manual do administrador); a primeira instalação não tem o que derrubar.
+  $guardarSessao = (-not $Forcar -and -not $SoVerificar -and $instalada)
+  $exeAtual = ''
+  if ($guardarSessao) { try { $exeAtual = [string](Get-NextecInstalledClient).ExePath } catch { $exeAtual = '' } }
+  if ($guardarSessao -and (Test-NextecSessaoAtiva -ExePath $exeAtual)) {
+    Escrever "Há uma sessão remota em andamento: a atualização para $($alvo.versao) fica para a próxima verificação."
+    return
+  }
+
   # 3. baixar e conferir
   $tmp = Join-Path (Join-Path $Pasta 'download') ([Guid]::NewGuid().ToString('N'))
   New-Item -ItemType Directory -Path $tmp -Force | Out-Null
@@ -528,6 +556,11 @@ try {
   if ($SoVerificar) { Escrever 'Modo SoVerificar: nada foi instalado.'; Remove-Item $msi -Force -ErrorAction SilentlyContinue; return }
 
   # 4. instalar (MSI faz atualização por cima)
+  if ($guardarSessao -and (Test-NextecSessaoAtiva -ExePath $exeAtual)) {
+    Remove-Item $msi -Force -ErrorAction SilentlyContinue
+    Escrever "Uma sessão remota começou durante o download: a atualização para $($alvo.versao) fica para a próxima verificação."
+    return
+  }
   Escrever 'Instalando...'
   $logMsi = Join-Path $Pasta 'msi.log'
   $p = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\msiexec.exe') -ArgumentList @('/i', "`"$msi`"", '/qn', '/norestart', '/L*v', "`"$logMsi`"") -Wait -PassThru

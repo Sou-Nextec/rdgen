@@ -115,9 +115,23 @@ jobs:
           $portable = (Resolve-Path source/rustdesk/RustDesk.exe).Path
           & ./.github/scripts/test-setup-exe.ps1 -MsiPath $msi -PortablePath $portable
           if ($LASTEXITCODE -ne 0) { throw 'EXE wrapper did not preserve the tested MSI and agent payload' }
-      - name: Instalar e reparar de verdade no Windows Server 2022 isolado
+      - name: Construir a versao seguinte (2.0.8) do mesmo app para testar a atualizacao por cima
         shell: pwsh
-        run: ./.github/scripts/test-msi-install.ps1 -MsiPath source/SignOutput/rustdesk.msi -AgentSha256 $env:NEXTEC_AGENT_SHA256 -EnrollmentKey nx1.1790000000.TesteSomenteCiAbCdEf0123456789 -EnrollmentPanel https://painel-remoto.nex.tec.br
+        env:
+          VERSION: master
+          enroll_key: nx1.1790000000.TesteSomenteCiAbCdEf0123456789
+          enroll_panel: https://painel-remoto.nex.tec.br
+        run: |
+          Copy-Item source/SignOutput/rustdesk.msi (Join-Path $env:RUNNER_TEMP 'rustdesk-2.0.7.msi') -Force
+          # O preprocess.py do RustDesk edita res/msi/Package/Components/RustDesk.wxs no proprio lugar (nao e idempotente: uma
+          # segunda execucao duplica os componentes, WIX0091). Voltar res/msi ao estado do fonte faz a segunda versao sair limpa.
+          git -C source checkout -- res/msi
+          & ./.github/scripts/build-msi.ps1 -AppName RustDesk -PackageVersion 2.0.8 -SourceRoot "$PWD/source" -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
+          Copy-Item source/SignOutput/rustdesk.msi (Join-Path $env:RUNNER_TEMP 'rustdesk-2.0.8.msi') -Force
+          if ((Get-FileHash (Join-Path $env:RUNNER_TEMP 'rustdesk-2.0.7.msi')).Hash -eq (Get-FileHash (Join-Path $env:RUNNER_TEMP 'rustdesk-2.0.8.msi')).Hash) { throw 'Both MSI versions are identical' }
+      - name: Instalar, reparar e atualizar por cima de verdade no Windows Server 2022 isolado
+        shell: pwsh
+        run: ./.github/scripts/test-msi-install.ps1 -MsiPath (Join-Path $env:RUNNER_TEMP 'rustdesk-2.0.7.msi') -UpgradeMsiPath (Join-Path $env:RUNNER_TEMP 'rustdesk-2.0.8.msi') -UpgradeVersion 2.0.8 -AgentSha256 $env:NEXTEC_AGENT_SHA256 -EnrollmentKey nx1.1790000000.TesteSomenteCiAbCdEf0123456789 -EnrollmentPanel https://painel-remoto.nex.tec.br
       - name: Guardar logs de instalação para diagnóstico
         if: always()
         uses: actions/upload-artifact@v4

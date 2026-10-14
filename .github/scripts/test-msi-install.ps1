@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory)][string]$MsiPath,
     [string]$Version = '2.0.7',
     [string]$AgentSha256 = '',
@@ -179,6 +179,28 @@ try {
         $integratedOutput = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $integrated -InstallDir (Split-Path -Parent $agentPath) 2>&1 | Out-String)
         if ($LASTEXITCODE -ne 0 -or $integratedOutput -notmatch 'PASS: installed self-enrollment') { throw "Installed self-enrollment integration test failed: $integratedOutput" }
         if ($integratedOutput.Contains($EnrollmentKey)) { throw 'Enrollment key leaked to integration test output' }
+        # Integrado: o agente INSTALADO recebe 401 (HTTP de verdade, painel falso local) tres vezes seguidas, descarta a credencial e
+        # refaz o cadastro; 1 ou 2 respostas 401 nao descartam. A maquina suja acima cobre credencial ilegivel (agent_config_unreadable),
+        # nao o caminho do 401, que so este teste reproduz.
+        $authTest = Join-Path $PSScriptRoot '../../nextec/atualizacao/test_agent_401_integration.ps1'
+        $authOutput = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $authTest -InstallDir (Split-Path -Parent $agentPath) 2>&1 | Out-String)
+        if ($LASTEXITCODE -ne 0 -or $authOutput -notmatch 'PASS: agent 401 recovery') { throw "Installed agent 401 recovery integration test failed: $authOutput" }
+        if ($authOutput.Contains($EnrollmentKey)) { throw 'Enrollment key leaked to 401 integration test output' }
+        # Integrado: pendente de OUTRO painel no payload INSTALADO e descartado (0 e 20 min) e chega ao self-enroll.
+        $otherPanelTest = Join-Path $PSScriptRoot '../../nextec/atualizacao/test_provisionar_outro_painel_installed.ps1'
+        $otherPanelOutput = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $otherPanelTest -InstallDir (Split-Path -Parent $agentPath) 2>&1 | Out-String)
+        if ($LASTEXITCODE -ne 0 -or $otherPanelOutput -notmatch 'PASS: other-panel pending journal regression') { throw "Installed other-panel pending regression failed: $otherPanelOutput" }
+        if ($otherPanelOutput.Contains($EnrollmentKey)) { throw 'Enrollment key leaked to other-panel test output' }
+        # Hash instalado = hash do pacote = hash em FONTE-AGENTE.json, para cada script do agente.
+        $fonte = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '../../nextec/atualizacao/FONTE-AGENTE.json')) | ConvertFrom-Json
+        foreach ($name in @('Agente-Senha-Nextec.ps1','Coordenar-Agente-Nextec.ps1','Provisionar-Agente-Nextec.ps1')) {
+            $registered = ([string]$fonte.sha256.$name).ToUpperInvariant()
+            $sourceHash = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot "../../nextec/atualizacao/$name") -Algorithm SHA256).Hash
+            $installedHash = (Get-FileHash -LiteralPath (Join-Path (Split-Path -Parent $agentPath) $name) -Algorithm SHA256).Hash
+            if ($registered.Length -ne 64 -or $sourceHash -ne $registered -or $installedHash -ne $registered) { throw "Installed script hash differs from package/FONTE-AGENTE.json: $name" }
+        }        # O painel do build tambem esta no registro (valor Painel), lido pelo agente antes do endereco padrao.
+        $registryPanel = (Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Nextec\Agente' -ErrorAction Stop).Painel
+        if ($registryPanel -ne $EnrollmentPanel.TrimEnd('/')) { throw "HKLM Painel registry value is wrong: $registryPanel" }
     } elseif (Test-Path -LiteralPath $enrollmentPath) {
         throw 'inscricao.json must not be installed when the build had no enrollment key'
     }

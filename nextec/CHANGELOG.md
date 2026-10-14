@@ -1,5 +1,16 @@
 # Gerador Nextec
 
+## 2.3.3
+
+Achados da revisão do PR #45 (instalador Windows). Os scripts do agente foram ressincronizados com o painel 2.11.17.
+
+- **Painel do instalador também no registro:** além do `nextec-marker.json`, o MSI grava o valor `Painel` em `HKLM\SOFTWARE\Nextec\Agente` (só `https://dominio` válido, com ou sem chave de inscrição). O agente lê arquivo, depois registro, depois o padrão; o cadastro manual deixa de dar `invalid_panel` com painel personalizado.
+- **Reinstalação por outro painel:** instalador sem inscrição de outro painel não herda a inscrição nem a credencial do painel anterior (host normalizado); a decisão vai para o `coordenador.log`, sem segredos. O `-UrlBase` do build é preservado pelo atualizador.
+- **Tarefa de senha validada por inteiro** (SYSTEM, Highest, Windows PowerShell 5.1, `-File`, `-Executar`, repetição de até 5 minutos).
+- **Teste de recuperação do 401 de verdade:** `test_agent_401_integration.ps1` (HttpListener local) faz o agente empacotado/instalado receber 401 três vezes seguidas, descartar a credencial e refazer o cadastro; 1 ou 2 respostas 401 não descartam. Roda em `test-msi-build.ps1` e em `test-msi-install.ps1`. Antes, a credencial morta da máquina suja caía por erro de leitura, não por 401.
+- **Provisionador ressincronizado com o painel #90 (master 09990e5):** o pacote ainda levava o fluxo que comparava o pendente do painel anterior antes de descartar ou expirar e devolvia `identity_conflict` em 0 e 20 minutos. Agora o pendente de outro painel é descartado (`pending_other_panel`) e a inscrição chega ao self-enroll; o do mesmo painel fica e expira (`pending_expired`). Também entram a troca segura de agente antigo (`-SubstituirAgenteAntigo`) e o `-UrlBase` do atualizador preservado.
+- **Regressão contra o payload instalado:** `test_provisionar_outro_painel_installed.ps1` roda o Provisionar empacotado/instalado (0 e 20 min, mesmo painel, 401 triplo) em `test-msi-build.ps1`, `test-msi-install.ps1` e no workflow `Validar MSI Nextec`; os dois testes de MSI conferem hash instalado = pacote = `FONTE-AGENTE.json`.
+
 ## 2.3.2
 
 Estabilização do instalador Windows (Fase 1).

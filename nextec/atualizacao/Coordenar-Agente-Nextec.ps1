@@ -81,6 +81,28 @@ function Register-NextecCoordinatorTask {
     if ((Get-Item -LiteralPath $enrollSource -Force).Length -gt 4096) { throw 'invalid_input' }
     $pairs = @($pairs) + @([pscustomobject]@{ Source=$enrollSource; Destination=$enrollPath })
   }
+  # nextec-marker.json (opcional): leva o painel do build ({v,app,upgrade_code,painel}) para a pasta de dados, de onde os
+  # scripts leem o endereco mesmo quando o instalador saiu sem chave de inscricao.
+  $markerSource = Join-Path $SourceRoot 'nextec-marker.json'
+  $markerPath = Join-Path $Root 'nextec-marker.json'
+  if (Test-Path -LiteralPath $markerSource -PathType Leaf) {
+    Assert-NextecCoordinatorPath -Path $markerSource
+    if ((Get-Item -LiteralPath $markerSource -Force).Length -gt 4096) { throw 'invalid_input' }
+    $pairs = @($pairs) + @([pscustomobject]@{ Source=$markerSource; Destination=$markerPath })
+  }
+  # Politica da inscricao anterior: instalador sem inscricao.json nao herda a de uma instalacao anterior que aponte para
+  # OUTRO painel (migracao de painel ou de cliente); se o painel e o mesmo, ou o instalador nao diz qual e, ela e mantida.
+  $script:NextecStaleEnrollment = $false
+  if (-not $hasEnrollment -and (Test-Path -LiteralPath $enrollPath -PathType Leaf)) {
+    try {
+      $newPanel = ''
+      if (Test-Path -LiteralPath $markerSource -PathType Leaf) {
+        $newPanel = [string]([IO.File]::ReadAllText($markerSource, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF) | ConvertFrom-Json).painel
+      }
+      $oldPanel = [string]([IO.File]::ReadAllText($enrollPath, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF) | ConvertFrom-Json).painel
+      if ($newPanel -and $oldPanel -and ($newPanel.TrimEnd('/') -ine $oldPanel.TrimEnd('/'))) { $script:NextecStaleEnrollment = $true }
+    } catch { $script:NextecStaleEnrollment = $false }
+  }
   foreach ($pair in $pairs) {
     $source = $pair.Source
     if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw 'component_missing' }
@@ -97,6 +119,11 @@ function Register-NextecCoordinatorTask {
 
   New-Item -ItemType Directory -Path $Root -Force | Out-Null
   Set-Acl -LiteralPath $Root -AclObject (New-NextecCoordinatorAcl -Directory)
+  if ($script:NextecStaleEnrollment) {
+    Remove-Item -LiteralPath $enrollPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $Root 'inscricao-estado.json') -Force -ErrorAction SilentlyContinue
+    $script:NextecReplacedFiles += 'inscricao.json (de outro painel)'
+  }
   foreach ($pair in $pairs) {
     $source = [IO.Path]::GetFullPath($pair.Source)
     $destination = [IO.Path]::GetFullPath($pair.Destination)

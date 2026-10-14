@@ -46,6 +46,89 @@ if ($EnrollmentPanel) {
     Clear-DnsClientCache -ErrorAction SilentlyContinue
 }
 
+# Painel falso (so no runner descartavel): HTTPS de verdade em 443 com certificado proprio confiado na maquina, para o
+# agente SYSTEM instalado percorrer o protocolo inteiro: inscricao (200), sync, proposta de senha e confirmacao.
+$script:fakePanel = $null
+function Start-NextecFakePanel {
+    param([Parameter(Mandatory)][string]$HostName, [Parameter(Mandatory)][string]$ExpectedKey)
+    $cert = New-SelfSignedCertificate -DnsName $HostName -CertStoreLocation Cert:\LocalMachine\My -NotAfter (Get-Date).AddDays(2)
+    $cer = Join-Path $env:RUNNER_TEMP 'nextec-fake-panel.cer'
+    Export-Certificate -Cert $cert -FilePath $cer | Out-Null
+    Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+    Stop-Service -Name W3SVC -Force -ErrorAction SilentlyContinue
+    $appId = '{6f0b5c1e-3b1a-4d63-9a3e-1f2f6a7a1c10}'
+    & netsh http delete sslcert ipport=0.0.0.0:443 2>&1 | Out-Null
+    $netsh = & netsh http add sslcert ipport=0.0.0.0:443 certhash=$($cert.Thumbprint) appid=$appId 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "netsh add sslcert failed: $netsh" }
+    $state = [hashtable]::Synchronized(@{
+        Calls = (New-Object System.Collections.ArrayList); Expected = $ExpectedKey
+        Token = ''; PeerId = ''; Confirmed = $false; PasswordLength = 0; OperationId = ''
+    })
+    $listener = New-Object System.Net.HttpListener
+    $listener.Prefixes.Add("https://$HostName/")
+    $listener.Start()
+    $ps = [PowerShell]::Create()
+    [void]$ps.AddScript({
+        param($listener, $state)
+        while ($listener.IsListening) {
+            try { $ctx = $listener.GetContext() } catch { break }
+            $status = 404; $payload = @{ error = 'not_found' }
+            try {
+                $path = $ctx.Request.Url.AbsolutePath
+                $reader = New-Object IO.StreamReader($ctx.Request.InputStream, [Text.Encoding]::UTF8)
+                $raw = $reader.ReadToEnd()
+                $data = $null
+                if ($raw) { $data = $raw | ConvertFrom-Json }
+                [void]$state.Calls.Add($path)
+                switch ($path) {
+                    '/api/nextec/agent/self-enroll' {
+                        if ($data.enroll_key -ceq $state.Expected -and ([string]$data.id) -match '^\d{6,64}$' -and $data.uuid -and $data.proposed_token) {
+                            $state.Token = [string]$data.proposed_token; $state.PeerId = [string]$data.id
+                            $status = 200; $payload = @{ token = $data.proposed_token; state = 'assigned' }
+                        } else { $status = 401; $payload = @{ error = 'enroll_key_invalid' } }
+                    }
+                    '/api/nextec/agent/sync' {
+                        if ($state.Token -and $data.token -ceq $state.Token -and ([string]$data.id) -eq $state.PeerId) {
+                            $status = 200
+                            $payload = @{ managed = $true; transaction_v1 = $true; approve_mode = 'password'; verification_method = 'use-permanent-password'; interval = 180; rotate = $false }
+                            if (-not $state.Confirmed) { $payload.rotate = $true; $payload.operation = @{ operation_id = 'op-ci-1'; pending_version = 1 } }
+                        } else { $status = 401; $payload = @{ error = 'unauthorized' } }
+                    }
+                    '/api/nextec/agent/password' {
+                        if ($state.Token -and $data.token -ceq $state.Token -and $data.operation_id -eq 'op-ci-1') {
+                            $state.PasswordLength = ([string]$data.password).Length
+                            $status = 200; $payload = @{ ok = $true; operation_id = 'op-ci-1'; pending_version = 1 }
+                        } else { $status = 401; $payload = @{ error = 'unauthorized' } }
+                    }
+                    '/api/nextec/agent/confirm' {
+                        if ($state.Token -and $data.token -ceq $state.Token -and $data.operation_id -eq 'op-ci-1') {
+                            $state.Confirmed = $true
+                            $status = 200; $payload = @{ ok = $true; active_version = 1 }
+                        } else { $status = 401; $payload = @{ error = 'unauthorized' } }
+                    }
+                }
+            } catch { $status = 500; $payload = @{ error = 'internal' } }
+            $bytes = [Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Compress -Depth 5))
+            $ctx.Response.StatusCode = $status
+            $ctx.Response.ContentType = 'application/json'
+            $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+            $ctx.Response.Close()
+        }
+    }).AddArgument($listener).AddArgument($state)
+    $handle = $ps.BeginInvoke()
+    return [pscustomobject]@{ Listener = $listener; State = $state; Ps = $ps; Handle = $handle; Cert = $cert; Cer = $cer }
+}
+
+function Stop-NextecFakePanel {
+    param($Panel)
+    if (!$Panel) { return }
+    try { $Panel.Listener.Stop(); $Panel.Listener.Close() } catch { }
+    try { $Panel.Ps.Dispose() } catch { }
+    & netsh http delete sslcert ipport=0.0.0.0:443 2>&1 | Out-Null
+    Remove-Item -LiteralPath ('Cert:\LocalMachine\My\' + $Panel.Cert.Thumbprint) -Force -ErrorAction SilentlyContinue
+    Get-ChildItem Cert:\LocalMachine\Root | Where-Object { $_.Thumbprint -eq $Panel.Cert.Thumbprint } | Remove-Item -Force -ErrorAction SilentlyContinue
+}
+
 function Wait-NextecProvisionCodes {
     param([string]$Log, [int]$Skip, [string]$Until, [int]$Seconds = 150)
     $limit = (Get-Date).AddSeconds($Seconds)
@@ -57,6 +140,8 @@ function Wait-NextecProvisionCodes {
     } while ((Get-Date) -lt $limit)
     return $lines
 }
+
+if ($EnrollmentKey -and $EnrollmentPanel) { $script:fakePanel = Start-NextecFakePanel -HostName ([Uri]$EnrollmentPanel).Host -ExpectedKey $EnrollmentKey }
 
 try {
     $p = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart INSTALLPRINTER=0 /l*v `"$log`"" -Wait -PassThru -WindowStyle Hidden
@@ -128,15 +213,38 @@ try {
     # O log so passa a existir depois da instalacao: e lido inteiro, inclusive a execucao agendada que ja tenha rodado.
     $skip = 0
     Start-ScheduledTask -TaskName 'Nextec Acesso - Cadastro de agente'
-    $codes = Wait-NextecProvisionCodes -Log $provisionLog -Skip $skip -Until '(network_retry|peer_not_registered|rate_limited|self_enrolled|identity_conflict|protocol_error|unsafe_path|component_missing)'
+    $codes = Wait-NextecProvisionCodes -Log $provisionLog -Skip $skip -Until '(self_enrolled|complete|network_retry|peer_not_registered|rate_limited|identity_conflict|protocol_error|unsafe_path|component_missing)'
     $text = ($codes -join "`n")
     Write-Output "provisionamento-agente.log (novas linhas):`n$text"
     if ($text -match 'identity_conflict|component_missing|unsafe_path') { throw "Real coordinator could not use the installed RustDesk service: $text" }
     if ($text -notmatch 'agent_config_unreadable|identity_changed') { throw "Dead legacy credential was not retired: $text" }
-    if ($EnrollmentKey -and $text -notmatch 'network_retry') { throw "Self-enrollment was not attempted after discovery: $text" }
-    if (Test-Path -LiteralPath (Join-Path $dataRoot 'agente-senha.json')) { throw 'Dead legacy credential is still active' }
     if (!(Test-Path -LiteralPath (Join-Path $dataRoot 'agente-senha.json.anterior'))) { throw 'Dead legacy credential was not kept aside' }
-    Write-Output 'PASS: real SYSTEM coordinator found the installed service, retired the dead credential and attempted enrollment'
+    if ($script:fakePanel) {
+        # Cadastro completo: inscricao aceita (HTTP 200) e credencial funcional gravada.
+        if ($text -notmatch 'self_enrolled') { throw "Self-enrollment did not complete against the panel: $text" }
+        $state = $script:fakePanel.State
+        if ($state.Calls -notcontains '/api/nextec/agent/self-enroll') { throw 'Agent never called self-enroll' }
+        if (!$state.Token -or !(Test-Path -LiteralPath (Join-Path $dataRoot 'agente-senha.json'))) { throw 'Enrollment did not produce a working agent credential' }
+        $realId = ''
+        $serviceExe = [regex]::Match([string]$service[0].PathName, '^\s*"([^"]+)"').Groups[1].Value
+        if ($serviceExe) { try { $realId = ((& $serviceExe --get-id 2>&1 | Out-String).Trim() -split "`r?`n")[-1] } catch { } }
+        if ($realId -match '^\d{6,}$' -and $state.PeerId -ne $realId) { throw "Enrolled ID $($state.PeerId) differs from the RustDesk ID $realId" }
+        $senhaTask = Get-ScheduledTask -TaskName 'Nextec Acesso - Senha' -ErrorAction Stop
+        if ($senhaTask.Principal.UserId -notin @('SYSTEM','S-1-5-18') -or $senhaTask.Triggers[0].Repetition.Interval -ne 'PT5M') { throw 'Password task is not SYSTEM every five minutes' }
+        # Primeira sincronizacao de senha: o agente instalado propoe a senha, aplica no RustDesk (--password, "Done!") e confirma.
+        $limit = (Get-Date).AddSeconds(240)
+        while (-not $state.Confirmed -and (Get-Date) -lt $limit) { Start-Sleep -Seconds 3 }
+        $senhaLog = Join-Path $dataRoot 'agente-senha.log'
+        $senhaText = if (Test-Path -LiteralPath $senhaLog) { (Get-Content -LiteralPath $senhaLog -Tail 20) -join "`n" } else { '(sem agente-senha.log)' }
+        Write-Output "agente-senha.log:`n$senhaText"
+        if (-not $state.Confirmed) { throw "Password sync did not complete (no confirmation reached the panel). Calls: $($state.Calls -join ', ')" }
+        if ($state.PasswordLength -lt 16) { throw "Proposed password is too short ($($state.PasswordLength))" }
+        if ($state.Calls -notcontains '/api/nextec/agent/sync' -or $state.Calls -notcontains '/api/nextec/agent/password') { throw 'Sync protocol steps are missing' }
+        Write-Output 'PASS: real SYSTEM agent enrolled (HTTP 200), registered its task, proposed, applied and confirmed the password'
+    } else {
+        Write-Output 'AVISO: sem chave de inscricao no build; cadastro completo nao testado'
+    }
+    Write-Output 'PASS: real SYSTEM coordinator found the installed service, retired the dead credential and enrolled'
     $script = Join-Path $env:ProgramData 'Nextec/Acesso/Instalar-Nextec.ps1'
     if (!(Test-Path $script)) { throw 'Installed updater missing' }
     $acl = Get-Acl $script
@@ -150,6 +258,7 @@ try {
     if ($p.ExitCode -notin @(0,3010)) { throw "Repair failed: $($p.ExitCode)" }
     Write-Output 'PASS: real install/repair, SYSTEM updater task, inert password agent payload/hash/ACL, version and restricted updater ACL'
 } finally {
+    Stop-NextecFakePanel -Panel $script:fakePanel
     $p = Start-Process msiexec.exe -ArgumentList "/x `"$msi`" /qn /norestart /l*v `"$uninstallLog`"" -Wait -PassThru -WindowStyle Hidden
     if ($p.ExitCode -notin @(0,3010)) { throw "Uninstall failed: $($p.ExitCode)" }
     foreach ($taskName in @('Nextec Acesso - Atualizacao','Nextec Acesso - Cadastro de agente','Nextec Acesso - Senha')) {

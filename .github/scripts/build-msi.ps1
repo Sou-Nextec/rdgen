@@ -120,7 +120,13 @@ try {
             $found = [regex]::Match([IO.File]::ReadAllText($wxFile.FullName), 'UpgradeCode\W{1,6}\{?([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})')
             if ($found.Success) { $upgradeCode = $found.Groups[1].Value.ToLowerInvariant(); break }
         }
-        $markerJson = [ordered]@{ v = 1; app = $AppName; upgrade_code = $upgradeCode } | ConvertTo-Json -Compress
+        # O painel do build vai no marcador: o agente o le da pasta de dados mesmo quando o instalador saiu SEM chave de
+        # inscricao (inscricao.json ausente). So o formato que o agente aceita (https://dominio em minusculas, sem porta).
+        $markerData = [ordered]@{ v = 1; app = $AppName; upgrade_code = $upgradeCode }
+        $markerPanel = $PanelUrl.TrimEnd('/')
+        if ($markerPanel -cmatch '^https://([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$') { $markerData['painel'] = $markerPanel }
+        elseif ($PanelUrl) { Write-Output "::warning title=Painel fora do formato do agente::O painel '$PanelUrl' nao e https://dominio em minusculas sem porta; o marcador do instalador sai sem painel e o agente usara o padrao." }
+        $markerJson = $markerData | ConvertTo-Json -Compress
         [IO.File]::WriteAllText($markerFile, $markerJson, [Text.UTF8Encoding]::new($false))
         if (!$xml.Contains('Nextec.AgentMarker')) {
             if (!$xml.Contains('</Feature>') -or !$xml.Contains('</Package>')) { throw 'Unexpected WiX Package.wxs layout; refusing to add installation marker' }

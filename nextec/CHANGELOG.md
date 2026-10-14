@@ -1,5 +1,15 @@
 # Gerador Nextec
 
+## 2.3.2
+
+Estabilização do instalador Windows (Fase 1).
+
+- **Scripts do agente atualizados e com fonte única:** os scripts que o MSI instala eram uma cópia da versão 2.11.4 do painel e não tinham as correções seguintes. Agora são cópias exatas de um commit do painel, feitas por `nextec/scripts/sincronizar-agente.py` e registradas em `nextec/atualizacao/FONTE-AGENTE.json`. O CI recusa PR com script alterado à mão ou diferente da origem.
+- **Agente acha o serviço do RustDesk em máquina real** (correção do painel 2.11.16): o serviço roda como LocalSystem e grava em `ServiceProfiles\LocalService`; o agente procurava em `systemprofile` e nenhuma máquina se inscrevia.
+- **O agente nunca desfaz a instalação do app:** as ações do MSI do atualizador e do coordenador passaram de `Return="check"` para `Return="ignore"`. Antes, qualquer falha de script (por exemplo, arquivo de agente antigo com outra permissão) fazia o MSI inteiro voltar atrás com erro 1603. A falha fica em `C:\ProgramData\Nextec\Acesso\coordenador.log`.
+- **Painel inválido barrado no build:** só `https://dominio` em minúsculas, sem porta nem caminho (o formato que o agente aceita). Antes o build gerava um instalador que nunca se inscrevia.
+- **Teste de instalação real com máquina "suja":** o CI instala o MSI num Windows Server 2022 que já tem um agente antigo (permissão herdada e credencial morta), confere que a instalação passa, que o arquivo antigo foi trocado, e roda o coordenador de verdade como SYSTEM contra o serviço RustDesk instalado: ele precisa achar o serviço, aposentar a credencial morta e tentar a inscrição.
+
 ## 2.3.1
 
 - Trava de CI: `.github/scripts/verificar-integridade.mjs` barra CRLF em `.sh`, `.service`, `.timer`, Dockerfile e workflows e `.ps1` com acento sem BOM UTF-8; `.gitattributes` com LF para esses tipos. BOM adicionado a 5 `.ps1` que tinham acento sem ele. Sem mudança de comportamento do gerador.

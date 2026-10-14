@@ -1,0 +1,12 @@
+{
+  "repositorio": "Sou-Nextec/rustdesk-api-web",
+  "pasta": "nextec/atualizacao",
+  "commit": "7d9a7c343885e457fcb55a31156ec23ae6fe4771",
+  "sha256": {
+    "Agente-Senha-Nextec.ps1": "8e4ea5285da53a3a0fda76a962092abc8ac525b9574c0f7685b32776f5b6e924",
+    "Coordenar-Agente-Nextec.ps1": "8ab504c9396f9d6f36312cb78e2e52c93509e2790565a986b1173ef9371deec2",
+    "Provisionar-Agente-Nextec.ps1": "f3fa61196c601ab753c8fbd42c3458d579d4e540ee6d5409a84d51bc069436aa",
+    "Instalar-Nextec.ps1": "ec42f694b5773a77e5349a693d21d24bcfaedd5312ad43ab1b69ee9b8c4e2a16",
+    "Manifesto-Connect.ps1": "5b671d03b15f253240fc2f2baf1ad3c32efb0acb9996e97d13b46145f504ad97"
+  }
+}

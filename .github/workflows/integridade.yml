@@ -26,3 +26,5 @@ jobs:
         with:
           node-version: '22'
       - run: node .github/scripts/verificar-integridade.mjs
+      - name: Scripts do agente identicos ao painel (fonte unica)
+        run: python3 nextec/scripts/sincronizar-agente.py --verificar --remoto

@@ -77,9 +77,17 @@ Requisitos na stack:
 - **Girar a chave no painel NÃO atualiza instaladores já gerados ou instalados**: eles guardam a chave antiga e passam a receber 401
   (autorização manual). Depois de girar, basta gerar instaladores novos: o gerador busca a chave nova sozinho.
 
-Os scripts empacotados (`Provisionar-Agente-Nextec.ps1`, `Coordenar-Agente-Nextec.ps1`, `Agente-Senha-Nextec.ps1`,
-`coordenador-agente-nextec-linux.py`) são cópias versionadas de `Sou-Nextec/rustdesk-api-web` (commit e hash em
-`nextec/atualizacao/Agente-Senha-Nextec.provenance.txt`); atualize-as por cópia do painel, nunca à mão aqui.
+Os scripts Windows empacotados (`Agente-Senha-Nextec.ps1`, `Coordenar-Agente-Nextec.ps1`, `Provisionar-Agente-Nextec.ps1`,
+`Instalar-Nextec.ps1`, `Manifesto-Connect.ps1`) têm **fonte única** no painel (`Sou-Nextec/rustdesk-api-web`, `nextec/atualizacao`).
+Aqui ficam cópias exatas de um commit, registradas em `nextec/atualizacao/FONTE-AGENTE.json`:
+
+```bash
+python nextec/scripts/sincronizar-agente.py --commit <sha do painel>   # copia e registra
+python nextec/scripts/sincronizar-agente.py --verificar --remoto       # o mesmo que o CI roda em todo PR
+```
+
+Nunca edite esses arquivos à mão aqui: corrija no painel, mescle lá e sincronize. Os scripts Linux
+(`coordenador-agente-nextec-linux.py` e afins) ainda são mantidos neste repositório.
 
 Testes da inscrição empacotada: `rdgenerator/test_enrollment.py` (gerador), `.github/scripts/test-msi-build.ps1` e
 `nextec/atualizacao/test_self_enroll_installed.ps1` (Provisionar empacotado/instalado lê o `inscricao.json` e faz o POST

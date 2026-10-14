@@ -33,6 +33,31 @@ function Test-NextecAclGrantsWrite {
     return (([int]$Rights -band [int]$writeRights) -ne 0)
 }
 
+# Maquina "suja" como a do campo (13/10/2026): agente antigo de 11/10 em ProgramData, com permissao herdada e
+# credencial que o painel nao reconhece mais. Antes, o MSI novo falhava com 1603 (unsafe_path) e, se passasse,
+# o agente ficava em 401 para sempre. Nada aqui fala com a producao: o painel do build aponta para 127.0.0.1.
+$dataRoot = Join-Path $env:ProgramData 'Nextec\Acesso'
+New-Item -ItemType Directory -Force -Path $dataRoot | Out-Null
+Set-Content -LiteralPath (Join-Path $dataRoot 'Agente-Senha-Nextec.ps1') -Value '# agente antigo (11/10/2026), sem coordenador' -Encoding UTF8
+Set-Content -LiteralPath (Join-Path $dataRoot 'agente-senha.json') -Value '{"painel":"https://painel-remoto.nex.tec.br","id":"111111111","token":"credencial-morta"}' -Encoding UTF8
+if ($EnrollmentPanel) {
+    $panelHost = ([Uri]$EnrollmentPanel).Host
+    Add-Content -LiteralPath (Join-Path $env:SystemRoot 'System32\drivers\etc\hosts') -Value "`r`n127.0.0.1 $panelHost" -Encoding ASCII
+    Clear-DnsClientCache -ErrorAction SilentlyContinue
+}
+
+function Wait-NextecProvisionCodes {
+    param([string]$Log, [int]$Skip, [string]$Until, [int]$Seconds = 150)
+    $limit = (Get-Date).AddSeconds($Seconds)
+    do {
+        Start-Sleep -Seconds 3
+        $lines = @()
+        if (Test-Path -LiteralPath $Log) { $lines = @(Get-Content -LiteralPath $Log | Select-Object -Skip $Skip) }
+        if (($lines -join "`n") -match $Until) { return $lines }
+    } while ((Get-Date) -lt $limit)
+    return $lines
+}
+
 try {
     $p = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart INSTALLPRINTER=0 /l*v `"$log`"" -Wait -PassThru -WindowStyle Hidden
     if ($p.ExitCode -notin @(0,3010)) {
@@ -83,6 +108,35 @@ try {
     }
     $state = Get-ItemProperty 'HKLM:\SOFTWARE\Nextec\Acesso'
     if ($state.Versao -ne $Version) { throw 'Installed package version was not recorded' }
+
+    # Agente antigo substituido sem desfazer a instalacao.
+    $coordinatorLog = Join-Path $dataRoot 'coordenador.log'
+    if (!(Test-Path -LiteralPath $coordinatorLog) -or ((Get-Content -LiteralPath $coordinatorLog -Raw) -notmatch 'arquivos antigos substituidos: .*Agente-Senha-Nextec\.ps1')) {
+        throw 'Legacy agent file was not replaced during installation (coordenador.log)'
+    }
+    if ((Get-FileHash -LiteralPath (Join-Path $dataRoot 'Agente-Senha-Nextec.ps1') -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $agentPath -Algorithm SHA256).Hash) {
+        throw 'Legacy agent script in ProgramData was not replaced by the packaged one'
+    }
+
+    # Ponta a ponta com o servico RustDesk real: a tarefa SYSTEM do coordenador acha o servico, le o ID,
+    # aposenta a credencial morta e tenta a inscricao (que so pode falhar por rede, pois o painel aponta para 127.0.0.1).
+    $installDir = (Split-Path -Parent $agentPath).TrimEnd('\')
+    $service = @(Get-CimInstance -ClassName Win32_Service | Where-Object { [string]$_.PathName -match '--service' -and [string]$_.PathName -like "*$installDir*" })
+    if ($service.Count -ne 1) { throw "Expected the MSI to create one RustDesk service in $installDir, found $($service.Count)" }
+    if ($service[0].State -ne 'Running') { Start-Service -Name $service[0].Name; Start-Sleep -Seconds 5 }
+    $provisionLog = Join-Path $dataRoot 'provisionamento-agente.log'
+    # O log so passa a existir depois da instalacao: e lido inteiro, inclusive a execucao agendada que ja tenha rodado.
+    $skip = 0
+    Start-ScheduledTask -TaskName 'Nextec Acesso - Cadastro de agente'
+    $codes = Wait-NextecProvisionCodes -Log $provisionLog -Skip $skip -Until '(network_retry|peer_not_registered|rate_limited|self_enrolled|identity_conflict|protocol_error|unsafe_path|component_missing)'
+    $text = ($codes -join "`n")
+    Write-Output "provisionamento-agente.log (novas linhas):`n$text"
+    if ($text -match 'identity_conflict|component_missing|unsafe_path') { throw "Real coordinator could not use the installed RustDesk service: $text" }
+    if ($text -notmatch 'agent_config_unreadable|identity_changed') { throw "Dead legacy credential was not retired: $text" }
+    if ($EnrollmentKey -and $text -notmatch 'network_retry') { throw "Self-enrollment was not attempted after discovery: $text" }
+    if (Test-Path -LiteralPath (Join-Path $dataRoot 'agente-senha.json')) { throw 'Dead legacy credential is still active' }
+    if (!(Test-Path -LiteralPath (Join-Path $dataRoot 'agente-senha.json.anterior'))) { throw 'Dead legacy credential was not kept aside' }
+    Write-Output 'PASS: real SYSTEM coordinator found the installed service, retired the dead credential and attempted enrollment'
     $script = Join-Path $env:ProgramData 'Nextec/Acesso/Instalar-Nextec.ps1'
     if (!(Test-Path $script)) { throw 'Installed updater missing' }
     $acl = Get-Acl $script

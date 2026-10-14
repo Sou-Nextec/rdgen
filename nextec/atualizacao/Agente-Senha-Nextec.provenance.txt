@@ -1,6 +1,5 @@
 Source: https://github.com/Sou-Nextec/rustdesk-api-web
-Commit: a81ec6057757997270a8f1c55d6320c7405f2200 (master, merge of PR Sou-Nextec/rustdesk-api-web#77; includes PR #73 [NullString]::Value fix)
+Commit: 7d9a7c343885e457fcb55a31156ec23ae6fe4771
 Path: nextec/atualizacao/Agente-Senha-Nextec.ps1
-vendored file SHA-256: c0d29be5ad8636c4f7b75b9154881d93a3eeeda391054d7376d6b1af00c85da9
-State: transaction_v1 agent; per-device authorized bootstrap coordinator, fixed identity, no HTTP redirects; global enrollment (self-enroll via inscricao.json) never rotates an unassigned device.
-Vendored together at the same commit (byte-identical): Coordenar-Agente-Nextec.ps1, Provisionar-Agente-Nextec.ps1, coordenador-agente-nextec-linux.py, test_inscricao_global_linux.py.
+vendored file SHA-256: 8e4ea5285da53a3a0fda76a962092abc8ac525b9574c0f7685b32776f5b6e924
+State: copiado por nextec/scripts/sincronizar-agente.py; a lista completa e os hashes estao em FONTE-AGENTE.json.

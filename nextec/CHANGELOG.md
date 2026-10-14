@@ -4,6 +4,7 @@
 
 - Nome do app livre: o agente (Coordenar/Provisionar/Agente-Senha, atualizador, registro) entra pelo flag `nx_agent` do build (ligado por padrão, desligado só no suporte avulso), não mais pelo sufixo do nome. Substitui a regra por sufixo do #40 em MSI, EXE e DEB.
 - Marcador `nextec-marker.json` `{v,app,upgrade_code}` e registro `HKLM\SOFTWARE\Nextec\Agente` `{InstallDir,AppName}`.
+- Linux: atualizador e coordenador descobrem o cliente sem nome fixo: marcador `nextec-marker.json`, serviço systemd (nome ou ExecStart) e varredura limitada; falha explícita com o que foi procurado, nunca ID vazio.
 - Painel configurável: sem domínio fixo no MSI nem nos scripts Linux; vem do build (`enroll_panel`/`inscricao.json`), só https.
 
 - Scripts do agente ressincronizados com a master do painel (a81ec60, PR #77): Coordenar com `-ArquivoAutorizacao` para o `Ativar-Nextec-<ID>.cmd`; inclui a correção do Replace nulo (#73).

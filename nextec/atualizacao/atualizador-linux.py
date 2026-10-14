@@ -110,18 +110,102 @@ def request_bytes(url, limit):
     return data
 
 
-def get_peer_id():
-    # O ID é apenas usado pelo painel para aplicar o grupo piloto; não é credencial.
-    for path in ("/usr/bin/Nextec-Connect", "/usr/bin/nextec-connect", "/usr/bin/rustdesk", "/usr/lib/Nextec-Connect/rustdesk", "/usr/lib/nextec-connect/rustdesk"):
+MARKER_PATHS = (Path(__file__).resolve().with_name("nextec-marker.json"), Path("/usr/lib/nextec-connect/nextec-marker.json"))
+SCAN_DIRS = ("/usr/bin", "/opt", "/usr/lib", "/usr/share")
+_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+
+def app_names(marker_paths=None):
+    """Nomes do app (app e upgrade_code do nextec-marker.json, minusculos). O nome do app e livre."""
+    names = []
+    for path in (MARKER_PATHS if marker_paths is None else marker_paths):
+        try:
+            with open(path, "r", encoding="utf-8-sig") as handle:
+                raw = handle.read(4097)
+            value = json.loads(raw) if len(raw) <= 4096 else None
+        except (OSError, ValueError, UnicodeError):
+            continue
+        if isinstance(value, dict):
+            for key in ("app", "upgrade_code"):
+                item = value.get(key)
+                if isinstance(item, str) and _NAME_RE.fullmatch(item) and item.lower() not in names:
+                    names.append(item.lower())
+    if PACKAGE.lower() not in names and _NAME_RE.fullmatch(PACKAGE):
+        names.append(PACKAGE.lower())
+    return names
+
+
+def _query_id(runner, path):
+    try:
+        result = runner([path, "--get-id"], text=True, capture_output=True, timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    match = re.fullmatch(r"\d{6,}", (result.stdout or "").strip())
+    return match.group(0) if match and result.returncode == 0 else ""
+
+
+def get_peer_id(runner=subprocess.run, marker_paths=None, scan_dirs=None):
+    """ID do cliente instalado, descoberto sem nome fixo: (1) marcador e pasta do app, (2) servico systemd cujo
+    ExecStart e o binario do app, (3) varredura limitada. Falha explicita com o que foi procurado (nunca vazio)."""
+    # O ID e apenas usado pelo painel para aplicar o grupo piloto; nao e credencial.
+    names = app_names(marker_paths)
+    dirs = SCAN_DIRS if scan_dirs is None else tuple(scan_dirs)
+    searched = ["nomes:" + ",".join(names)]
+    candidates = []
+    for base in dirs:
+        for name in names:
+            for path in (os.path.join(base, name), os.path.join(base, name, name)):
+                if path not in candidates:
+                    candidates.append(path)
+    for path in candidates:
         if os.path.isfile(path) and os.access(path, os.X_OK):
+            value = _query_id(runner, path)
+            if value:
+                return value
+    searched.append("caminhos:" + str(len(candidates)))
+    try:
+        units = runner(["systemctl", "list-units", "--all", "--type=service", "--no-legend", "--no-pager"],
+                       text=True, capture_output=True, timeout=10, check=False)
+        services = [line.split()[0] for line in (units.stdout or "").splitlines() if line.split()]
+    except (OSError, subprocess.SubprocessError):
+        services = []
+    searched.append("servicos:" + str(len(services)))
+    for service in services[:200]:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@:-]{0,180}\.service", service):
+            continue
+        try:
+            shown = runner(["systemctl", "show", "--system", service, "--property=ExecStart", "--value"],
+                           text=True, capture_output=True, timeout=10, check=False)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        match = re.search(r"path=([^;\r\n]+)\s*;", shown.stdout or "")
+        if match and os.path.basename(match.group(1).strip()).lower() in names:
+            exe = match.group(1).strip()
+            if os.path.isfile(exe) and os.access(exe, os.X_OK):
+                value = _query_id(runner, exe)
+                if value:
+                    return value
+    seen = 0
+    for base in dirs:
+        try:
+            roots = [base] + [os.path.join(base, e) for e in sorted(os.listdir(base)) if e.lower() in names]
+        except OSError:
+            continue
+        for root in roots:
             try:
-                result = subprocess.run([path, "--get-id"], text=True, capture_output=True, timeout=10, check=False)
-                match = re.search(r"\b\d{6,}\b", result.stdout + "\n" + result.stderr)
-                if match:
-                    return match.group(0)
-            except (OSError, subprocess.SubprocessError):
-                pass
-    return ""
+                entries = sorted(os.listdir(root))
+            except OSError:
+                continue
+            for entry in entries:
+                seen += 1
+                if seen > 400:
+                    break
+                path = os.path.join(root, entry)
+                if entry.lower() in names and os.path.isfile(path) and os.access(path, os.X_OK):
+                    value = _query_id(runner, path)
+                    if value:
+                        return value
+    raise RuntimeError("ID do cliente nao encontrado (procurado: " + "; ".join(searched) + ")")
 
 
 def update():

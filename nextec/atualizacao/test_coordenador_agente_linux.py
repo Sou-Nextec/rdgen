@@ -135,6 +135,49 @@ class CoordinatorTests(unittest.TestCase):
         with self.assertRaisesRegex(coordinator.CoordinatorError, "service_identity_unavailable"):
             coordinator.discover_local_identity(AgentStub(), runner=runner)
 
+    def _marker(self, app):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(directory, ignore_errors=True))
+        path = Path(directory) / "nextec-marker.json"
+        path.write_text(json.dumps({"v": 1, "app": app, "upgrade_code": app.lower()}), encoding="utf-8")
+        return [path]
+
+    def test_discovery_free_names_by_marker_service_or_scan(self):
+        for app in ("xpto", "Client-Nextec-Connect", "Nextec-Connect"):
+            exe = "/usr/bin/" + app.lower()
+
+            def runner(command, **kwargs):
+                if command[1:3] == ["list-units", "--all"]:
+                    stdout = "%s.service loaded active running App\n" % app.lower()
+                elif command[1] == "show":
+                    stdout = "path=%s;" % exe
+                else:
+                    stdout = "536822159\n"
+                return type("Result", (), {"returncode": 0, "stderr": "", "stdout": stdout})()
+
+            result = coordinator.discover_local_identity(AgentStub(), runner=runner, marker_paths=self._marker(app))
+            self.assertEqual((result["id"], result["exe_path"]), ("536822159", exe))
+
+    def test_discovery_service_with_unrelated_name_but_marker_binary(self):
+        def runner(command, **kwargs):
+            if command[1:3] == ["list-units", "--all"]:
+                stdout = "remote-helper.service loaded active running X\n"
+            elif command[1] == "show":
+                stdout = "path=/usr/bin/xpto;"
+            else:
+                stdout = "536822159\n"
+            return type("Result", (), {"returncode": 0, "stderr": "", "stdout": stdout})()
+
+        result = coordinator.discover_local_identity(AgentStub(), runner=runner, marker_paths=self._marker("XPTO"))
+        self.assertEqual(result["service_name"], "remote-helper.service")
+
+    def test_discovery_failure_lists_what_was_searched(self):
+        def runner(command, **kwargs):
+            return type("Result", (), {"returncode": 0, "stderr": "", "stdout": ""})()
+
+        with self.assertRaisesRegex(coordinator.CoordinatorError, r"service_identity_unavailable.*marcador:xpto"):
+            coordinator.discover_local_identity(AgentStub(), runner=runner, marker_paths=self._marker("XPTO"), scan_dirs=[])
+
     def test_bootstrap_route_uses_fixed_panel_endpoint_and_shared_agent_http_client(self):
         calls = []
 

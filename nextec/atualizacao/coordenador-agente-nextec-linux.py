@@ -192,8 +192,81 @@ def _validate_journal(value):
     return value
 
 
-def discover_local_identity(agent, runner=subprocess.run, timeout=10):
-    """Find one installed RustDesk client service and query its actual local ID."""
+MARKER_PATHS = (Path(__file__).resolve().with_name("nextec-marker.json"), Path("/usr/lib/nextec-connect/nextec-marker.json"))
+APP_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+SCAN_DIRS = ("/usr/bin", "/opt", "/usr/lib", "/usr/share")
+
+
+def marker_names(marker_paths=None):
+    """Nomes do app gravados no marcador de instalacao (app e upgrade_code), em minusculas e sem repeticao.
+
+    O nome do app e livre; nada aqui assume um nome fixo. Marcador ausente = lista vazia."""
+    names = []
+    for path in (MARKER_PATHS if marker_paths is None else marker_paths):
+        try:
+            with open(path, "r", encoding="utf-8-sig") as handle:
+                raw = handle.read(4097)
+            value = json.loads(raw) if len(raw) <= 4096 else None
+        except (OSError, ValueError, UnicodeError):
+            continue
+        if not isinstance(value, dict):
+            continue
+        for key in ("app", "upgrade_code"):
+            item = value.get(key)
+            if isinstance(item, str) and APP_NAME_RE.fullmatch(item) and item.lower() not in names:
+                names.append(item.lower())
+    return names
+
+
+def _name_matches(candidate, names):
+    stem = candidate[:-8] if candidate.endswith(".service") else candidate
+    return stem.lower() in names
+
+
+def _clean_peer_id(runner, executable, timeout):
+    try:
+        peer = runner([executable, "--get-id"], capture_output=True, text=True, timeout=timeout, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    value = peer.stdout.strip()
+    if peer.returncode == 0 and not peer.stderr.strip() and ID_RE.fullmatch(value):
+        return value
+    return ""
+
+
+def _scan_binaries(names, scan_dirs, limit=400):
+    """(3) Varredura limitada: binario cujo nome e o do app, direto no diretorio ou em <dir>/<app>/."""
+    found = []
+    seen = 0
+    for base in scan_dirs:
+        roots = [base]
+        try:
+            roots += [os.path.join(base, entry) for entry in sorted(os.listdir(base)) if entry.lower() in names]
+        except OSError:
+            continue
+        for root in roots:
+            try:
+                entries = sorted(os.listdir(root))
+            except OSError:
+                continue
+            for entry in entries:
+                seen += 1
+                if seen > limit:
+                    return found
+                path = os.path.join(root, entry)
+                if entry.lower() in names and os.path.isfile(path) and os.access(path, os.X_OK) and path not in found:
+                    found.append(path)
+    return found
+
+
+def discover_local_identity(agent, runner=subprocess.run, timeout=10, marker_paths=None, scan_dirs=None):
+    """Descobre o cliente instalado sem depender do nome do app.
+
+    Ordem: (1) marcador nextec-marker.json define os nomes (app/upgrade_code); (2) servico systemd cujo nome ou
+    cujo ExecStart corresponde a esses nomes; (3) varredura limitada de /usr/bin, /opt, /usr/lib e /usr/share por
+    binario com esse nome que responda --get-id. Falha explicita informando o que foi procurado."""
+    names = marker_names(marker_paths)
+    searched = []
     try:
         units = runner(
             ["systemctl", "list-units", "--all", "--type=service", "--no-legend", "--no-pager"],
@@ -203,34 +276,63 @@ def discover_local_identity(agent, runner=subprocess.run, timeout=10):
         raise CoordinatorError("service_discovery_failed") from exc
     if units.returncode != 0 or units.stderr.strip():
         raise CoordinatorError("service_discovery_failed")
-    candidate_names = set()
+    all_services = []
     for line in units.stdout.splitlines():
         fields = line.split()
-        if not fields:
-            continue
-        name = fields[0]
-        if SERVICE_RE.fullmatch(name) and re.search(r"rustdesk|rdclient", name, re.IGNORECASE):
-            candidate_names.add(name)
-    identities = []
-    for service_name in sorted(candidate_names):
+        if fields and SERVICE_RE.fullmatch(fields[0]):
+            all_services.append(fields[0])
+    if names:
+        by_name = [n for n in all_services if _name_matches(n, names)]
+    else:
+        by_name = [n for n in all_services if re.search(r"rustdesk|rdclient", n, re.IGNORECASE)]
+    searched.append("marcador:" + (",".join(names) if names else "ausente"))
+    searched.append("servicos:" + (",".join(sorted(by_name)) or "nenhum"))
+
+    def probe(service_name, require_basename):
         try:
             service = runner(
                 ["systemctl", "show", "--system", service_name, "--property=ExecStart", "--value"],
                 capture_output=True, text=True, timeout=timeout, check=False,
             )
             if service.returncode != 0 or service.stderr.strip():
-                continue
+                return None
             executable = agent._execstart_path(service.stdout)
+            if require_basename and os.path.basename(executable).lower() not in names:
+                return None
             agent.validate_secure_path(executable, 0, Path("/"), executable=True)
-            peer = runner([executable, "--get-id"], capture_output=True, text=True, timeout=timeout, check=False)
         except (agent.AgentError, CoordinatorError, OSError, subprocess.SubprocessError, ValueError):
-            continue
-        # Accept only a clean, exact ID response. Never parse IDs out of diagnostics.
-        value = peer.stdout.strip()
-        if peer.returncode == 0 and not peer.stderr.strip() and ID_RE.fullmatch(value):
-            identities.append({"service_name": service_name, "exe_path": executable, "id": value})
+            return None
+        value = _clean_peer_id(runner, executable, timeout)
+        return {"service_name": service_name, "exe_path": executable, "id": value} if value else None
+
+    identities = []
+    for service_name in sorted(by_name):
+        found = probe(service_name, False)
+        if found:
+            identities.append(found)
+    if not identities and names:
+        # (2b) servico com outro nome, mas cujo ExecStart aponta para o binario do app.
+        for service_name in sorted(set(all_services) - set(by_name))[:80]:
+            found = probe(service_name, True)
+            if found:
+                identities.append(found)
+    if not identities and names:
+        # (3) varredura limitada de diretorios por binario com o nome do app que responda --get-id.
+        dirs = SCAN_DIRS if scan_dirs is None else scan_dirs
+        paths = _scan_binaries(names, dirs)
+        searched.append("binarios:" + (",".join(paths) or "nenhum em " + ",".join(dirs)))
+        for path in paths:
+            try:
+                agent.validate_secure_path(path, 0, Path("/"), executable=True)
+            except (agent.AgentError, OSError, ValueError):
+                continue
+            value = _clean_peer_id(runner, path, timeout)
+            if value:
+                identities.append({"service_name": os.path.basename(path) + ".service", "exe_path": path, "id": value})
     if len(identities) != 1:
-        raise CoordinatorError("service_identity_ambiguous" if identities else "service_identity_unavailable")
+        if identities:
+            raise CoordinatorError("service_identity_ambiguous")
+        raise CoordinatorError("service_identity_unavailable (procurado: " + "; ".join(searched) + ")")
     return identities[0]
 
 

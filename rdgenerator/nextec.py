@@ -218,8 +218,11 @@ def agent_enabled(params):
 
 
 # Opcoes builtin do RustDesk 1.5.0 (libs/base/src/config/keys.rs, KEYS_BUILDIN_SETTINGS) que ocultam as mesmas
-# abas que `disable-settings` oculta (Seguranca, Rede, Impressora) e o "parar servico", sem tocar no CLI/IPC.
+# abas que `disable-settings` oculta (Seguranca, Rede, Impressora), mais a aba Geral (que disable-settings deixava
+# editavel: servico, atualizacao automatica, punch TCP/UDP/IPv6, gravacao) e o "parar servico" da bandeja, sem
+# tocar no CLI/IPC.
 AGENT_SETTINGS_LOCK = {
+    'hide-general-settings': 'Y',
     'hide-security-settings': 'Y',
     'hide-network-settings': 'Y',
     'hide-server-settings': 'Y',

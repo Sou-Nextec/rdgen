@@ -14,7 +14,7 @@ from django.test import TestCase, override_settings
 
 from . import nextec
 
-HIDE_KEYS = ('hide-security-settings', 'hide-network-settings', 'hide-server-settings', 'hide-proxy-settings',
+HIDE_KEYS = ('hide-general-settings', 'hide-security-settings', 'hide-network-settings', 'hide-server-settings', 'hide-proxy-settings',
              'hide-websocket-settings', 'hide-remote-printer-settings', 'hide-stop-service')
 
 

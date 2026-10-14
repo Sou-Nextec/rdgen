@@ -55,19 +55,17 @@ function Get-NextecServiceProfileRoot {
     [string]$ProfileRootBase
   )
 
+  # Devolve as pastas Roaming onde o serviço pode guardar a config, na ordem de preferência.
+  # O RustDesk roda como LocalSystem, mas grava em ServiceProfiles\LocalService: o hbb_common troca
+  # 'system32\config\systemprofile' por 'ServiceProfiles\LocalService' (config.rs, função patch).
+  $localService = if ($ProfileRootBase) { Join-Path $ProfileRootBase 'LocalService\AppData\Roaming' } else { Join-Path $WindowsDirectory 'ServiceProfiles\LocalService\AppData\Roaming' }
+  $systemProfile = if ($ProfileRootBase) { Join-Path $ProfileRootBase 'SystemProfile\AppData\Roaming' } else { Join-Path $WindowsDirectory 'System32\config\systemprofile\AppData\Roaming' }
+  $networkService = if ($ProfileRootBase) { Join-Path $ProfileRootBase 'NetworkService\AppData\Roaming' } else { Join-Path $WindowsDirectory 'ServiceProfiles\NetworkService\AppData\Roaming' }
+
   $account = $ServiceAccount.Trim().ToLowerInvariant()
-  if ($account -match '^(localservice|nt authority\\localservice)$') {
-    if ($ProfileRootBase) { return (Join-Path $ProfileRootBase 'LocalService\AppData\Roaming') }
-    return (Join-Path $WindowsDirectory 'ServiceProfiles\LocalService\AppData\Roaming')
-  }
-  if ($account -match '^(localsystem|nt authority\\system|system)$') {
-    if ($ProfileRootBase) { return (Join-Path $ProfileRootBase 'SystemProfile\AppData\Roaming') }
-    return (Join-Path $WindowsDirectory 'System32\config\systemprofile\AppData\Roaming')
-  }
-  if ($account -match '^(networkservice|nt authority\\networkservice)$') {
-    if ($ProfileRootBase) { return (Join-Path $ProfileRootBase 'NetworkService\AppData\Roaming') }
-    return (Join-Path $WindowsDirectory 'ServiceProfiles\NetworkService\AppData\Roaming')
-  }
+  if ($account -match '^(localservice|nt authority\\localservice)$') { return @($localService) }
+  if (-not $account -or $account -match '^(localsystem|nt authority\\system|system|\.\\localsystem)$') { return @($localService, $systemProfile) }
+  if ($account -match '^(networkservice|nt authority\\networkservice)$') { return @($networkService) }
   throw "identity_conflict: conta de serviço não reconhecida ('$ServiceAccount')."
 }
 
@@ -91,10 +89,14 @@ function Assert-NextecPasswordApplied {
 
   # Contrato confirmado no upstream RustDesk 1.5.0: sucesso IPC imprime Done!;
   # builds sem esse contrato precisam ser verificados antes de serem declarados compatíveis.
-  if ($Result.ExitCode -ne 0) { throw 'password_apply_failed: o cliente recusou a aplicação da senha.' }
   $lines = @(([string]$Result.Output -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  # A resposta do cliente (uma linha curta, sem a senha) acompanha o erro: "Installation and administrative privileges
+  # required!" quer dizer app nao instalado ou sem privilegio, e "Done!" so vem depois do IPC aceitar a troca.
+  $resposta = if ($lines.Count) { ([string]$lines[-1]) -replace '[^ -~]', '?' } else { '(vazia)' }
+  if ($resposta.Length -gt 120) { $resposta = $resposta.Substring(0, 120) }
+  if ($Result.ExitCode -ne 0) { throw "password_apply_failed: o cliente recusou a aplicação da senha (código $($Result.ExitCode); resposta: $resposta)." }
   if ($lines.Count -eq 0 -or $lines[-1] -cne 'Done!') {
-    throw 'password_apply_failed: o cliente não confirmou a aplicação via IPC.'
+    throw "password_apply_failed: o cliente não confirmou a aplicação via IPC (resposta: $resposta)."
   }
 }
 
@@ -104,30 +106,87 @@ function Get-NextecInstalledClient {
     [object[]]$Services,
     [string]$WindowsDirectory = $env:WinDir,
     [string]$ProfileRootBase,
-    [scriptblock]$PeerIdReader
+    [scriptblock]$PeerIdReader,
+    [object]$Marker,
+    [string]$MarkerFile
   )
 
   if ($null -eq $Services) {
     $Services = @(Get-CimInstance -ClassName Win32_Service -ErrorAction Stop)
   }
 
-  $candidates = @(
+  # Marcador gravado pelo MSI (HKLM\SOFTWARE\Nextec\Agente {InstallDir, AppName}) ou nextec-marker.json.
+  # Quando existe, decide sozinho qual serviço é o nosso; nenhum nome de app é fixo aqui.
+  $markerApp = ''
+  $markerDir = ''
+  $markerSource = ''
+  if ($null -ne $Marker) {
+    $markerApp = [string]$Marker.AppName
+    $markerDir = [string]$Marker.InstallDir
+    $markerSource = 'marcador informado'
+  } else {
+    try {
+      $reg = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Nextec\Agente' -ErrorAction Stop
+      $markerApp = [string]$reg.AppName
+      $markerDir = [string]$reg.InstallDir
+      $markerSource = 'HKLM\SOFTWARE\Nextec\Agente'
+    } catch { $markerApp = ''; $markerDir = '' }
+    if (-not $markerApp -and -not $markerDir) {
+      $markerPath = $MarkerFile
+      if (-not $markerPath -and $env:ProgramData) { $markerPath = Join-Path $env:ProgramData 'Nextec\Acesso\nextec-marker.json' }
+      try {
+        if ($markerPath -and (Test-Path -LiteralPath $markerPath -PathType Leaf)) {
+          $mj = Get-Content -Raw -LiteralPath $markerPath -ErrorAction Stop | ConvertFrom-Json
+          if ($mj.AppName) { $markerApp = [string]$mj.AppName } elseif ($mj.app_name) { $markerApp = [string]$mj.app_name } elseif ($mj.app) { $markerApp = [string]$mj.app }
+          if ($mj.InstallDir) { $markerDir = [string]$mj.InstallDir } elseif ($mj.install_dir) { $markerDir = [string]$mj.install_dir }
+          $markerSource = $markerPath
+        }
+      } catch { $markerApp = ''; $markerDir = '' }
+    }
+  }
+  if ($markerApp -notmatch '^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$') { $markerApp = '' }
+  $markerDir = ([string]$markerDir).Trim().Trim('"').Trim().TrimEnd('\')
+  if ($markerDir -notmatch '^[A-Za-z]:\\') { $markerDir = '' }
+
+  $all = @(
     foreach ($service in $Services) {
-      $exePath = Get-NextecServiceExecutablePath -Service $service
-      if (-not $exePath) { continue }
-      $exeName = [IO.Path]::GetFileNameWithoutExtension($exePath)
-      if ([string]$service.Name -ine $exeName) { continue }
-      if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) { continue }
-      $profile = Get-NextecServiceProfileRoot -ServiceAccount ([string]$service.StartName) -WindowsDirectory $WindowsDirectory -ProfileRootBase $ProfileRootBase
-      $configPath = Join-Path (Join-Path $profile $exeName) 'config'
-      if (-not (Test-Path -LiteralPath $configPath -PathType Container)) { continue }
-      if (@(Get-ChildItem -LiteralPath $configPath -File -Filter '*.toml' -ErrorAction SilentlyContinue).Count -eq 0) { continue }
-      [pscustomobject]@{ Service = $service; ExePath = [IO.Path]::GetFullPath($exePath); ConfigRoot = $configPath }
+      try {
+        $exePath = Get-NextecServiceExecutablePath -Service $service
+        if (-not $exePath) { continue }
+        if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) { continue }
+        $exePath = [IO.Path]::GetFullPath($exePath)
+        $exeName = [IO.Path]::GetFileNameWithoutExtension($exePath)
+        $exeDir = [IO.Path]::GetDirectoryName($exePath).TrimEnd('\')
+        $roots = @(Get-NextecServiceProfileRoot -ServiceAccount ([string]$service.StartName) -WindowsDirectory $WindowsDirectory -ProfileRootBase $ProfileRootBase)
+        $configPath = ''
+        foreach ($root in $roots) {
+          $path = Join-Path (Join-Path $root $exeName) 'config'
+          if ((Test-Path -LiteralPath $path -PathType Container) -and
+              @(Get-ChildItem -LiteralPath $path -File -Filter '*.toml' -ErrorAction SilentlyContinue).Count -gt 0) { $configPath = $path; break }
+        }
+        $expectedConfig = Join-Path (Join-Path $roots[0] $exeName) 'config'
+        $byMarker = ($markerDir -and ($exeDir -ieq $markerDir)) -or
+          ($markerApp -and ([string]$service.Name -ieq $markerApp) -and ($exeName -ieq $markerApp))
+        $isRustDesk = ([string]$service.Name -ieq $exeName) -and [bool]$configPath
+        if (-not $byMarker -and -not $isRustDesk) { continue }
+        if (-not $configPath) { $configPath = $expectedConfig }
+        [pscustomobject]@{ Service = $service; ExePath = $exePath; ConfigRoot = $configPath; ByMarker = [bool]$byMarker }
+      } catch { continue }
     }
   )
 
+  # O marcador do instalador vence a heurística; sem marcador, vale serviço com config do RustDesk.
+  $candidates = @($all | Where-Object { $_.ByMarker })
+  if ($candidates.Count -eq 0) { $candidates = @($all) }
+
   if ($candidates.Count -eq 0) {
-    throw 'identity_conflict: nenhum serviço instalado do RustDesk/Nextec foi encontrado.'
+    $seen = @($Services | Where-Object { $_ }).Count
+    if ($markerApp -or $markerDir) { $how = "marcador: app '$markerApp', pasta '$markerDir' ($markerSource)" } else { $how = 'sem marcador (HKLM\SOFTWARE\Nextec\Agente ou nextec-marker.json)' }
+    throw ('identity_conflict: nenhum serviço instalado do RustDesk/Nextec foi encontrado. Procurado: serviço com --service apontando para a pasta do marcador, ou serviço com o nome do executável e config .toml em ServiceProfiles\LocalService ({0} serviços vistos; {1}).' -f $seen, $how)
+  }
+  if ($candidates.Count -gt 1 -and $markerApp) {
+    $byName = @($candidates | Where-Object { [string]$_.Service.Name -ieq $markerApp })
+    if ($byName.Count -eq 1) { $candidates = $byName }
   }
   if ($candidates.Count -gt 1) {
     $names = ($candidates | ForEach-Object { [string]$_.Service.Name }) -join ', '
@@ -153,11 +212,90 @@ function Get-NextecInstalledClient {
   }
 }
 
+# Painel configuravel: o host vem do inscricao.json local (ou do marcador), nunca da rede.
+function ConvertTo-NextecPainelUrl {
+  param([string]$Url)
+  if ([string]::IsNullOrWhiteSpace($Url) -or $Url.Length -gt 253 -or $Url -match '[\s\@]') { return $null }
+  $u = $null
+  if (-not [Uri]::TryCreate($Url.Trim(), [UriKind]::Absolute, [ref]$u)) { return $null }
+  if ($u.Scheme -cne 'https' -or $u.UserInfo -or $u.Query -or $u.Fragment -or $u.AbsolutePath -cne '/' -or -not $u.IsDefaultPort) { return $null }
+  if ($u.HostNameType -ne [UriHostNameType]::Dns) { return $null }
+  if ($u.Host -cnotmatch '^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$') { return $null }
+  return ('https://' + $u.Host)
+}
+
+function Get-NextecPainelConfigurado {
+  param(
+    [string]$Root = (Join-Path $env:ProgramData 'Nextec\Acesso'),
+    [string]$Padrao = 'https://painel-remoto.nex.tec.br'
+  )
+  foreach ($nome in @('inscricao.json', 'nextec-marker.json')) {
+    $arquivo = Join-Path $Root $nome
+    try {
+      if (-not (Test-Path -LiteralPath $arquivo -PathType Leaf)) { continue }
+      if ((Get-Item -LiteralPath $arquivo).Length -gt 4096) { continue }
+      $valor = [IO.File]::ReadAllText($arquivo, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF) | ConvertFrom-Json
+      $painel = ConvertTo-NextecPainelUrl ([string]$valor.painel)
+      if ($painel) { $script:NextecPainelOrigem = $arquivo; return $painel }
+    } catch { }
+  }
+  $script:NextecPainelOrigem = 'padrao'
+  return $Padrao
+}
+
 function Escrever([string]$msg) {
   if (-not (Test-Path $PastaDados)) { New-Item -ItemType Directory -Path $PastaDados -Force | Out-Null }
   if ((Test-Path $Log) -and (Get-Item $Log).Length -gt 1MB) { Move-Item $Log "$Log.antigo" -Force }
   Add-Content -Path $Log -Value ('{0:yyyy-MM-dd HH:mm:ss}  {1}' -f (Get-Date), $msg) -Encoding UTF8
   if ($Instalar -or $VerbosePreference -ne 'SilentlyContinue' -or $Simular) { Write-Host $msg }
+}
+
+# Credencial que o painel recusa (401) em 3 ciclos seguidos nao volta a valer: vai para agente-senha.json.anterior
+# e o coordenador refaz o cadastro sozinho (inscricao.json ou autorizacao do painel). Um 401 isolado nao derruba nada.
+function Get-NextecHttpStatus {
+  param($Exception)
+  $ex = $Exception
+  while ($ex) {
+    if ($ex -is [Net.WebException] -and $ex.Response) { return [int]$ex.Response.StatusCode }
+    $ex = $ex.InnerException
+  }
+  return 0
+}
+
+function Register-NextecAuthFailure {
+  param(
+    [Parameter(Mandatory)][string]$CounterPath,
+    [Parameter(Mandatory)][string]$ConfigPath,
+    [Parameter(Mandatory)][string]$DataRoot,
+    [int]$Limit = 3
+  )
+  $count = 0
+  try { if (Test-Path -LiteralPath $CounterPath -PathType Leaf) { $count = [int]([IO.File]::ReadAllText($CounterPath).Trim()) } } catch { $count = 0 }
+  $count++
+  if ($count -lt $Limit) {
+    [IO.File]::WriteAllText($CounterPath, [string]$count)
+    return $false
+  }
+  $aside = $ConfigPath + '.anterior'
+  Remove-Item -LiteralPath $aside -Force -ErrorAction SilentlyContinue
+  if (Test-Path -LiteralPath $ConfigPath -PathType Leaf) { Move-Item -LiteralPath $ConfigPath -Destination $aside -Force }
+  Remove-Item -LiteralPath (Join-Path $DataRoot 'inscricao-estado.json') -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $CounterPath -Force -ErrorAction SilentlyContinue
+  return $true
+}
+
+# Resultado de um ciclo que falhou: so 401 conta, e so se for seguido de outros 401. Qualquer outra falha (503, rede,
+# timeout) interrompe a sequencia e zera a contagem. Devolve $true quando a credencial foi aposentada.
+function Update-NextecAuthFailures {
+  param(
+    [int]$Status,
+    [Parameter(Mandatory)][string]$CounterPath,
+    [Parameter(Mandatory)][string]$ConfigPath,
+    [Parameter(Mandatory)][string]$DataRoot
+  )
+  if ($Status -eq 401) { return (Register-NextecAuthFailure -CounterPath $CounterPath -ConfigPath $ConfigPath -DataRoot $DataRoot) }
+  Remove-Item -LiteralPath $CounterPath -Force -ErrorAction SilentlyContinue
+  return $false
 }
 
 function Chamar([string]$caminho, [hashtable]$corpo) {
@@ -244,12 +382,39 @@ function ClienteInstalado {
   return $cliente
 }
 
+# Um argumento da linha de comando do Windows: sem aspas quando e simples, senao entre aspas com barras e aspas escapadas.
+function ConvertTo-NextecArgument([string]$Valor) {
+  if ($Valor -ne '' -and $Valor -match '^[A-Za-z0-9_.:=/@+-]+$') { return $Valor }
+  $escapado = [regex]::Replace($Valor, '(\\*)"', '$1$1\"')
+  $escapado = [regex]::Replace($escapado, '(\\+)$', '$1$1')
+  return '"' + $escapado + '"'
+}
+
+# O rustdesk.exe e um programa de janela (subsistema GUI): `$x = & exe args` NAO espera o processo nem captura a saida
+# (o PowerShell o trata como aplicativo grafico), entao o --password rodava sem ninguem conferir o "Done!". Aqui o processo
+# e iniciado com a saida redirecionada, esperado com limite de tempo e o codigo de saida e real.
 function InvocarRustDesk([string[]]$Argumentos) {
   $cliente = ClienteInstalado
   if (-not $cliente) { throw 'identity_conflict: descoberta indisponível no modo de simulação.' }
-  $saida = & $cliente.ExePath @Argumentos 2>&1
-  $codigo = $LASTEXITCODE
-  return [pscustomobject]@{ ExitCode = $codigo; Output = (@($saida) -join "`n").Trim() }
+  $psi = New-Object Diagnostics.ProcessStartInfo
+  $psi.FileName = $cliente.ExePath
+  $psi.Arguments = (@($Argumentos | ForEach-Object { ConvertTo-NextecArgument $_ }) -join ' ')
+  $psi.UseShellExecute = $false
+  $psi.CreateNoWindow = $true
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  $processo = [Diagnostics.Process]::Start($psi)
+  try {
+    $saidaPadrao = $processo.StandardOutput.ReadToEndAsync()
+    $saidaErro = $processo.StandardError.ReadToEndAsync()
+    if (-not $processo.WaitForExit(60000)) {
+      try { $processo.Kill() } catch { }
+      throw 'rustdesk_cli_timeout: o cliente não respondeu ao comando em 60 segundos.'
+    }
+    $processo.WaitForExit()
+    $texto = (([string]$saidaPadrao.Result + "`n" + [string]$saidaErro.Result)).Trim()
+    return [pscustomobject]@{ ExitCode = [int]$processo.ExitCode; Output = $texto }
+  } finally { $processo.Dispose() }
 }
 
 function MeuId {
@@ -413,7 +578,7 @@ if ($Registrar) {
   if (-not $admin) { throw 'Execute como administrador.' }
   ProtegerPastaAgente
   $cfg = Get-Content -LiteralPath $Config -Raw -Encoding UTF8 | ConvertFrom-Json
-  if ($cfg.painel -cne 'https://painel-remoto.nex.tec.br' -or -not $cfg.token) { throw 'invalid_agent_config' }
+  if (-not (ConvertTo-NextecPainelUrl ([string]$cfg.painel)) -or -not $cfg.token) { throw 'invalid_agent_config' }
   if ((MeuId) -ne $cfg.id) { throw 'identity_conflict' }
   Revelar $cfg.token | Out-Null
   Register-NextecPasswordTask -Source $PSCommandPath
@@ -429,7 +594,14 @@ if ($Instalar) {
     if (-not $admin) { throw 'Execute como administrador.' }
     ProtegerPastaAgente
   }
-  $script:PainelUrl = $Painel.TrimEnd('/')
+  # o painel configurado no instalador (inscricao.json) vence o argumento; sem arquivo, vale o argumento validado
+  $painelCfg = Get-NextecPainelConfigurado -Root $PastaDados -Padrao ''
+  if ($painelCfg) { $script:PainelUrl = $painelCfg }
+  else {
+    $script:PainelUrl = ConvertTo-NextecPainelUrl $Painel
+    if (-not $script:PainelUrl) { throw 'Endereco do painel invalido (precisa ser https://dominio, sem IP nem credenciais).' }
+    Escrever 'Aviso: inscricao.json ausente; usando o painel informado (compat com instalacao antiga).'
+  }
   $meuId = MeuId
   Escrever "ID do RustDesk: $meuId"
   try {
@@ -478,9 +650,18 @@ if ($Instalar) {
 
 if ($Executar) {
   ProtegerPastaAgente
+  # Sem credencial: o coordenador ainda vai cadastrar (ou acabou de aposentar a antiga). Nada a fazer, sem erro.
+  if (-not (Test-Path -LiteralPath $Config -PathType Leaf)) { return }
+  $falhas = Join-Path $PastaDados 'agente-senha.falhas'
   try {
     $cfg = Get-Content $Config -Raw | ConvertFrom-Json
-    $script:PainelUrl = $cfg.painel
+    # troca de dominio: vale o painel configurado hoje; sem arquivo, o gravado no cadastro (validado)
+    $script:PainelUrl = Get-NextecPainelConfigurado -Root $PastaDados -Padrao ''
+    if (-not $script:PainelUrl) {
+      $script:PainelUrl = ConvertTo-NextecPainelUrl ([string]$cfg.painel)
+      if (-not $script:PainelUrl) { throw 'invalid_agent_config' }
+      Escrever 'Aviso: inscricao.json ausente; usando o painel do cadastro (compat).'
+    }
     $token = Revelar $cfg.token
     $meuId = $cfg.id
     $idServico = MeuId
@@ -488,8 +669,12 @@ if ($Executar) {
       throw "O agente está vinculado ao ID $meuId, mas o serviço RustDesk atende o ID $idServico. A execução foi interrompida para não trocar a senha da máquina errada. Remova o agente antigo no painel e cadastre novamente para vincular o ID do serviço."
     }
     Invoke-NextecPasswordCycle $cfg
+    Remove-Item -LiteralPath $falhas -Force -ErrorAction SilentlyContinue
   } catch {
     Escrever "ERRO: $($_.Exception.Message)"
+    if (Update-NextecAuthFailures -Status (Get-NextecHttpStatus $_.Exception) -CounterPath $falhas -ConfigPath $Config -DataRoot $PastaDados) {
+      Escrever 'O painel recusou a credencial deste agente 3 vezes seguidas (401). Ela foi guardada em agente-senha.json.anterior e o cadastro sera refeito automaticamente.'
+    }
     exit 1
   }
   return

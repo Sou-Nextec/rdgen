@@ -81,6 +81,28 @@ function Register-NextecCoordinatorTask {
     if ((Get-Item -LiteralPath $enrollSource -Force).Length -gt 4096) { throw 'invalid_input' }
     $pairs = @($pairs) + @([pscustomobject]@{ Source=$enrollSource; Destination=$enrollPath })
   }
+  # nextec-marker.json (opcional): leva o painel do build ({v,app,upgrade_code,painel}) para a pasta de dados, de onde os
+  # scripts leem o endereco mesmo quando o instalador saiu sem chave de inscricao.
+  $markerSource = Join-Path $SourceRoot 'nextec-marker.json'
+  $markerPath = Join-Path $Root 'nextec-marker.json'
+  if (Test-Path -LiteralPath $markerSource -PathType Leaf) {
+    Assert-NextecCoordinatorPath -Path $markerSource
+    if ((Get-Item -LiteralPath $markerSource -Force).Length -gt 4096) { throw 'invalid_input' }
+    $pairs = @($pairs) + @([pscustomobject]@{ Source=$markerSource; Destination=$markerPath })
+  }
+  # Politica da inscricao anterior: instalador sem inscricao.json nao herda a de uma instalacao anterior que aponte para
+  # OUTRO painel (migracao de painel ou de cliente); se o painel e o mesmo, ou o instalador nao diz qual e, ela e mantida.
+  $script:NextecStaleEnrollment = $false
+  if (-not $hasEnrollment -and (Test-Path -LiteralPath $enrollPath -PathType Leaf)) {
+    try {
+      $newPanel = ''
+      if (Test-Path -LiteralPath $markerSource -PathType Leaf) {
+        $newPanel = [string]([IO.File]::ReadAllText($markerSource, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF) | ConvertFrom-Json).painel
+      }
+      $oldPanel = [string]([IO.File]::ReadAllText($enrollPath, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF) | ConvertFrom-Json).painel
+      if ($newPanel -and $oldPanel -and ($newPanel.TrimEnd('/') -ine $oldPanel.TrimEnd('/'))) { $script:NextecStaleEnrollment = $true }
+    } catch { $script:NextecStaleEnrollment = $false }
+  }
   foreach ($pair in $pairs) {
     $source = $pair.Source
     if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw 'component_missing' }
@@ -88,12 +110,20 @@ function Register-NextecCoordinatorTask {
     Assert-NextecCoordinatorPath -Path $pair.Destination
     if (Test-Path -LiteralPath $pair.Destination) {
       if (-not (Test-Path -LiteralPath $pair.Destination -PathType Leaf)) { throw 'unsafe_path' }
-      Assert-NextecCoordinatorFileAcl -Path $pair.Destination
+      # Arquivo de instalacao anterior com permissao fora do padrao (agente antigo, antivirus, restauracao):
+      # nao e reaproveitado, e apagado e copiado de novo. Apagar remove so o link, nunca o alvo de um hardlink.
+      try { Assert-NextecCoordinatorFileAcl -Path $pair.Destination }
+      catch { Remove-Item -LiteralPath $pair.Destination -Force; $script:NextecReplacedFiles += [IO.Path]::GetFileName($pair.Destination) }
     }
   }
 
   New-Item -ItemType Directory -Path $Root -Force | Out-Null
   Set-Acl -LiteralPath $Root -AclObject (New-NextecCoordinatorAcl -Directory)
+  if ($script:NextecStaleEnrollment) {
+    Remove-Item -LiteralPath $enrollPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $Root 'inscricao-estado.json') -Force -ErrorAction SilentlyContinue
+    $script:NextecReplacedFiles += 'inscricao.json (de outro painel)'
+  }
   foreach ($pair in $pairs) {
     $source = [IO.Path]::GetFullPath($pair.Source)
     $destination = [IO.Path]::GetFullPath($pair.Destination)
@@ -112,6 +142,22 @@ function Register-NextecCoordinatorTask {
   $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 4) -MultipleInstances IgnoreNew
   Register-ScheduledTask -TaskName 'Nextec Acesso - Cadastro de agente' -Action $action -Trigger $trigger -Settings $settings -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
   'Coordenador registrado para verificar autorizações pendentes a cada 5 minutos.'
+}
+
+# Log do coordenador (sem segredos: so codigos e nomes de arquivo). A instalacao e o ciclo de 5 minutos
+# nunca falham em silencio.
+function Write-NextecCoordinatorLog {
+  param([string]$Root, [string]$Message)
+  try {
+    if (-not $Root -or -not (Test-Path -LiteralPath $Root -PathType Container)) { return }
+    $log = Join-Path $Root 'coordenador.log'
+    Assert-NextecCoordinatorPath -Path $log
+    if ((Test-Path -LiteralPath $log -PathType Leaf) -and (Get-Item -LiteralPath $log -Force).Length -gt 262144) {
+      Move-Item -LiteralPath $log -Destination ($log + '.antigo') -Force
+    }
+    $line = '{0:yyyy-MM-dd HH:mm:ss} {1}' -f (Get-Date), ([string]$Message -replace '[\r\n]+', ' ')
+    [IO.File]::AppendAllText($log, $line + "`r`n", [Text.UTF8Encoding]::new($false))
+  } catch { }
 }
 
 function Remove-NextecCoordinatorTasks {
@@ -185,7 +231,18 @@ if ($Remover) {
   Remove-NextecCoordinatorTasks
   return
 }
-if ($Registrar) { Register-NextecCoordinatorTask -Root $PastaDados -SourceRoot $PSScriptRoot; return }
+if ($Registrar) {
+  $script:NextecReplacedFiles = @()
+  try {
+    Register-NextecCoordinatorTask -Root $PastaDados -SourceRoot $PSScriptRoot
+    if ($script:NextecReplacedFiles.Count) { Write-NextecCoordinatorLog -Root $PastaDados -Message ('registrar: arquivos antigos substituidos: ' + ($script:NextecReplacedFiles -join ', ')) }
+    Write-NextecCoordinatorLog -Root $PastaDados -Message 'registrar: ok'
+  } catch {
+    Write-NextecCoordinatorLog -Root $PastaDados -Message ('registrar: ERRO ' + $_.Exception.Message)
+    throw
+  }
+  return
+}
 if ($Receber) {
   if ($Registrar -or $Executar) { throw 'Escolha somente -Receber.' }
   Assert-NextecInteractiveAdministrator
@@ -207,17 +264,21 @@ if ($Receber) {
   foreach ($definition in $workerAst.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] }, $true)) {
     . ([scriptblock]::Create($definition.Extent.Text))
   }
+  # host do painel: inscricao.json/marcador instalado; sem arquivo, o padrao antigo (compat)
+  $script:NextecPainelFixo = Get-NextecPainelConfigurado -Root $PastaDados -Padrao $script:NextecPainelFixo
   $readSelectedFile = { Get-Content -LiteralPath $selectedPath -Raw -Encoding UTF8 }
   try { Receive-NextecBootstrapAuthorization -Root $PastaDados -ReadInput $readSelectedFile }
   finally {
     # o arquivo entregue ao coordenador é de uso único: sai do disco mesmo se a ativação falhar
     if ($ArquivoAutorizacao) { Remove-Item -LiteralPath $selectedPath -Force -ErrorAction SilentlyContinue }
   }
+  # cadastra agora, sem esperar o próximo ciclo de 5 minutos
+  try { Start-ScheduledTask -TaskName $script:TaskName -ErrorAction Stop } catch { Write-NextecCoordinatorLog -Root $PastaDados -Message ('receber: tarefa nao iniciada ' + $_.Exception.Message) }
   return
 }
 if ($Executar) {
   try { Invoke-NextecCoordinator -Root $PastaDados -CoordinatorPath $PSCommandPath | Out-Null }
-  catch { exit 1 }
+  catch { Write-NextecCoordinatorLog -Root $PastaDados -Message ('executar: ERRO ' + $_.Exception.Message); exit 1 }
   return
 }
 Write-Host 'Use -Registrar na instalação, -Receber para selecionar o bootstrap.json como administrador, -Executar (tarefa SYSTEM) ou -Remover no uninstall.'

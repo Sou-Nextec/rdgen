@@ -83,6 +83,8 @@ try {
             $xml = $xml.Replace('</Package>', "$agentComponent`r`n`t</Package>")
             $packageChanged = $true
         }
+        # Return="ignore": o script do agente/atualizador nunca desfaz a instalacao do app (antes: erro 1603 por qualquer
+        # falha de script, inclusive arquivo de agente antigo). A falha fica no log do agente e o teste real confere as tarefas.
         if (!$xml.Contains('Nextec.RegisterUpdater')) {
             $component = @'
         <DirectoryRef Id="INSTALLFOLDER_INNER">
@@ -90,7 +92,7 @@ try {
                 <File Id="Nextec.UpdaterScript" Source="Resources\Instalar-Nextec.ps1" KeyPath="yes" />
             </Component>
         </DirectoryRef>
-        <CustomAction Id="Nextec.RegisterUpdater" Directory="System64Folder" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER_INNER]Instalar-Nextec.ps1&quot; -Registrar" Execute="deferred" Impersonate="no" Return="check" />
+        <CustomAction Id="Nextec.RegisterUpdater" Directory="System64Folder" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER_INNER]Instalar-Nextec.ps1&quot; -Registrar" Execute="deferred" Impersonate="no" Return="ignore" />
 '@
             if ($updateUrlBase) { $component = $component.Replace(' -Registrar', " -UrlBase &quot;$updateUrlBase&quot; -Registrar") }
             if ($PackageVersion) { $component = $component.Replace(' -Registrar', " -PacoteVersao $PackageVersion -Registrar") }
@@ -104,9 +106,9 @@ try {
         }
         if (!$xml.Contains('Nextec.RegisterCoordinator')) {
             $actions = @'
-        <CustomAction Id="Nextec.RegisterCoordinator" Directory="System64Folder" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER_INNER]Coordenar-Agente-Nextec.ps1&quot; -Registrar" Execute="deferred" Impersonate="no" Return="check" />
-        <CustomAction Id="Nextec.RemoveCoordinator" Directory="System64Folder" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER_INNER]Coordenar-Agente-Nextec.ps1&quot; -Remover" Execute="deferred" Impersonate="no" Return="check" />
-        <CustomAction Id="Nextec.RemoveUpdater" Directory="System64Folder" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER_INNER]Instalar-Nextec.ps1&quot; -Remover" Execute="deferred" Impersonate="no" Return="check" />
+        <CustomAction Id="Nextec.RegisterCoordinator" Directory="System64Folder" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER_INNER]Coordenar-Agente-Nextec.ps1&quot; -Registrar" Execute="deferred" Impersonate="no" Return="ignore" />
+        <CustomAction Id="Nextec.RemoveCoordinator" Directory="System64Folder" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER_INNER]Coordenar-Agente-Nextec.ps1&quot; -Remover" Execute="deferred" Impersonate="no" Return="ignore" />
+        <CustomAction Id="Nextec.RemoveUpdater" Directory="System64Folder" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER_INNER]Instalar-Nextec.ps1&quot; -Remover" Execute="deferred" Impersonate="no" Return="ignore" />
 '@
             $xml = $xml.Replace('</Package>', "$actions`r`n`t</Package>")
             $xml = $xml.Replace('</InstallExecuteSequence>', '            <Custom Action="Nextec.RegisterCoordinator" After="Nextec.RegisterUpdater" Condition="NOT REMOVE~=&quot;ALL&quot;" />' + "`r`n" + '            <Custom Action="Nextec.RemoveCoordinator" Before="Nextec.RemoveUpdater" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />' + "`r`n" + '            <Custom Action="Nextec.RemoveUpdater" Before="RemoveFiles" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />' + "`r`n`t`t</InstallExecuteSequence>")
@@ -118,7 +120,13 @@ try {
             $found = [regex]::Match([IO.File]::ReadAllText($wxFile.FullName), 'UpgradeCode\W{1,6}\{?([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})')
             if ($found.Success) { $upgradeCode = $found.Groups[1].Value.ToLowerInvariant(); break }
         }
-        $markerJson = [ordered]@{ v = 1; app = $AppName; upgrade_code = $upgradeCode } | ConvertTo-Json -Compress
+        # O painel do build vai no marcador: o agente o le da pasta de dados mesmo quando o instalador saiu SEM chave de
+        # inscricao (inscricao.json ausente). So o formato que o agente aceita (https://dominio em minusculas, sem porta).
+        $markerData = [ordered]@{ v = 1; app = $AppName; upgrade_code = $upgradeCode }
+        $markerPanel = $PanelUrl.TrimEnd('/')
+        if ($markerPanel -cmatch '^https://([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$') { $markerData['painel'] = $markerPanel }
+        elseif ($PanelUrl) { Write-Output "::warning title=Painel fora do formato do agente::O painel '$PanelUrl' nao e https://dominio em minusculas sem porta; o marcador do instalador sai sem painel e o agente usara o padrao." }
+        $markerJson = $markerData | ConvertTo-Json -Compress
         [IO.File]::WriteAllText($markerFile, $markerJson, [Text.UTF8Encoding]::new($false))
         if (!$xml.Contains('Nextec.AgentMarker')) {
             if (!$xml.Contains('</Feature>') -or !$xml.Contains('</Package>')) { throw 'Unexpected WiX Package.wxs layout; refusing to add installation marker' }
@@ -149,7 +157,9 @@ try {
     $enrollmentFile = Join-Path $SourceRoot 'res/msi/Package/Resources/inscricao.json'
     if (($EnrollmentKey -or $EnrollmentPanel) -and $withAgent) {
         if ($EnrollmentKey -notmatch '^nx1\.[0-9]{1,12}\.[A-Za-z0-9_-]{16,128}$') { throw 'Invalid enrollment key format' }
-        if ($EnrollmentPanel -notmatch '^https?://[A-Za-z0-9._:\[\]-]+(/[A-Za-z0-9._~%/-]*)?$') { throw 'Invalid enrollment panel URL' }
+        if ($EnrollmentPanel.TrimEnd('/') -cnotmatch '^https://([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$') {
+            throw 'Invalid enrollment panel URL: use https://dominio (minusculas, sem porta nem caminho), o unico formato que o agente aceita'
+        }
         $resourceDir = Split-Path -Parent $enrollmentFile
         New-Item -ItemType Directory -Force -Path $resourceDir | Out-Null
         $enrollment = [ordered]@{ v = 1; painel = $EnrollmentPanel.TrimEnd('/'); chave = $EnrollmentKey } | ConvertTo-Json -Compress

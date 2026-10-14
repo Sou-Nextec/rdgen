@@ -123,8 +123,9 @@ jobs:
           enroll_panel: https://painel-remoto.nex.tec.br
         run: |
           Copy-Item source/SignOutput/rustdesk.msi (Join-Path $env:RUNNER_TEMP 'rustdesk-2.0.7.msi') -Force
-          # build-msi.ps1 e idempotente por componente: volta o Package.wxs do fonte para a segunda versao sair limpa
-          git -C source checkout -- res/msi/Package/Package.wxs
+          # O preprocess.py do RustDesk edita res/msi/Package/Components/RustDesk.wxs no proprio lugar (nao e idempotente: uma
+          # segunda execucao duplica os componentes, WIX0091). Voltar res/msi ao estado do fonte faz a segunda versao sair limpa.
+          git -C source checkout -- res/msi
           & ./.github/scripts/build-msi.ps1 -AppName RustDesk -PackageVersion 2.0.8 -SourceRoot "$PWD/source" -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
           Copy-Item source/SignOutput/rustdesk.msi (Join-Path $env:RUNNER_TEMP 'rustdesk-2.0.8.msi') -Force
           if ((Get-FileHash (Join-Path $env:RUNNER_TEMP 'rustdesk-2.0.7.msi')).Hash -eq (Get-FileHash (Join-Path $env:RUNNER_TEMP 'rustdesk-2.0.8.msi')).Hash) { throw 'Both MSI versions are identical' }

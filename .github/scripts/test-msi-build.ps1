@@ -173,6 +173,8 @@ try {
             if (!(Test-Path -LiteralPath $caseMarker)) { throw "nextec-marker.json missing ($label)" }
             $markerData = [IO.File]::ReadAllText($caseMarker) | ConvertFrom-Json
             if ($markerData.v -ne 1 -or $markerData.app -ne $case.Name -or $markerData.upgrade_code -ne $upgradeCodeFixture) { throw "nextec-marker.json content is wrong ($label)" }
+            # o painel do build fica no marcador (o agente le da pasta de dados, mesmo sem inscricao.json)
+            if ($markerData.painel -ne $case.Panel) { throw "nextec-marker.json does not carry the build panel ($label)" }
             [xml]$caseXml = $caseText
             $registry = $caseXml.SelectSingleNode('//RegistryKey[@Key="SOFTWARE\Nextec\Agente"]')
             if (!$registry -or $registry.Root -ne 'HKLM') { throw "HKLM\SOFTWARE\Nextec\Agente registration missing ($label)" }
@@ -210,6 +212,23 @@ try {
             $stored = [IO.File]::ReadAllText((Join-Path $kRoot 'res/msi/Package/Resources/inscricao.json')) | ConvertFrom-Json
             if ($stored.chave -ne $clientKey -or $stored.v -ne 1) { throw 'Client key was not written to inscricao.json' }
         }
+    }
+    # Instalador SEM chave de inscricao (painel inacessivel no build): o painel continua no marcador, para o agente
+    # nao cair no endereco padrao. Painel fora do formato do agente sai sem o campo.
+    foreach ($case in @(@{ Api = 'https://painel.semchave.example'; Painel = 'https://painel.semchave.example' }, @{ Api = 'painel.semchave.example:21114'; Painel = $null })) {
+        $nRoot = Join-Path $fixture ('nokey-' + [Guid]::NewGuid().ToString('N'))
+        $nBinary = Join-Path $nRoot 'rustdesk'
+        $nWxs = Join-Path $nRoot 'res/msi/Package/Package.wxs'
+        New-Item -ItemType Directory -Force $nBinary, (Split-Path $nWxs) | Out-Null
+        [IO.File]::WriteAllText((Join-Path $nBinary 'XPTO.exe'), 'fixture')
+        [IO.File]::WriteAllText($nWxs, '<Wix><?define UpgradeCode = "{' + $upgradeCodeFixture.ToUpperInvariant() + '}"?><Package><Feature></Feature><InstallExecuteSequence></InstallExecuteSequence></Package></Wix>')
+        $env:enroll_key = ''; $env:enroll_panel = ''; $env:apiServer = $case.Api
+        try { & $buildScript -AppName 'XPTO' -IncludeAgent 'true' -PackageVersion '2.0.7' -SourceRoot $nRoot -BinaryDirectory $nBinary -UpdaterSource $updaterSource | Out-Null }
+        finally { Remove-Item Env:enroll_key, Env:enroll_panel, Env:apiServer -ErrorAction SilentlyContinue }
+        $nResources = Join-Path $nRoot 'res/msi/Package/Resources'
+        if (Test-Path -LiteralPath (Join-Path $nResources 'inscricao.json')) { throw 'inscricao.json present without a key' }
+        $nMarker = [IO.File]::ReadAllText((Join-Path $nResources 'nextec-marker.json')) | ConvertFrom-Json
+        if ($nMarker.painel -ne $case.Painel) { throw "marker panel without enrollment key is wrong for $($case.Api): $($nMarker.painel)" }
     }
     if ([IO.File]::ReadAllText($buildScript) -match "AppName\s+-imatch") { throw 'build-msi.ps1 still decides the agent by app name' }
     Write-Output 'PASS: repeatable WiX payload registration, exact inert agent resource, enrollment file separate from script hashes, warning without key'

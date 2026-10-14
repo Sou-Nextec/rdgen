@@ -280,6 +280,20 @@ function Register-NextecAuthFailure {
   return $true
 }
 
+# Resultado de um ciclo que falhou: so 401 conta, e so se for seguido de outros 401. Qualquer outra falha (503, rede,
+# timeout) interrompe a sequencia e zera a contagem. Devolve $true quando a credencial foi aposentada.
+function Update-NextecAuthFailures {
+  param(
+    [int]$Status,
+    [Parameter(Mandatory)][string]$CounterPath,
+    [Parameter(Mandatory)][string]$ConfigPath,
+    [Parameter(Mandatory)][string]$DataRoot
+  )
+  if ($Status -eq 401) { return (Register-NextecAuthFailure -CounterPath $CounterPath -ConfigPath $ConfigPath -DataRoot $DataRoot) }
+  Remove-Item -LiteralPath $CounterPath -Force -ErrorAction SilentlyContinue
+  return $false
+}
+
 function Chamar([string]$caminho, [hashtable]$corpo) {
   $r = Invoke-WebRequest -Uri ($script:PainelUrl + $caminho) -Method Post -ContentType 'application/json' `
         -Body ($corpo | ConvertTo-Json -Compress) -UseBasicParsing -MaximumRedirection 0 -TimeoutSec 30
@@ -627,10 +641,8 @@ if ($Executar) {
     Remove-Item -LiteralPath $falhas -Force -ErrorAction SilentlyContinue
   } catch {
     Escrever "ERRO: $($_.Exception.Message)"
-    if ((Get-NextecHttpStatus $_.Exception) -eq 401) {
-      if (Register-NextecAuthFailure -CounterPath $falhas -ConfigPath $Config -DataRoot $PastaDados) {
-        Escrever 'O painel recusou a credencial deste agente 3 vezes seguidas (401). Ela foi guardada em agente-senha.json.anterior e o cadastro sera refeito automaticamente.'
-      }
+    if (Update-NextecAuthFailures -Status (Get-NextecHttpStatus $_.Exception) -CounterPath $falhas -ConfigPath $Config -DataRoot $PastaDados) {
+      Escrever 'O painel recusou a credencial deste agente 3 vezes seguidas (401). Ela foi guardada em agente-senha.json.anterior e o cadastro sera refeito automaticamente.'
     }
     exit 1
   }

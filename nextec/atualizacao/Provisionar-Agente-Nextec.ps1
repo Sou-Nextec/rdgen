@@ -304,10 +304,29 @@ function Test-NextecAgentTaskReady {
   param([Parameter(Mandatory)][string]$Root)
   try {
     $task = Get-ScheduledTask -TaskName 'Nextec Acesso - Senha' -ErrorAction Stop
-    $expected = Join-Path $Root 'Agente-Senha-Nextec.ps1'
-    $arguments = [string]($task.Actions | Select-Object -First 1).Arguments
-    return ($arguments.IndexOf($expected, [StringComparison]::OrdinalIgnoreCase) -ge 0) -and ([string]$task.State -ne 'Disabled')
+    return (Test-NextecAgentTaskShape -Task $task -Root $Root)
   } catch { return $false }
+}
+
+# Tarefa correta = conta SYSTEM, powershell.exe do sistema, o script do agente em $Root com -Executar, repeticao de 5 minutos e habilitada.
+# Qualquer divergencia (tarefa antiga, outro caminho, outra conta) faz o coordenador registrar de novo.
+function Test-NextecAgentTaskShape {
+  param([Parameter(Mandatory)]$Task, [Parameter(Mandatory)][string]$Root)
+  if ([string]$Task.State -eq 'Disabled') { return $false }
+  $user = [string]$Task.Principal.UserId
+  if ($user -notin @('SYSTEM', 'S-1-5-18', 'NT AUTHORITY\SYSTEM', 'NT AUTHORITY\SYSTEM')) { return $false }
+  $action = $Task.Actions | Select-Object -First 1
+  $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+  if ([string]$action.Execute -ine $powershell) { return $false }
+  $script = Join-Path $Root 'Agente-Senha-Nextec.ps1'
+  $arguments = [string]$action.Arguments
+  if ($arguments.IndexOf('"' + $script + '"', [StringComparison]::OrdinalIgnoreCase) -lt 0) { return $false }
+  if ($arguments -notmatch '(?i)(^|\s)-Executar(\s|$)') { return $false }
+  $trigger = $Task.Triggers | Select-Object -First 1
+  $interval = ''
+  if ($trigger -and $trigger.Repetition) { $interval = [string]$trigger.Repetition.Interval }
+  if ($interval -ne 'PT5M') { return $false }
+  return $true
 }
 
 function Invoke-NextecAgentRegistration {
@@ -564,8 +583,8 @@ function Invoke-NextecProvisioning {
       Remove-Item -LiteralPath $paths.Input -Force -ErrorAction SilentlyContinue
       Write-NextecProvisionLog 'identity_conflict' -Root $Root; throw 'identity_conflict'
     }
-    # O painel so emite autorizacao para maquina sem agente ativo: a credencial local e velha (ex.: agente antigo com 401).
-    if (Test-Path -LiteralPath $paths.AgentConfig -PathType Leaf) { Move-NextecAgentConfigAside -Root $Root -Reason 'agent_config_replaced' }
+    # Uma credencial local existente (ex.: agente antigo com 401) so e aposentada DEPOIS de o servidor confirmar o cadastro novo:
+    # autorizacao vencida, recusada ou falha de rede nao pode deixar a maquina sem a configuracao que ja tinha.
     $proposed = [string](& $NewToken)
     if ($proposed -notmatch '^[A-Za-z0-9_-]{43}$') { Write-NextecProvisionLog 'protocol_error' -Root $Root; throw 'protocol_error' }
     $now = $Now.ToUniversalTime()
@@ -611,14 +630,16 @@ function Invoke-NextecProvisioning {
   }
 
   if (Test-Path -LiteralPath $paths.AgentConfig -PathType Leaf) {
-    $existing = Read-NextecAgentTokenConfig -Path $paths.AgentConfig
-    if ($existing.id -cne $journal.id -or $existing.token -cne $journal.proposed_token) {
-      Write-NextecProvisionLog 'already_enrolled' -Root $Root; throw 'already_enrolled'
+    $existing = $null
+    try { $existing = Read-NextecAgentTokenConfig -Path $paths.AgentConfig } catch { $existing = $null }
+    # Repeticao depois de gravar o token proposto: so falta registrar a tarefa. Qualquer outra credencial (antiga, morta
+    # ou ilegivel) fica onde esta ate o servidor aceitar o cadastro novo, logo abaixo.
+    if ($existing -and $existing.id -ceq $journal.id -and $existing.token -ceq $journal.proposed_token) {
+      & $RegisterAgent $paths.AgentScript
+      Remove-Item -LiteralPath $paths.Journal -Force
+      Write-NextecProvisionLog 'complete' -Root $Root
+      return 'complete'
     }
-    & $RegisterAgent $paths.AgentScript
-    Remove-Item -LiteralPath $paths.Journal -Force
-    Write-NextecProvisionLog 'complete' -Root $Root
-    return 'complete'
   }
 
   try {
@@ -640,6 +661,8 @@ function Invoke-NextecProvisioning {
     Write-NextecProvisionLog 'protocol_error' -Root $Root; throw 'protocol_error'
   }
 
+  # O servidor aceitou: agora sim a credencial antiga (se havia) vai para .anterior e a nova passa a valer.
+  if (Test-Path -LiteralPath $paths.AgentConfig -PathType Leaf) { Move-NextecAgentConfigAside -Root $Root -Reason 'agent_config_replaced' }
   Save-NextecAgentTokenConfig -Path $paths.AgentConfig -Panel $journal.painel -Id $journal.id -Token $journal.proposed_token
   try { & $RegisterAgent $paths.AgentScript }
   catch { Write-NextecProvisionLog 'registration_retry' -Root $Root; return 'registration_retry' }

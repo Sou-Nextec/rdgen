@@ -1,5 +1,5 @@
 Source: https://github.com/Sou-Nextec/rustdesk-api-web
-Commit: 7d9a7c343885e457fcb55a31156ec23ae6fe4771
+Commit: a715b323afd19bdbcba778f8be46a3c8db578ccc
 Path: nextec/atualizacao/Agente-Senha-Nextec.ps1
-vendored file SHA-256: 8e4ea5285da53a3a0fda76a962092abc8ac525b9574c0f7685b32776f5b6e924
+vendored file SHA-256: a30032407a489286ad1082a4c3af71e879b61522db3dc06e6e7c3265ad74a5d2
 State: copiado por nextec/scripts/sincronizar-agente.py; a lista completa e os hashes estao em FONTE-AGENTE.json.

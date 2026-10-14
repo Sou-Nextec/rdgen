@@ -29,7 +29,8 @@ function ConvertTo-NextecPainelUrl {
 function Get-NextecPainelConfigurado {
   param(
     [string]$Root = (Join-Path $env:ProgramData 'Nextec\Acesso'),
-    [string]$Padrao = 'https://painel-remoto.nex.tec.br'
+    [string]$Padrao = 'https://painel-remoto.nex.tec.br',
+    [string]$RegistryKey = 'HKLM:\SOFTWARE\Nextec\Agente'
   )
   foreach ($nome in @('inscricao.json', 'nextec-marker.json')) {
     $arquivo = Join-Path $Root $nome
@@ -41,6 +42,12 @@ function Get-NextecPainelConfigurado {
       if ($painel) { $script:NextecPainelOrigem = $arquivo; return $painel }
     } catch { }
   }
+  # Marcador do MSI no registro (chave Nextec Agente em HKLM, valor Painel): o painel do build persiste mesmo sem inscricao.json.
+  try {
+    $reg = Get-ItemProperty -LiteralPath $RegistryKey -ErrorAction Stop
+    $painel = ConvertTo-NextecPainelUrl ([string]$reg.Painel)
+    if ($painel) { $script:NextecPainelOrigem = $RegistryKey; return $painel }
+  } catch { }
   $script:NextecPainelOrigem = 'padrao'
   return $Padrao
 }
@@ -265,13 +272,23 @@ function Save-NextecAgentTokenConfig {
   Write-NextecProtectedJson -Path $Path -Value $stored
 }
 
+# A credencial so vale para o painel em que foi cadastrada. Com painel configurado (inscricao.json, marcador ou registro),
+# uma credencial gravada para OUTRO painel nao e reaproveitada: iria ao painel novo e seria recusada (401) ou, pior, exposta.
+# Sem configuracao (painel padrao por compatibilidade) nada e comparado.
+function Test-NextecCredentialPanelCompatible {
+  param([string]$StoredPanel)
+  if ($script:NextecPainelOrigem -ceq 'padrao') { return $true }
+  $stored = ConvertTo-NextecPainelUrl $StoredPanel
+  return [bool]($stored -and $stored -ceq (ConvertTo-NextecPainelUrl ([string]$script:NextecPainelFixo)))
+}
+
 function Read-NextecAgentTokenConfig {
   param([Parameter(Mandatory)][string]$Path)
   $config = Read-NextecProvisionJson -Path $Path
   if (-not $config) { return $null }
   if (-not (ConvertTo-NextecPainelUrl ([string]$config.painel)) -or [string]$config.id -notmatch '^\d{6,64}$' -or -not $config.token) { throw 'protocol_error' }
   # troca de dominio: o painel valido e o configurado hoje, nao o gravado no cadastro
-  [pscustomobject]@{ painel=[string]$script:NextecPainelFixo; id=[string]$config.id; token=(Unprotect-NextecProvisionValue ([string]$config.token)) }
+  [pscustomobject]@{ painel=[string]$script:NextecPainelFixo; painel_gravado=[string]$config.painel; id=[string]$config.id; token=(Unprotect-NextecProvisionValue ([string]$config.token)) }
 }
 
 function Invoke-NextecBootstrapPost {
@@ -308,24 +325,34 @@ function Test-NextecAgentTaskReady {
   } catch { return $false }
 }
 
-# Tarefa correta = conta SYSTEM, powershell.exe do sistema, o script do agente em $Root com -Executar, repeticao de 5 minutos e habilitada.
-# Qualquer divergencia (tarefa antiga, outro caminho, outra conta) faz o coordenador registrar de novo.
+# Tarefa correta = conta SYSTEM (S-1-5-18) com RunLevel Highest, uma unica acao com o powershell.exe 5.1 do sistema,
+# "-File" apontando para o script do agente em $Root, "-Executar", gatilho periodico de no maximo 5 minutos e habilitada.
+# Qualquer divergencia (tarefa antiga, outro caminho, outra conta, gatilho sem repeticao) faz o coordenador registrar de novo.
 function Test-NextecAgentTaskShape {
   param([Parameter(Mandatory)]$Task, [Parameter(Mandatory)][string]$Root)
   if ([string]$Task.State -eq 'Disabled') { return $false }
   $user = [string]$Task.Principal.UserId
-  if ($user -notin @('SYSTEM', 'S-1-5-18', 'NT AUTHORITY\SYSTEM', 'NT AUTHORITY\SYSTEM')) { return $false }
-  $action = $Task.Actions | Select-Object -First 1
+  if ($user -notin @('SYSTEM', 'S-1-5-18', 'NT AUTHORITY\SYSTEM')) { return $false }
+  if ([string]$Task.Principal.RunLevel -ine 'Highest') { return $false }
+  $actions = @($Task.Actions)
+  if ($actions.Count -ne 1) { return $false }
+  $action = $actions[0]
   $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-  if ([string]$action.Execute -ine $powershell) { return $false }
+  if (([string]$action.Execute).Trim('"') -ine $powershell) { return $false }
   $script = Join-Path $Root 'Agente-Senha-Nextec.ps1'
   $arguments = [string]$action.Arguments
-  if ($arguments.IndexOf('"' + $script + '"', [StringComparison]::OrdinalIgnoreCase) -lt 0) { return $false }
+  if ($arguments -notmatch ('(?i)(^|\s)-File\s+"' + [regex]::Escape($script) + '"(\s|$)')) { return $false }
   if ($arguments -notmatch '(?i)(^|\s)-Executar(\s|$)') { return $false }
-  $trigger = $Task.Triggers | Select-Object -First 1
-  $interval = ''
-  if ($trigger -and $trigger.Repetition) { $interval = [string]$trigger.Repetition.Interval }
-  if ($interval -ne 'PT5M') { return $false }
+  $triggers = @($Task.Triggers)
+  if ($triggers.Count -lt 1) { return $false }
+  foreach ($trigger in $triggers) {
+    if ($trigger.PSObject.Properties['Enabled'] -and $trigger.Enabled -eq $false) { return $false }
+    $interval = ''
+    if ($trigger.Repetition) { $interval = [string]$trigger.Repetition.Interval }
+    if (-not $interval) { return $false }
+    try { $span = [Xml.XmlConvert]::ToTimeSpan($interval) } catch { return $false }
+    if ($span -le [TimeSpan]::Zero -or $span -gt [TimeSpan]::FromMinutes(5)) { return $false }
+  }
   return $true
 }
 
@@ -603,6 +630,7 @@ function Invoke-NextecProvisioning {
       try { $existing = Read-NextecAgentTokenConfig -Path $paths.AgentConfig } catch { $existing = $null }
       if (-not $existing) { Move-NextecAgentConfigAside -Root $Root -Reason 'agent_config_unreadable' }
       elseif ($existing.id -cne $localId) { Move-NextecAgentConfigAside -Root $Root -Reason 'identity_changed' }
+      elseif (-not (Test-NextecCredentialPanelCompatible -StoredPanel $existing.painel_gravado)) { Move-NextecAgentConfigAside -Root $Root -Reason 'panel_changed' }
     }
     if (Test-Path -LiteralPath $paths.AgentConfig -PathType Leaf) {
       if (-not (& $AgentTaskReady $Root)) { & $RegisterAgent $paths.AgentScript }

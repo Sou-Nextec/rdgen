@@ -86,6 +86,10 @@ try {
     $integratedOutput = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $integrated -InstallDir $resourceDir 2>&1 | Out-String)
     if ($LASTEXITCODE -ne 0 -or $integratedOutput -notmatch 'PASS: installed self-enrollment') { throw "Packaged self-enrollment integration test failed: $integratedOutput" }
     if ($integratedOutput.Contains($enrollKey)) { throw 'Enrollment key leaked to integration test output' }
+    # Integrado: o agente empacotado recebe 401 tres vezes de um painel falso local, descarta a credencial e refaz o cadastro.
+    $authTest = Join-Path $updaterSource 'test_agent_401_integration.ps1'
+    $authOutput = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $authTest -InstallDir $resourceDir 2>&1 | Out-String)
+    if ($LASTEXITCODE -ne 0 -or $authOutput -notmatch 'PASS: agent 401 recovery') { throw "Packaged agent 401 recovery integration test failed: $authOutput" }
     # Chave mal formada e recusada sem repetir o valor.
     $env:enroll_key = 'nx1.1.curta'; $env:enroll_panel = $enrollPanel
     $rejected = $false
@@ -181,6 +185,8 @@ try {
             $values = @{}
             foreach ($v in $registry.SelectNodes('RegistryValue')) { $values[$v.Name] = $v.Value }
             if ($values['AppName'] -ne $case.Name -or $values['InstallDir'] -ne '[INSTALLFOLDER_INNER]') { throw "Registry values are wrong ($label)" }
+            # o painel do build tambem no registro (valor Painel), independente de haver chave de inscricao
+            if ($values['Painel'] -ne $case.Panel) { throw "HKLM Painel registry value does not carry the build panel ($label)" }
             $expectedUrl = $case.Panel + '/api/nextec/update'
             if ($case.Panel.StartsWith('https://')) {
                 if (!$caseText.Contains('-UrlBase &quot;' + $expectedUrl + '&quot;')) { throw "Updater does not use the build panel ($label)" }
@@ -209,6 +215,14 @@ try {
         if (Test-Path -LiteralPath (Join-Path $nResources 'inscricao.json')) { throw 'inscricao.json present without a key' }
         $nMarker = [IO.File]::ReadAllText((Join-Path $nResources 'nextec-marker.json')) | ConvertFrom-Json
         if ($nMarker.painel -ne $case.Painel) { throw "marker panel without enrollment key is wrong for $($case.Api): $($nMarker.painel)" }
+        # sem chave de inscricao o registro tambem leva o painel valido; painel fora do formato sai sem o valor
+        $nText = [IO.File]::ReadAllText($nWxs)
+        [xml]$nXml = $nText
+        $nRegistry = $nXml.SelectSingleNode('//RegistryKey[@Key="SOFTWARE\Nextec\Agente"]')
+        if (!$nRegistry) { throw "HKLM Nextec Agente registration missing without key for $($case.Api)" }
+        $nPanelValue = @($nRegistry.SelectNodes('RegistryValue') | Where-Object { $_.Name -eq 'Painel' })
+        if ($case.Painel) { if ($nPanelValue.Count -ne 1 -or $nPanelValue[0].Value -ne $case.Painel) { throw "HKLM Painel value is wrong without key for $($case.Api)" } }
+        elseif ($nPanelValue.Count -ne 0) { throw "HKLM Painel value must be absent for an invalid panel ($($case.Api))" }
     }
     if ([IO.File]::ReadAllText($buildScript) -match "AppName\s+-imatch") { throw 'build-msi.ps1 still decides the agent by app name' }
     Write-Output 'PASS: repeatable WiX payload registration, exact inert agent resource, enrollment file separate from script hashes, warning without key'

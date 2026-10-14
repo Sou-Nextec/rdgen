@@ -227,7 +227,8 @@ function ConvertTo-NextecPainelUrl {
 function Get-NextecPainelConfigurado {
   param(
     [string]$Root = (Join-Path $env:ProgramData 'Nextec\Acesso'),
-    [string]$Padrao = 'https://painel-remoto.nex.tec.br'
+    [string]$Padrao = 'https://painel-remoto.nex.tec.br',
+    [string]$RegistryKey = 'HKLM:\SOFTWARE\Nextec\Agente'
   )
   foreach ($nome in @('inscricao.json', 'nextec-marker.json')) {
     $arquivo = Join-Path $Root $nome
@@ -239,6 +240,12 @@ function Get-NextecPainelConfigurado {
       if ($painel) { $script:NextecPainelOrigem = $arquivo; return $painel }
     } catch { }
   }
+  # Marcador do MSI no registro (chave Nextec Agente em HKLM, valor Painel): o painel do build persiste mesmo sem inscricao.json.
+  try {
+    $reg = Get-ItemProperty -LiteralPath $RegistryKey -ErrorAction Stop
+    $painel = ConvertTo-NextecPainelUrl ([string]$reg.Painel)
+    if ($painel) { $script:NextecPainelOrigem = $RegistryKey; return $painel }
+  } catch { }
   $script:NextecPainelOrigem = 'padrao'
   return $Padrao
 }
@@ -648,10 +655,9 @@ if ($Instalar) {
   return
 }
 
-if ($Executar) {
-  ProtegerPastaAgente
-  # Sem credencial: o coordenador ainda vai cadastrar (ou acabou de aposentar a antiga). Nada a fazer, sem erro.
-  if (-not (Test-Path -LiteralPath $Config -PathType Leaf)) { return }
+# Uma verificacao (o que a tarefa agendada roda). Devolve $true quando o ciclo terminou sem erro; qualquer falha e anotada
+# no log e, se for 401, conta para a aposentadoria da credencial (3 seguidos).
+function Invoke-NextecAgentExecute {
   $falhas = Join-Path $PastaDados 'agente-senha.falhas'
   try {
     $cfg = Get-Content $Config -Raw | ConvertFrom-Json
@@ -661,6 +667,10 @@ if ($Executar) {
       $script:PainelUrl = ConvertTo-NextecPainelUrl ([string]$cfg.painel)
       if (-not $script:PainelUrl) { throw 'invalid_agent_config' }
       Escrever 'Aviso: inscricao.json ausente; usando o painel do cadastro (compat).'
+    } else {
+      # credencial de OUTRO painel nunca e enviada ao painel configurado: o coordenador a aposenta e refaz o cadastro
+      $gravado = ConvertTo-NextecPainelUrl ([string]$cfg.painel)
+      if (-not $gravado -or $gravado -cne $script:PainelUrl) { throw 'panel_changed: a credencial foi cadastrada em outro painel; o coordenador vai refazer o cadastro.' }
     }
     $token = Revelar $cfg.token
     $meuId = $cfg.id
@@ -668,15 +678,23 @@ if ($Executar) {
     if ($idServico -ne $meuId) {
       throw "O agente está vinculado ao ID $meuId, mas o serviço RustDesk atende o ID $idServico. A execução foi interrompida para não trocar a senha da máquina errada. Remova o agente antigo no painel e cadastre novamente para vincular o ID do serviço."
     }
-    Invoke-NextecPasswordCycle $cfg
+    Invoke-NextecPasswordCycle $cfg | Out-Null
     Remove-Item -LiteralPath $falhas -Force -ErrorAction SilentlyContinue
+    return $true
   } catch {
     Escrever "ERRO: $($_.Exception.Message)"
     if (Update-NextecAuthFailures -Status (Get-NextecHttpStatus $_.Exception) -CounterPath $falhas -ConfigPath $Config -DataRoot $PastaDados) {
       Escrever 'O painel recusou a credencial deste agente 3 vezes seguidas (401). Ela foi guardada em agente-senha.json.anterior e o cadastro sera refeito automaticamente.'
     }
-    exit 1
+    return $false
   }
+}
+
+if ($Executar) {
+  ProtegerPastaAgente
+  # Sem credencial: o coordenador ainda vai cadastrar (ou acabou de aposentar a antiga). Nada a fazer, sem erro.
+  if (-not (Test-Path -LiteralPath $Config -PathType Leaf)) { return }
+  if (-not (Invoke-NextecAgentExecute)) { exit 1 }
   return
 }
 

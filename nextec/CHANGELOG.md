@@ -1,5 +1,14 @@
 # Gerador Nextec
 
+## 2.3.3
+
+Achados da revisão do PR #45 (instalador Windows). Os scripts do agente foram ressincronizados com o painel 2.11.17.
+
+- **Painel do instalador também no registro:** além do `nextec-marker.json`, o MSI grava o valor `Painel` em `HKLM\SOFTWARE\Nextec\Agente` (só `https://dominio` válido, com ou sem chave de inscrição). O agente lê arquivo, depois registro, depois o padrão; o cadastro manual deixa de dar `invalid_panel` com painel personalizado.
+- **Reinstalação por outro painel:** instalador sem inscrição de outro painel não herda a inscrição nem a credencial do painel anterior (host normalizado); a decisão vai para o `coordenador.log`, sem segredos. O `-UrlBase` do build é preservado pelo atualizador.
+- **Tarefa de senha validada por inteiro** (SYSTEM, Highest, Windows PowerShell 5.1, `-File`, `-Executar`, repetição de até 5 minutos).
+- **Teste de recuperação do 401 de verdade:** `test_agent_401_integration.ps1` (HttpListener local) faz o agente empacotado/instalado receber 401 três vezes seguidas, descartar a credencial e refazer o cadastro; 1 ou 2 respostas 401 não descartam. Roda em `test-msi-build.ps1` e em `test-msi-install.ps1`. Antes, a credencial morta da máquina suja caía por erro de leitura, não por 401.
+
 ## 2.3.2
 
 Estabilização do instalador Windows (Fase 1).

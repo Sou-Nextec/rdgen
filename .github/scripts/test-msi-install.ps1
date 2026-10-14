@@ -179,6 +179,16 @@ try {
         $integratedOutput = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $integrated -InstallDir (Split-Path -Parent $agentPath) 2>&1 | Out-String)
         if ($LASTEXITCODE -ne 0 -or $integratedOutput -notmatch 'PASS: installed self-enrollment') { throw "Installed self-enrollment integration test failed: $integratedOutput" }
         if ($integratedOutput.Contains($EnrollmentKey)) { throw 'Enrollment key leaked to integration test output' }
+        # Integrado: o agente INSTALADO recebe 401 (HTTP de verdade, painel falso local) tres vezes seguidas, descarta a credencial e
+        # refaz o cadastro; 1 ou 2 respostas 401 nao descartam. A maquina suja acima cobre credencial ilegivel (agent_config_unreadable),
+        # nao o caminho do 401, que so este teste reproduz.
+        $authTest = Join-Path $PSScriptRoot '../../nextec/atualizacao/test_agent_401_integration.ps1'
+        $authOutput = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $authTest -InstallDir (Split-Path -Parent $agentPath) 2>&1 | Out-String)
+        if ($LASTEXITCODE -ne 0 -or $authOutput -notmatch 'PASS: agent 401 recovery') { throw "Installed agent 401 recovery integration test failed: $authOutput" }
+        if ($authOutput.Contains($EnrollmentKey)) { throw 'Enrollment key leaked to 401 integration test output' }
+        # O painel do build tambem esta no registro (valor Painel), lido pelo agente antes do endereco padrao.
+        $registryPanel = (Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Nextec\Agente' -ErrorAction Stop).Painel
+        if ($registryPanel -ne $EnrollmentPanel.TrimEnd('/')) { throw "HKLM Painel registry value is wrong: $registryPanel" }
     } elseif (Test-Path -LiteralPath $enrollmentPath) {
         throw 'inscricao.json must not be installed when the build had no enrollment key'
     }

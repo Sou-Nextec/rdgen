@@ -144,11 +144,23 @@ try {
         </DirectoryRef>
 '@
             $markerComponent = $markerComponent.Replace('__NX_APP__', $AppName)
+            # O painel do build tambem vai para o registro (valor Painel): o agente o le mesmo sem inscricao.json e sem o arquivo de marcador.
+            if ($markerData.Contains('painel')) {
+                $appValue = '<RegistryValue Name="AppName" Type="string" Value="' + $AppName + '" />'
+                $panelValue = '<RegistryValue Name="Painel" Type="string" Value="' + $markerData['painel'] + '" />'
+                $markerComponent = $markerComponent.Replace($appValue, $appValue + "`r`n                    " + $panelValue)
+            }
             $xml = $xml.Replace('</Feature>', "            <ComponentRef Id=`"Nextec.AgentMarker`" />`r`n            <ComponentRef Id=`"Nextec.AgentRegistry`" />`r`n`t`t</Feature>")
             $xml = $xml.Replace('</Package>', "$markerComponent`r`n`t</Package>")
             $packageChanged = $true
         } else {
             $refreshed = [regex]::Replace($xml, '(Name="AppName" Type="string" Value=")[^"]*(")', { param($m) $m.Groups[1].Value + $AppName + $m.Groups[2].Value })
+            # painel do build no registro: remove o valor antigo e grava o atual (so quando valido)
+            $refreshed = [regex]::Replace($refreshed, '\r?\n[ \t]*<RegistryValue Name="Painel"[^>]*/>', '')
+            if ($markerData.Contains('painel')) {
+                $panelValue = '<RegistryValue Name="Painel" Type="string" Value="' + $markerData['painel'] + '" />'
+                $refreshed = [regex]::Replace($refreshed, '(<RegistryValue Name="AppName"[^>]*/>)', { param($m) $m.Groups[1].Value + "`r`n                    " + $panelValue })
+            }
             if ($refreshed -ne $xml) { $xml = $refreshed; $packageChanged = $true }
         }
         if ($packageChanged) { [IO.File]::WriteAllText($packageWxs, $xml, [Text.UTF8Encoding]::new($false)) }

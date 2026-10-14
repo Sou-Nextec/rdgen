@@ -9,7 +9,7 @@
   (Dispositivos > Atualizações do app) a versão e quem a recebe (todos ou um grupo piloto).
 
 .PARAMETER UrlBase
-  Endereço da atualização. Padrão: o painel gravado em inscricao.json (<painel>/api/nextec/update); sem esse arquivo, o painel antigo (compatibilidade).
+  Endereço da atualização. Quando informado, é preservado (não é substituído pelo painel da inscrição). Padrão: o painel gravado em inscricao.json (<painel>/api/nextec/update); sem esse arquivo, o painel antigo (compatibilidade).
   Serve também qualquer site com versao.json e o MSI lado a lado.
 
 .PARAMETER GrupoId
@@ -70,7 +70,8 @@ function ConvertTo-NextecPainelUrl {
 function Get-NextecPainelConfigurado {
   param(
     [string]$Root = (Join-Path $env:ProgramData 'Nextec\Acesso'),
-    [string]$Padrao = 'https://painel-remoto.nex.tec.br'
+    [string]$Padrao = 'https://painel-remoto.nex.tec.br',
+    [string]$RegistryKey = 'HKLM:\SOFTWARE\Nextec\Agente'
   )
   foreach ($nome in @('inscricao.json', 'nextec-marker.json')) {
     $arquivo = Join-Path $Root $nome
@@ -82,14 +83,28 @@ function Get-NextecPainelConfigurado {
       if ($painel) { $script:NextecPainelOrigem = $arquivo; return $painel }
     } catch { }
   }
+  # Marcador do MSI no registro (chave Nextec Agente em HKLM, valor Painel): o painel do build persiste mesmo sem inscricao.json.
+  try {
+    $reg = Get-ItemProperty -LiteralPath $RegistryKey -ErrorAction Stop
+    $painel = ConvertTo-NextecPainelUrl ([string]$reg.Painel)
+    if ($painel) { $script:NextecPainelOrigem = $RegistryKey; return $painel }
+  } catch { }
   $script:NextecPainelOrigem = 'padrao'
   return $Padrao
 }
 
-# O painel vem do inscricao.json instalado e vence qualquer -UrlBase (troca de dominio nao quebra a frota).
+# Decide a origem das atualizacoes. O -UrlBase explicito vence; sem ele vale o painel configurado; sem nada, o painel antigo.
+function Resolve-NextecUpdateBase {
+  param([string]$UrlBase, [string]$PainelConfigurado)
+  if ($UrlBase) { return [pscustomobject]@{ UrlBase = $UrlBase; Origem = 'parametro' } }
+  if ($PainelConfigurado) { return [pscustomobject]@{ UrlBase = ($PainelConfigurado + '/api/nextec/update'); Origem = 'painel' } }
+  return [pscustomobject]@{ UrlBase = 'https://painel-remoto.nex.tec.br/api/nextec/update'; Origem = 'padrao' }
+}
+
 $painelConfigurado = Get-NextecPainelConfigurado -Root $Pasta -Padrao ''
-if ($painelConfigurado) { $UrlBase = $painelConfigurado + '/api/nextec/update' }
-elseif (-not $UrlBase) { $UrlBase = 'https://painel-remoto.nex.tec.br/api/nextec/update'; $script:NextecPainelOrigem = 'padrao' }
+$base = Resolve-NextecUpdateBase -UrlBase $UrlBase -PainelConfigurado $painelConfigurado
+$UrlBase = $base.UrlBase
+if ($base.Origem -ceq 'parametro') { $script:NextecPainelOrigem = 'parametro' } elseif ($base.Origem -ceq 'padrao') { $script:NextecPainelOrigem = 'padrao' }
 
 function RegistrarAtualizador {
   if ($SoVerificar) { throw 'Registrar e SoVerificar não podem ser usados juntos.' }

@@ -57,6 +57,25 @@ function Assert-NextecCoordinatorFileAcl {
   }
 }
 
+# Host normalizado (minusculo, https, porta padrao, sem credencial) do campo "painel" de um JSON local; $null se nao der para ler.
+function ConvertTo-NextecCoordinatorPanelHost {
+  param([string]$Url)
+  if ([string]::IsNullOrWhiteSpace($Url) -or $Url.Length -gt 253) { return $null }
+  $uri = $null
+  if (-not [Uri]::TryCreate($Url.Trim(), [UriKind]::Absolute, [ref]$uri)) { return $null }
+  if ($uri.Scheme -cne 'https' -or $uri.UserInfo -or -not $uri.IsDefaultPort -or $uri.HostNameType -ne [UriHostNameType]::Dns) { return $null }
+  return $uri.Host.ToLowerInvariant()
+}
+
+function Get-NextecCoordinatorFilePanel {
+  param([Parameter(Mandatory)][string]$Path)
+  try {
+    if ((Get-Item -LiteralPath $Path -Force).Length -gt 4096) { return $null }
+    $value = [IO.File]::ReadAllText($Path, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF) | ConvertFrom-Json
+    return (ConvertTo-NextecCoordinatorPanelHost ([string]$value.painel))
+  } catch { return $null }
+}
+
 function Register-NextecCoordinatorTask {
   param([string]$Root = (Join-Path $env:ProgramData 'Nextec\Acesso'), [string]$SourceRoot = $PSScriptRoot)
   Assert-NextecCoordinatorPath -Path $Root
@@ -90,18 +109,41 @@ function Register-NextecCoordinatorTask {
     if ((Get-Item -LiteralPath $markerSource -Force).Length -gt 4096) { throw 'invalid_input' }
     $pairs = @($pairs) + @([pscustomobject]@{ Source=$markerSource; Destination=$markerPath })
   }
-  # Politica da inscricao anterior: instalador sem inscricao.json nao herda a de uma instalacao anterior que aponte para
-  # OUTRO painel (migracao de painel ou de cliente); se o painel e o mesmo, ou o instalador nao diz qual e, ela e mantida.
+  # Politica da inscricao e da credencial anteriores (comparacao pelo host normalizado do painel, nunca pelo texto):
+  #  - instalador COM inscricao.json: substitui a anterior; se o painel mudou, o estado da inscricao e a credencial do painel antigo saem;
+  #  - instalador SEM inscricao.json: a anterior e a credencial so ficam se forem do MESMO painel do novo instalador (marcador);
+  #    se o painel e outro, saem; se o instalador nao diz qual e o painel, ficam (nada a comparar) e isso e anotado no log.
+  # O log leva so decisoes e nomes de arquivo, nunca chave nem token.
+  $script:NextecDecisions = @()
+  $newPanel = $null
+  if ($hasEnrollment) { $newPanel = Get-NextecCoordinatorFilePanel -Path $enrollSource }
+  if (-not $newPanel -and (Test-Path -LiteralPath $markerSource -PathType Leaf)) { $newPanel = Get-NextecCoordinatorFilePanel -Path $markerSource }
+  $oldEnrollPanel = $null
+  if (Test-Path -LiteralPath $enrollPath -PathType Leaf) { $oldEnrollPanel = Get-NextecCoordinatorFilePanel -Path $enrollPath }
   $script:NextecStaleEnrollment = $false
-  if (-not $hasEnrollment -and (Test-Path -LiteralPath $enrollPath -PathType Leaf)) {
-    try {
-      $newPanel = ''
-      if (Test-Path -LiteralPath $markerSource -PathType Leaf) {
-        $newPanel = [string]([IO.File]::ReadAllText($markerSource, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF) | ConvertFrom-Json).painel
-      }
-      $oldPanel = [string]([IO.File]::ReadAllText($enrollPath, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF) | ConvertFrom-Json).painel
-      if ($newPanel -and $oldPanel -and ($newPanel.TrimEnd('/') -ine $oldPanel.TrimEnd('/'))) { $script:NextecStaleEnrollment = $true }
-    } catch { $script:NextecStaleEnrollment = $false }
+  $script:NextecStaleEnrollmentState = $false
+  $script:NextecStaleCredential = $false
+  $oldEnrollExists = Test-Path -LiteralPath $enrollPath -PathType Leaf
+  if ($hasEnrollment) {
+    if ($oldEnrollExists -and $oldEnrollPanel -and $newPanel -and $oldEnrollPanel -cne $newPanel) {
+      $script:NextecStaleEnrollmentState = $true
+      $script:NextecDecisions += 'inscricao: substituida por outra de painel diferente; estado anterior removido'
+    } elseif ($oldEnrollExists) { $script:NextecDecisions += 'inscricao: substituida pela do instalador (mesmo painel)' }
+    else { $script:NextecDecisions += 'inscricao: nova, trazida pelo instalador' }
+  } elseif ($oldEnrollExists) {
+    if ($newPanel -and $oldEnrollPanel -and $oldEnrollPanel -cne $newPanel) {
+      $script:NextecStaleEnrollment = $true
+      $script:NextecDecisions += 'inscricao: removida (instalador sem inscricao e de outro painel)'
+    } elseif ($newPanel -and $oldEnrollPanel) { $script:NextecDecisions += 'inscricao: mantida (mesmo painel do instalador)' }
+    else { $script:NextecDecisions += 'inscricao: mantida (instalador nao informa o painel ou arquivo anterior sem painel legivel)' }
+  } else { $script:NextecDecisions += 'inscricao: nenhuma' }
+  $credentialPath = Join-Path $Root 'agente-senha.json'
+  if ($newPanel -and (Test-Path -LiteralPath $credentialPath -PathType Leaf)) {
+    $credentialPanel = Get-NextecCoordinatorFilePanel -Path $credentialPath
+    if ($credentialPanel -and $credentialPanel -cne $newPanel) {
+      $script:NextecStaleCredential = $true
+      $script:NextecDecisions += 'credencial: guardada em .anterior (cadastrada em outro painel)'
+    } elseif ($credentialPanel) { $script:NextecDecisions += 'credencial: mantida (mesmo painel)' }
   }
   foreach ($pair in $pairs) {
     $source = $pair.Source
@@ -121,8 +163,17 @@ function Register-NextecCoordinatorTask {
   Set-Acl -LiteralPath $Root -AclObject (New-NextecCoordinatorAcl -Directory)
   if ($script:NextecStaleEnrollment) {
     Remove-Item -LiteralPath $enrollPath -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath (Join-Path $Root 'inscricao-estado.json') -Force -ErrorAction SilentlyContinue
     $script:NextecReplacedFiles += 'inscricao.json (de outro painel)'
+  }
+  if ($script:NextecStaleEnrollment -or $script:NextecStaleEnrollmentState -or $script:NextecStaleCredential) {
+    Remove-Item -LiteralPath (Join-Path $Root 'inscricao-estado.json') -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $Root 'agente-senha.falhas') -Force -ErrorAction SilentlyContinue
+  }
+  if ($script:NextecStaleCredential) {
+    Assert-NextecCoordinatorPath -Path ($credentialPath + '.anterior')
+    Remove-Item -LiteralPath ($credentialPath + '.anterior') -Force -ErrorAction SilentlyContinue
+    Move-Item -LiteralPath $credentialPath -Destination ($credentialPath + '.anterior') -Force
+    $script:NextecReplacedFiles += 'agente-senha.json (de outro painel)'
   }
   foreach ($pair in $pairs) {
     $source = [IO.Path]::GetFullPath($pair.Source)
@@ -236,6 +287,7 @@ if ($Registrar) {
   try {
     Register-NextecCoordinatorTask -Root $PastaDados -SourceRoot $PSScriptRoot
     if ($script:NextecReplacedFiles.Count) { Write-NextecCoordinatorLog -Root $PastaDados -Message ('registrar: arquivos antigos substituidos: ' + ($script:NextecReplacedFiles -join ', ')) }
+    foreach ($decision in @($script:NextecDecisions)) { Write-NextecCoordinatorLog -Root $PastaDados -Message ('registrar: ' + $decision) }
     Write-NextecCoordinatorLog -Root $PastaDados -Message 'registrar: ok'
   } catch {
     Write-NextecCoordinatorLog -Root $PastaDados -Message ('registrar: ERRO ' + $_.Exception.Message)

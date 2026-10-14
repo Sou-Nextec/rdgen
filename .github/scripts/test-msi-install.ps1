@@ -307,6 +307,32 @@ try {
         $agentsAfter = @(Get-ChildItem -LiteralPath $env:ProgramFiles -Filter 'Agente-Senha-Nextec.ps1' -File -Recurse -ErrorAction SilentlyContinue)
         if ($agentsAfter.Count -ne 1) { throw "Upgrade left $($agentsAfter.Count) password agent payloads" }
         if ($AgentSha256 -and (Get-FileHash -LiteralPath $agentsAfter[0].FullName -Algorithm SHA256).Hash -ne $AgentSha256) { throw 'Upgraded password agent differs from the reviewed package source' }
+        if ($script:fakePanel) {
+            # Revisao do #47: depois da atualizacao a tarefa de senha continua funcionando. O painel pede uma troca nova e o
+            # agente ja atualizado (rodando como SYSTEM pela propria tarefa) precisa propor, aplicar no RustDesk e confirmar.
+            $senhaTasks = @(Get-ScheduledTask -TaskName 'Nextec Acesso - Senha' -ErrorAction SilentlyContinue)
+            if ($senhaTasks.Count -ne 1) { throw "Upgrade left $($senhaTasks.Count) password tasks" }
+            if ($senhaTasks[0].Principal.UserId -notin @('SYSTEM','S-1-5-18') -or $senhaTasks[0].Triggers[0].Repetition.Interval -ne 'PT5M' -or [string]$senhaTasks[0].State -eq 'Disabled') {
+                throw 'Password task is not SYSTEM, every five minutes and enabled after the upgrade'
+            }
+            $panelState = $script:fakePanel.State
+            $panelState.Confirmed = $false
+            $panelState.PasswordLength = 0
+            $syncsBefore = @($panelState.Calls | Where-Object { $_ -eq '/api/nextec/agent/sync' }).Count
+            $runStart = (Get-Date).AddSeconds(-2)
+            Start-ScheduledTask -TaskName 'Nextec Acesso - Senha'
+            $limit = (Get-Date).AddSeconds(180)
+            while (-not $panelState.Confirmed -and (Get-Date) -lt $limit) { Start-Sleep -Seconds 3 }
+            $syncsAfter = @($panelState.Calls | Where-Object { $_ -eq '/api/nextec/agent/sync' }).Count
+            $taskInfo = Get-ScheduledTaskInfo -TaskName 'Nextec Acesso - Senha'
+            $senhaTail = if (Test-Path -LiteralPath (Join-Path $dataRoot 'agente-senha.log')) { (Get-Content -LiteralPath (Join-Path $dataRoot 'agente-senha.log') -Tail 6) -join "`n" } else { '' }
+            Write-Output "agente-senha.log depois da atualizacao:`n$senhaTail"
+            if ($syncsAfter -le $syncsBefore) { throw 'Password task did not reach the panel after the upgrade' }
+            if (-not $panelState.Confirmed) { throw 'Password rotation was not applied and confirmed after the upgrade' }
+            if ($panelState.PasswordLength -lt 16) { throw "Proposed password after the upgrade is too short ($($panelState.PasswordLength))" }
+            if ($taskInfo.LastRunTime -lt $runStart) { throw 'Password task did not run after the upgrade' }
+            Write-Output 'PASS: after the upgrade the SYSTEM password task synced, applied and confirmed a new password'
+        }
         Write-Output "PASS: upgrade over the installed version kept ID $idBefore, the agent credential, one service and the tasks (version $($after.Versao))"
     }
 } finally {

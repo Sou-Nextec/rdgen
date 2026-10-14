@@ -4,6 +4,9 @@
 
 - **Teste de atualização por cima no CI:** o fixture constrói a versão 2.0.7 e a 2.0.8 do mesmo app; o teste instala a primeira, deixa o agente se inscrever e então instala a segunda por cima, como o atualizador faz na frota. Exige: mesmo ID do RustDesk, mesma credencial do agente (hash do arquivo), um único serviço, uma tarefa de cada, um só pacote do agente e a versão nova registrada.
 
+- **Revisão do PR:** depois da atualização por cima, o teste dispara a tarefa de senha e exige uma troca nova aplicada no RustDesk e confirmada pelo agente já atualizado (tarefa única, SYSTEM, 5 minutos, habilitada).
+- Scripts do agente sincronizados com o painel 2.13.0 (atualizador que não derruba atendimento, conferindo a sessão antes do download e antes do `msiexec`).
+
 ## 2.4.0
 
 Instalador por cliente e instalação sem cliques extras.

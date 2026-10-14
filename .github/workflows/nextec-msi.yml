@@ -75,7 +75,11 @@ jobs:
           $exe = Get-ChildItem $extract -Filter rustdesk.exe -Recurse | Select-Object -First 1
           if (!$exe) { throw 'Official client EXE missing' }
           Copy-Item "$($exe.Directory.FullName)/*" source/rustdesk -Recurse -Force
-          Rename-Item source/rustdesk/rustdesk.exe Nextec-Connect.exe
+          # O nome do app do fixture e "RustDesk" de proposito: o binario oficial tem o nome compilado, e o --password do agente
+          # (ipc::set_permanent_password) so funciona quando o app instalado e o do proprio binario (is_installed() procura
+          # Uninstall\<nome> e <pasta>\<nome>.exe). Com outro nome o RustDesk responde "Installation and administrative
+          # privileges required!" e a troca de senha nao pode ser provada. Nome livre e coberto por test-msi-build.ps1.
+          Rename-Item source/rustdesk/rustdesk.exe RustDesk.exe
           python -m pip install Pillow
       - name: Construir MSI com o mesmo script do gerador
         shell: pwsh
@@ -85,7 +89,7 @@ jobs:
           enroll_key: nx1.1790000000.TesteSomenteCiAbCdEf0123456789
           enroll_panel: https://painel-remoto.nex.tec.br
         run: |
-          & ./.github/scripts/build-msi.ps1 -AppName Nextec-Connect -PackageVersion 2.0.7 -SourceRoot "$PWD/source" -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
+          & ./.github/scripts/build-msi.ps1 -AppName RustDesk -PackageVersion 2.0.7 -SourceRoot "$PWD/source" -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
           $file = 'source/SignOutput/rustdesk.msi'
           $signature = [BitConverter]::ToString([IO.File]::ReadAllBytes((Resolve-Path $file))[0..7])
           if ($signature -ne 'D0-CF-11-E0-A1-B1-1A-E1') { throw 'Invalid MSI file signature' }
@@ -99,7 +103,7 @@ jobs:
           if ((Get-FileHash $agent.FullName -Algorithm SHA256).Hash -ne $env:NEXTEC_AGENT_SHA256) { throw 'Password agent payload differs from reviewed source' }
           $marker = Get-ChildItem $extract -Filter 'nextec-marker.json' -Recurse | Select-Object -First 1
           if (!$marker) { throw 'Installation marker is missing from MSI payload' }
-          if ((Get-Content $marker.FullName -Raw | ConvertFrom-Json).app -ne 'Nextec-Connect') { throw 'Installation marker has the wrong app name' }
+          if ((Get-Content $marker.FullName -Raw | ConvertFrom-Json).app -ne 'RustDesk') { throw 'Installation marker has the wrong app name' }
           $enrollment = Get-ChildItem $extract -Filter 'inscricao.json' -Recurse | Select-Object -First 1
           if (!$enrollment) { throw 'Enrollment file is missing from MSI payload' }
           $data = Get-Content $enrollment.FullName -Raw | ConvertFrom-Json
@@ -108,7 +112,7 @@ jobs:
         shell: pwsh
         run: |
           $msi = (Resolve-Path source/SignOutput/rustdesk.msi).Path
-          $portable = (Resolve-Path source/rustdesk/Nextec-Connect.exe).Path
+          $portable = (Resolve-Path source/rustdesk/RustDesk.exe).Path
           & ./.github/scripts/test-setup-exe.ps1 -MsiPath $msi -PortablePath $portable
           if ($LASTEXITCODE -ne 0) { throw 'EXE wrapper did not preserve the tested MSI and agent payload' }
       - name: Instalar e reparar de verdade no Windows Server 2022 isolado

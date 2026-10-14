@@ -237,7 +237,19 @@ try {
         $senhaLog = Join-Path $dataRoot 'agente-senha.log'
         $senhaText = if (Test-Path -LiteralPath $senhaLog) { (Get-Content -LiteralPath $senhaLog -Tail 20) -join "`n" } else { '(sem agente-senha.log)' }
         Write-Output "agente-senha.log:`n$senhaText"
-        if (-not $state.Confirmed) { throw "Password sync did not complete (no confirmation reached the panel). Calls: $($state.Calls -join ', ')" }
+        if (-not $state.Confirmed) {
+            # diagnostico do CLI do RustDesk como administrador (sem a senha do agente): o que ele imprime e devolve
+            if ($serviceExe) {
+                foreach ($cli in @(@('--get-id'), @('--option', 'approve-mode'), @('--password', 'CiTeste0Descartavel9'))) {
+                    $cliOut = (& $serviceExe @cli 2>&1 | Out-String).Trim()
+                    Write-Output ("CLI $($cli[0]) => exit=$LASTEXITCODE saida='$($cliOut -replace '\s+', ' ')'")
+                }
+                Get-CimInstance Win32_Service | Where-Object { [string]$_.PathName -match '--service' } | ForEach-Object { Write-Output "servico $($_.Name) conta=$($_.StartName) estado=$($_.State)" }
+                $uninst = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -match 'RustDesk|Nextec' } | Select-Object DisplayName, InstallLocation, UninstallString
+                $uninst | Format-List | Out-String | Write-Output
+            }
+            throw "Password sync did not complete (no confirmation reached the panel). Calls: $($state.Calls -join ', ')"
+        }
         if ($state.PasswordLength -lt 16) { throw "Proposed password is too short ($($state.PasswordLength))" }
         if ($state.Calls -notcontains '/api/nextec/agent/sync' -or $state.Calls -notcontains '/api/nextec/agent/password') { throw 'Sync protocol steps are missing' }
         Write-Output 'PASS: real SYSTEM agent enrolled (HTTP 200), registered its task, proposed, applied and confirmed the password'

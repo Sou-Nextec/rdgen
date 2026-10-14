@@ -89,10 +89,14 @@ function Assert-NextecPasswordApplied {
 
   # Contrato confirmado no upstream RustDesk 1.5.0: sucesso IPC imprime Done!;
   # builds sem esse contrato precisam ser verificados antes de serem declarados compatíveis.
-  if ($Result.ExitCode -ne 0) { throw 'password_apply_failed: o cliente recusou a aplicação da senha.' }
   $lines = @(([string]$Result.Output -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  # A resposta do cliente (uma linha curta, sem a senha) acompanha o erro: "Installation and administrative privileges
+  # required!" quer dizer app nao instalado ou sem privilegio, e "Done!" so vem depois do IPC aceitar a troca.
+  $resposta = if ($lines.Count) { ([string]$lines[-1]) -replace '[^ -~]', '?' } else { '(vazia)' }
+  if ($resposta.Length -gt 120) { $resposta = $resposta.Substring(0, 120) }
+  if ($Result.ExitCode -ne 0) { throw "password_apply_failed: o cliente recusou a aplicação da senha (código $($Result.ExitCode); resposta: $resposta)." }
   if ($lines.Count -eq 0 -or $lines[-1] -cne 'Done!') {
-    throw 'password_apply_failed: o cliente não confirmou a aplicação via IPC.'
+    throw "password_apply_failed: o cliente não confirmou a aplicação via IPC (resposta: $resposta)."
   }
 }
 
@@ -378,12 +382,39 @@ function ClienteInstalado {
   return $cliente
 }
 
+# Um argumento da linha de comando do Windows: sem aspas quando e simples, senao entre aspas com barras e aspas escapadas.
+function ConvertTo-NextecArgument([string]$Valor) {
+  if ($Valor -ne '' -and $Valor -match '^[A-Za-z0-9_.:=/@+-]+$') { return $Valor }
+  $escapado = [regex]::Replace($Valor, '(\\*)"', '$1$1\"')
+  $escapado = [regex]::Replace($escapado, '(\\+)$', '$1$1')
+  return '"' + $escapado + '"'
+}
+
+# O rustdesk.exe e um programa de janela (subsistema GUI): `$x = & exe args` NAO espera o processo nem captura a saida
+# (o PowerShell o trata como aplicativo grafico), entao o --password rodava sem ninguem conferir o "Done!". Aqui o processo
+# e iniciado com a saida redirecionada, esperado com limite de tempo e o codigo de saida e real.
 function InvocarRustDesk([string[]]$Argumentos) {
   $cliente = ClienteInstalado
   if (-not $cliente) { throw 'identity_conflict: descoberta indisponível no modo de simulação.' }
-  $saida = & $cliente.ExePath @Argumentos 2>&1
-  $codigo = $LASTEXITCODE
-  return [pscustomobject]@{ ExitCode = $codigo; Output = (@($saida) -join "`n").Trim() }
+  $psi = New-Object Diagnostics.ProcessStartInfo
+  $psi.FileName = $cliente.ExePath
+  $psi.Arguments = (@($Argumentos | ForEach-Object { ConvertTo-NextecArgument $_ }) -join ' ')
+  $psi.UseShellExecute = $false
+  $psi.CreateNoWindow = $true
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  $processo = [Diagnostics.Process]::Start($psi)
+  try {
+    $saidaPadrao = $processo.StandardOutput.ReadToEndAsync()
+    $saidaErro = $processo.StandardError.ReadToEndAsync()
+    if (-not $processo.WaitForExit(60000)) {
+      try { $processo.Kill() } catch { }
+      throw 'rustdesk_cli_timeout: o cliente não respondeu ao comando em 60 segundos.'
+    }
+    $processo.WaitForExit()
+    $texto = (([string]$saidaPadrao.Result + "`n" + [string]$saidaErro.Result)).Trim()
+    return [pscustomobject]@{ ExitCode = [int]$processo.ExitCode; Output = $texto }
+  } finally { $processo.Dispose() }
 }
 
 function MeuId {

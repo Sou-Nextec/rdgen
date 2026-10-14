@@ -5,8 +5,8 @@
 name: Imagem Nextec do gerador
 
 on:
+  # PR para qualquer branch (inclusive PRs empilhados); nada e publicado em PR
   pull_request:
-    branches: [master]
   push:
     branches: [master]
     paths:

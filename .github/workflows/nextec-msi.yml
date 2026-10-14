@@ -1,7 +1,7 @@
 name: Validar MSI Nextec
 on:
+  # PR para qualquer branch (inclusive PRs empilhados); nada e publicado em PR
   pull_request:
-    branches: [master]
     paths:
       - '.github/scripts/build-msi.ps1'
       - '.github/scripts/test-msi-build.ps1'

@@ -9,6 +9,7 @@
 Instalador por cliente e instalação sem cliques extras.
 
 - **Seletor "Cliente do painel":** a lista vem do painel (`GET /api/nextec/gen/clients`, rede interna, mesmo segredo da chave global). Escolhido o cliente, o build busca a **credencial desse cliente** (`GET /api/nextec/gen/enroll-key?group=<id>`, formato `nx2.<cliente>.<época>.<assinatura>`) e a embute no `inscricao.json`: a máquina que instalar aparece já no cliente, com a senha automática, sem Pendentes nem Atribuir. Sem cliente, o instalador continua geral.
+- **Revisão do PR:** instalador por cliente sem URL do painel (`NX_API_SERVER`) ou sem o agente é recusado antes do build (503/400), em vez de sair sem `inscricao.json` com um aviso.
 - **Nunca cai na chave global em silêncio:** se o painel não entregar a credencial do cliente, a geração falha com mensagem clara (503) em vez de sair um instalador que cairia em Pendentes.
 - **Link do painel:** `/gerador/?cliente=<id>` já abre o formulário com o cliente escolhido (menu Clientes > Baixar instalador deste cliente, painel 2.12.0).
 - **EXE:** "Instalar nesta máquina" passou a ser o botão padrão (Enter); o portátil fica como alternativa. Novo modo silencioso `--silent` (ou `/S`) para GPO, RMM e scripts: instala com `msiexec /qn`, sem tela nem caixa de erro, devolvendo o código de saída.

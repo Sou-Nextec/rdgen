@@ -18,6 +18,11 @@ $ErrorActionPreference = 'Stop'
 if ($AppName -notmatch '^[A-Za-z0-9 _-]+$') { throw 'Invalid application name' }
 if ($IncludeAgent -and $IncludeAgent -notin @('true','false')) { throw 'Invalid agent flag' }
 if ($PackageVersion -and $PackageVersion -notmatch '^\d{1,3}\.\d{1,3}\.\d{1,3}$') { throw 'Invalid package version' }
+# ProductVersion do MSI: X.Y.Z.0 com limites 255.255.65535 (a versao do pacote e a do gerador, rdgenerator/VERSION).
+if ($PackageVersion) {
+    $pv = $PackageVersion.Split('.')
+    if ([int]$pv[0] -gt 255 -or [int]$pv[1] -gt 255 -or [int]$pv[2] -gt 65535) { throw 'Package version exceeds MSI limits (255.255.65535)' }
+}
 if (!$BinaryDirectory) { $BinaryDirectory = Join-Path $SourceRoot 'rustdesk' }
 if (!(Test-Path -LiteralPath (Join-Path $BinaryDirectory "$AppName.exe"))) {
     throw 'Client EXE required before packaging MSI'
@@ -123,6 +128,18 @@ try {
         # O painel do build vai no marcador: o agente o le da pasta de dados mesmo quando o instalador saiu SEM chave de
         # inscricao (inscricao.json ausente). So o formato que o agente aceita (https://dominio em minusculas, sem porta).
         $markerData = [ordered]@{ v = 1; app = $AppName; upgrade_code = $upgradeCode }
+        # Identifica o pacote: a versao do gerador e a do pacote sao a mesma, e o hash e o do conjunto de scripts do agente
+        # (FONTE-AGENTE.json: mesmo calculo de rdgenerator/nextec.py agent_set_hash).
+        $agentHash = ''
+        $fonteFile = Join-Path $UpdaterSource 'FONTE-AGENTE.json'
+        if (Test-Path -LiteralPath $fonteFile -PathType Leaf) {
+            $fonteSha = ([IO.File]::ReadAllText($fonteFile) | ConvertFrom-Json).sha256
+            $fonteLines = foreach ($fonteName in @($fonteSha.PSObject.Properties.Name | Sort-Object { $_.ToLowerInvariant() })) { $fonteName + '=' + ([string]$fonteSha.$fonteName).ToLowerInvariant() + "`n" }
+            $hasher = [Security.Cryptography.SHA256]::Create()
+            $agentHash = -join ($hasher.ComputeHash([Text.UTF8Encoding]::new($false).GetBytes(($fonteLines -join ''))) | ForEach-Object { $_.ToString('x2') })
+        } elseif ($PackageVersion) { throw 'FONTE-AGENTE.json missing from UpdaterSource; cannot identify the agent script set' }
+        if ($PackageVersion) { $markerData['package_version'] = $PackageVersion; $markerData['generator_version'] = $PackageVersion }
+        if ($agentHash) { $markerData['agent_hash'] = $agentHash }
         $markerPanel = $PanelUrl.TrimEnd('/')
         if ($markerPanel -cmatch '^https://([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$') { $markerData['painel'] = $markerPanel }
         elseif ($PanelUrl) { Write-Output "::warning title=Painel fora do formato do agente::O painel '$PanelUrl' nao e https://dominio em minusculas sem porta; o marcador do instalador sai sem painel e o agente usara o padrao." }
@@ -144,6 +161,12 @@ try {
         </DirectoryRef>
 '@
             $markerComponent = $markerComponent.Replace('__NX_APP__', $AppName)
+            if ($PackageVersion) {
+                $old = '<RegistryValue Name="AppName" Type="string" Value="' + $AppName + '" />'
+                $versionValues = '<RegistryValue Name="Version" Type="string" Value="' + $PackageVersion + '" />' + "`r`n                    " + '<RegistryValue Name="GeneratorVersion" Type="string" Value="' + $PackageVersion + '" />'
+                if ($agentHash) { $versionValues += "`r`n                    " + '<RegistryValue Name="AgentHash" Type="string" Value="' + $agentHash + '" />' }
+                $markerComponent = $markerComponent.Replace($old, $old + "`r`n                    " + $versionValues)
+            }
             # O painel do build tambem vai para o registro (valor Painel): o agente o le mesmo sem inscricao.json e sem o arquivo de marcador.
             if ($markerData.Contains('painel')) {
                 $appValue = '<RegistryValue Name="AppName" Type="string" Value="' + $AppName + '" />'
@@ -157,6 +180,12 @@ try {
             $refreshed = [regex]::Replace($xml, '(Name="AppName" Type="string" Value=")[^"]*(")', { param($m) $m.Groups[1].Value + $AppName + $m.Groups[2].Value })
             # painel do build no registro: remove o valor antigo e grava o atual (so quando valido)
             $refreshed = [regex]::Replace($refreshed, '\r?\n[ \t]*<RegistryValue Name="Painel"[^>]*/>', '')
+            $refreshed = [regex]::Replace($refreshed, '\r?\n[ \t]*<RegistryValue Name="(Version|GeneratorVersion|AgentHash)"[^>]*/>', '')
+            if ($PackageVersion) {
+                $versionValues = '<RegistryValue Name="Version" Type="string" Value="' + $PackageVersion + '" />' + "`r`n                    " + '<RegistryValue Name="GeneratorVersion" Type="string" Value="' + $PackageVersion + '" />'
+                if ($agentHash) { $versionValues += "`r`n                    " + '<RegistryValue Name="AgentHash" Type="string" Value="' + $agentHash + '" />' }
+                $refreshed = [regex]::Replace($refreshed, '(<RegistryValue Name="AppName"[^>]*/>)', { param($m) $m.Groups[1].Value + "`r`n                    " + $versionValues })
+            }
             if ($markerData.Contains('painel')) {
                 $panelValue = '<RegistryValue Name="Painel" Type="string" Value="' + $markerData['painel'] + '" />'
                 $refreshed = [regex]::Replace($refreshed, '(<RegistryValue Name="AppName"[^>]*/>)', { param($m) $m.Groups[1].Value + "`r`n                    " + $panelValue })

@@ -115,6 +115,7 @@ jobs:
           Copy-Item nextec/atualizacao/Instalar-Nextec.ps1 (Join-Path $env:RUNNER_TEMP 'nextec-update/Instalar-Nextec.ps1')
           Copy-Item nextec/atualizacao/Agente-Senha-Nextec.ps1 (Join-Path $env:RUNNER_TEMP 'nextec-update/Agente-Senha-Nextec.ps1')
           Copy-Item nextec/atualizacao/Coordenar-Agente-Nextec.ps1,nextec/atualizacao/Provisionar-Agente-Nextec.ps1 (Join-Path $env:RUNNER_TEMP 'nextec-update')
+          Copy-Item nextec/atualizacao/FONTE-AGENTE.json (Join-Path $env:RUNNER_TEMP 'nextec-update')
 
       - name: Finalize and Cleanup zip/json
         if: always() # Run even if previous steps fail

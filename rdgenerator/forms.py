@@ -14,8 +14,8 @@ UNSAFE_NAME_CHARS = re.compile(r'[&\\|\'"$`\r\n]')
 APP_NAME_ALLOWED = re.compile(r'^[A-Za-z0-9-]+$')
 
 class GenerateForm(forms.Form):
-    package_version = forms.RegexField(regex=r'^\d{1,3}\.\d{1,3}\.\d{1,3}$', required=False,
-        label='Versão do pacote Nextec', help_text='Ex.: 2.0.7. Uma nova imagem ou configuração precisa de uma nova versão.')
+    # Compatibilidade com API e modelos salvos: o servidor ignora o valor e usa rdgenerator/VERSION.
+    package_version = forms.CharField(required=False, widget=forms.HiddenInput)
     profile = forms.ChoiceField(choices=[('default', 'Cliente padrão'), ('analysts', 'Analistas'), ('client', 'Cliente específico')], required=False)
     client_name = forms.CharField(required=False, max_length=120, label='Cliente / carteira')
     notes = forms.CharField(required=False, max_length=1000, widget=forms.Textarea(attrs={'rows': 2}), label='Notas desta versão')
@@ -109,7 +109,7 @@ class GenerateForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for name, hint in (('exename', 'Nextec-Connect'), ('appname', 'Nextec-Connect'),
-                           ('package_version', '2.0.7'), ('client_name', 'Ex.: Carteira Bruno')):
+                           ('client_name', 'Ex.: Carteira Bruno')):
             self.fields[name].widget.attrs.setdefault('placeholder', hint)
         self.fields['exename'].widget.attrs.setdefault('autocomplete', 'off')
         self.fields['exename'].widget.attrs.setdefault('required', 'required')

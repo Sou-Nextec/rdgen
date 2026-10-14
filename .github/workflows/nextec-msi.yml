@@ -54,6 +54,7 @@ jobs:
           Copy-Item nextec/atualizacao/Instalar-Nextec.ps1 (Join-Path $env:RUNNER_TEMP 'nextec-update/Instalar-Nextec.ps1')
           Copy-Item nextec/atualizacao/Agente-Senha-Nextec.ps1 (Join-Path $env:RUNNER_TEMP 'nextec-update/Agente-Senha-Nextec.ps1')
           Copy-Item nextec/atualizacao/Coordenar-Agente-Nextec.ps1,nextec/atualizacao/Provisionar-Agente-Nextec.ps1 (Join-Path $env:RUNNER_TEMP 'nextec-update')
+          Copy-Item nextec/atualizacao/FONTE-AGENTE.json (Join-Path $env:RUNNER_TEMP 'nextec-update')
           $agentHash = (Get-FileHash nextec/atualizacao/Agente-Senha-Nextec.ps1 -Algorithm SHA256).Hash
           $expectedHash = (Select-String -Path nextec/atualizacao/Agente-Senha-Nextec.provenance.txt -Pattern '^vendored file SHA-256: ([a-f0-9]{64})$').Matches.Groups[1].Value
           if (!$expectedHash -or $agentHash -ne $expectedHash) { throw 'Vendored password agent differs from its recorded source hash' }
@@ -93,7 +94,7 @@ jobs:
           enroll_key: nx1.1790000000.TesteSomenteCiAbCdEf0123456789
           enroll_panel: https://painel-remoto.nex.tec.br
         run: |
-          & ./.github/scripts/build-msi.ps1 -AppName RustDesk -PackageVersion 2.0.7 -SourceRoot "$PWD/source" -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
+          & ./.github/scripts/build-msi.ps1 -AppName RustDesk -PackageVersion (Get-Content rdgenerator/VERSION -Raw).Trim() -SourceRoot "$PWD/source" -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
           $file = 'source/SignOutput/rustdesk.msi'
           $signature = [BitConverter]::ToString([IO.File]::ReadAllBytes((Resolve-Path $file))[0..7])
           if ($signature -ne 'D0-CF-11-E0-A1-B1-1A-E1') { throw 'Invalid MSI file signature' }

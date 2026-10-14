@@ -1,6 +1,7 @@
 ﻿param(
     [Parameter(Mandatory)][string]$MsiPath,
-    [string]$Version = '2.0.7',
+    # Versao esperada do pacote = rdgenerator/VERSION (fonte unica). So informe -Version para sobrescrever.
+    [string]$Version = '',
     [string]$AgentSha256 = '',
     # Quando o MSI foi construido com a chave de inscricao de teste, exige o arquivo instalado e o seu conteudo.
     [string]$EnrollmentKey = '',
@@ -10,6 +11,12 @@ $ErrorActionPreference = 'Stop'
 # Run only on disposable GitHub Windows runners, never on a user's computer.
 if ($env:GITHUB_ACTIONS -ne 'true') { throw 'Installation test requires an isolated GitHub Actions runner' }
 $msi = (Resolve-Path $MsiPath).Path
+if (-not $Version) {
+    $versionFile = Join-Path $PSScriptRoot '..\..\rdgenerator\VERSION'
+    if (-not (Test-Path -LiteralPath $versionFile)) { throw 'rdgenerator/VERSION not found: pass -Version' }
+    $Version = (Get-Content -LiteralPath $versionFile -Raw).Trim()
+}
+if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw ('Invalid expected package version: ' + $Version) }
 $log = Join-Path $env:RUNNER_TEMP 'nextec-real-install.log'
 $uninstallLog = Join-Path $env:RUNNER_TEMP 'nextec-real-uninstall.log'
 $agentPath = $null
@@ -231,7 +238,7 @@ try {
         }
     }
     $state = Get-ItemProperty 'HKLM:\SOFTWARE\Nextec\Acesso'
-    if ($state.Versao -ne $Version) { throw 'Installed package version was not recorded' }
+    if ($state.Versao -ne $Version) { throw ('Installed package version was not recorded: expected ' + $Version + ', found ' + $state.Versao) }
 
     # Agente antigo substituido sem desfazer a instalacao.
     $coordinatorLog = Join-Path $dataRoot 'coordenador.log'

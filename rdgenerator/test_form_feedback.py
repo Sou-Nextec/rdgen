@@ -16,9 +16,9 @@ class GeneratorFormFeedbackTests(SimpleTestCase):
 
     @patch("rdgenerator.views.nextec.config_problems", return_value=[])
     @patch("rdgenerator.views.generate_custom_client")
-    def test_invalid_version_is_visible_and_does_not_start_a_build(self, generate, config):
+    def test_invalid_base_version_is_visible_and_does_not_start_a_build(self, generate, config):
         data = self.data()
-        data["package_version"] = "2.bad"
+        data["version"] = "2.bad"
         response = generator_view(RequestFactory().post("/generator", data))
         self.assertEqual(response.status_code, 400)
         html = response.content.decode()

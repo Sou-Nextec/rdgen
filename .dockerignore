@@ -8,6 +8,10 @@ LICENSE
 # Git stuff
 .git
 .github
+# Arquivos do pacote que o teste de trava (test_pacote_versao) le dentro da imagem de teste
+!.github/scripts/build-msi.ps1
+!.github/scripts/install-msi-artwork.ps1
+!.github/scripts/build-setup-exe.ps1
 .gitignore
 
 # .gitignore

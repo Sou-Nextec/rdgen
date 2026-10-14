@@ -239,6 +239,15 @@ Não trocar o healthcheck para esconder a falta de configuração. SECRET_KEY va
 `atualizar-servidor.sh` atualiza o rdgen **antigo** (fora da stack) por cron. Fica obsoleto quando o servidor antigo for
 desligado; pode ser removido.
 
+## Versão do pacote = versão do gerador (2.3.6)
+
+A versão do instalador vem sempre de `rdgenerator/VERSION`; o campo do formulário é ignorado pelo servidor. Ela aparece no ProductVersion do MSI (`X.Y.Z.0`), na DEB, no `nextec-marker.json` (junto de `generator_version` e `agent_hash`), em `HKLM\SOFTWARE\Nextec\Agente` (`Version`, `GeneratorVersion`, `AgentHash`) e nos itens gerados.
+
+**Trava:** `nextec/conteudo-pacote.lock` registra a versão e o hash do conteúdo empacotado. Mudou script do agente, imagem MSI ou `build-msi.ps1`? O teste `rdgenerator.test_pacote_versao` falha no CI até subir a versão. Para atualizar:
+
+1. Suba `rdgenerator/VERSION` (e o `nextec/CHANGELOG.md`).
+2. Rode `python manage.py atualizar_lock_pacote` e commite o lock junto.
+
 ## Trava de integridade (CI)
 
 `node .github/scripts/verificar-integridade.mjs` roda em todo PR (workflow "Integridade do repositorio", sem filtro de caminho,

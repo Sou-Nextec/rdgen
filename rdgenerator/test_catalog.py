@@ -51,7 +51,6 @@ class GenerationCatalogTests(TestCase):
 
         for data in (
             {'exename': 'Cliente', 'profile': 'unknown'},
-            {'exename': 'Cliente', 'package_version': 'versão solta'},
             {'exename': 'Cliente', 'notes': 'n' * 1001},
             {'exename': 'Cliente', 'client_name': 'c' * 121},
         ):
@@ -109,7 +108,7 @@ class GenerationCatalogTests(TestCase):
         self.assertEqual(run.created_by, 'operador@nex.tec.br')
         self.assertEqual(run.client_name, 'Carteira A')
         self.assertEqual(run.rustdesk_version, '1.5.0')
-        self.assertEqual(run.package_version, '2.0.7')
+        self.assertEqual(run.package_version, __import__('rdgenerator.nextec', fromlist=['x']).package_version())  # 2.0.7 enviado e ignorado
         self.assertEqual(run.profile, 'client')
         self.assertEqual(run.notes, 'Build piloto')
         self.assertIn('HTTP 422', run.submission_error)

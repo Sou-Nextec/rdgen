@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory)][string]$MsiPath,
     [Parameter(Mandatory)][string]$PortablePath,
     [Parameter(Mandatory)][string]$OutputPath,

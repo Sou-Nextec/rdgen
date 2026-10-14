@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$Pedido,
     [string]$Msi,
     [string]$DebAmd64,

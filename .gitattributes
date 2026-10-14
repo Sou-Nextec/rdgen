@@ -1,2 +1,9 @@
+# Fim de linha: arquivos que o Linux le (sh, systemd, Docker, Actions) precisam ser LF no repositorio.
+# Verificado em todo PR por .github/scripts/verificar-integridade.mjs.
 *.sh text eol=lf
+*.yml text eol=lf
+*.service text eol=lf
+*.timer text eol=lf
+Dockerfile text eol=lf
+# .ps1 nao e normalizado: o git preserva o BOM UTF-8; quem protege o BOM e o verificador.
 nextec/atualizacao/*.ps1 -text

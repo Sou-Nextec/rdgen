@@ -1,4 +1,4 @@
-#requires -version 5.1
+﻿#requires -version 5.1
 # Imported by the installed updater, never downloaded/executed from the manifest.
 # RSA PKCS#1 v1.5 / SHA-256: same trust key and primitive as Nextec monitoring.
 function Test-ManifestoConnect {

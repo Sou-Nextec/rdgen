@@ -252,3 +252,52 @@ class GenerationDeleteTests(TestCase):
         items = {item['uuid']: item for item in self.client.get('/nextec/geracoes/', **self.headers).json()['results']}
         self.assertTrue(items[self.U1]['deletable'])
         self.assertFalse(items[self.U2]['deletable'])
+
+    def test_imported_item_stays_deletable_and_asks_confirmation(self):
+        from django.utils import timezone
+        self._run(self.U1, 'success', imported_at=timezone.now())
+        item = self.client.get(f'/nextec/geracoes/{self.U1}/', **self.headers).json()
+        self.assertTrue(item['deletable'])
+        self.assertTrue(item['delete_requires_confirmation'])
+        self.assertEqual(item['delete_confirmation'], 'imported')
+        self.assertIn('Atualizações', item['delete_confirmation_message'])
+        self.assertEqual(item['delete_blocked_reason'], '')
+
+    def test_in_progress_item_is_not_deletable_with_reason(self):
+        self._run(self.U1, 'in_progress', github_run_id=1)
+        item = self.client.get(f'/nextec/geracoes/{self.U1}/', **self.headers).json()
+        self.assertFalse(item['deletable'])
+        self.assertFalse(item['delete_requires_confirmation'])
+        self.assertIn('andamento', item['delete_blocked_reason'])
+
+    def test_in_progress_and_imported_is_blocked_even_with_confirmation(self):
+        from django.utils import timezone
+        self._run(self.U1, 'in_progress', github_run_id=1, imported_at=timezone.now())
+        response = self.client.delete(f'/nextec/geracoes/{self.U1}/excluir/?confirmar=1', **self.headers)
+        self.assertEqual((response.status_code, response.json()['code']), (409, 'in_progress'))
+
+    def test_bulk_imported_needs_confirm_imported(self):
+        from django.utils import timezone
+        self._run(self.U1, 'success', imported_at=timezone.now())
+        post = lambda data: self.client.post('/nextec/geracoes/excluir/', data=json.dumps(data),
+                                             content_type='application/json', **self.headers).json()
+        body = post({'uuids': [self.U1]})
+        self.assertEqual((body['deleted'], [b['code'] for b in body['blocked']]), ([], ['imported']))
+        self.assertEqual(post({'uuids': [self.U1], 'confirm_imported': True})['deleted'], [self.U1])
+
+    def test_contract_fixture_for_panel(self):
+        """Gera o JSON de contrato consumido pelo teste do painel (NEXTEC_CONTRACT_OUT=caminho)."""
+        from django.utils import timezone
+        self._run(self.U1, 'success', imported_at=timezone.now())
+        self._run(self.U2, 'in_progress', github_run_id=1)
+        self._run(self.U3, 'failure')
+        listing = self.client.get('/nextec/geracoes/', **self.headers).json()
+        refused = self.client.delete(f'/nextec/geracoes/{self.U1}/excluir/', **self.headers)
+        self.assertEqual(refused.status_code, 409)
+        contract = {'listing': listing, 'imported_uuid': self.U1, 'in_progress_uuid': self.U2,
+                    'failed_uuid': self.U3, 'delete_imported_without_confirm': refused.json()}
+        for item in listing['results']:
+            self.assertIn('delete_requires_confirmation', item)
+        out = os.environ.get('NEXTEC_CONTRACT_OUT')
+        if out:
+            Path(out).write_text(json.dumps(contract, ensure_ascii=False, indent=2, sort_keys=True), encoding='utf-8')

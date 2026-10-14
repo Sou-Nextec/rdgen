@@ -41,14 +41,27 @@ def _is_failed(run):
     return _is_stale(run)
 
 
-def _block_reason(run, force=False):
-    """None quando pode excluir; senão (código, mensagem em português)."""
+_IMPORTED_MESSAGE = ('Este instalador já foi enviado para Atualizações. Excluir remove só os arquivos de '
+                     'download; a versão preparada no painel não é afetada. Confirme para excluir mesmo assim.')
+
+
+def _hard_block(run):
+    """Bloqueio real (nem com confirmação): None ou (código, mensagem)."""
     if run.status not in TERMINAL and not run.submission_error and not _is_stale(run):
         return ('in_progress', 'A geração ainda está em andamento. Aguarde terminar ou falhar para excluir.')
-    if run.imported_at and not force:
-        return ('imported', 'Este instalador já foi enviado para Atualizações. Excluir remove só os arquivos de '
-                'download; a versão preparada no painel não é afetada. Confirme para excluir mesmo assim.')
     return None
+
+
+def _confirmation(run):
+    """Confirmação extra exigida para excluir: None ou (código, mensagem). Não impede a exclusão."""
+    if run.imported_at:
+        return ('imported', _IMPORTED_MESSAGE)
+    return None
+
+
+def _block_reason(run, force=False):
+    """None quando pode excluir agora; senão (código, mensagem em português)."""
+    return _hard_block(run) or (None if force else _confirmation(run))
 
 
 def _inside(base, target):
@@ -207,7 +220,12 @@ def _item(run, refresh=False):
         'log_url': log_url,
         'submission_error': run.submission_error,
         'imported': bool(run.imported_at),
-        'deletable': _block_reason(run) is None,
+        # deletable: a exclusão é possível (mesmo exigindo confirmação). Só bloqueio real vira false.
+        'deletable': _hard_block(run) is None,
+        'delete_blocked_reason': (_hard_block(run) or (None, ''))[1],
+        'delete_requires_confirmation': _hard_block(run) is None and _confirmation(run) is not None,
+        'delete_confirmation': (_confirmation(run) or (None, ''))[0] if _hard_block(run) is None else None,
+        'delete_confirmation_message': (_confirmation(run) or (None, ''))[1] if _hard_block(run) is None else '',
     }
 
 

@@ -41,7 +41,8 @@ Da Nextec:
 | `DB_PATH` | Arquivo do banco (padrão da imagem: `/opt/rdgen/data/db.sqlite3`) |
 | `NX_SERVER_HOST`, `NX_SERVER_PORT`, `NX_API_SERVER` | Servidor de ID (porta vazia = 21116) e URL do painel |
 | `NX_KEY` ou `NX_KEY_FILE` | Chave pública do servidor (texto, ou caminho do `id_ed25519.pub` montado só leitura) |
-| `NX_ENROLL_KEY` | Chave de inscrição global (`nx1.<época>.<assinatura>`) embutida em todo instalador: use a credencial corrente do card do painel. Opcional; sem ela o instalador sai sem inscrição automática e o gerador avisa. Nunca vai ao banco, a modelos nem a logs |
+| `NX_ENROLL_KEY` | **Override opcional** da chave de inscrição global (`nx1.<época>.<assinatura>`). Normalmente não é necessário: o gerador busca a chave vigente no painel a cada build. Só é usada quando a busca falha. Nunca vai ao banco, a modelos nem a logs |
+| `NX_PANEL_INTERNAL_URL` | Painel na rede interna da stack, de onde a chave é buscada (padrão `http://rustdesk:21114`). Vazio desliga a busca automática |
 | `NX_URL_LINK`, `NX_DOWNLOAD_LINK`, `NX_COMPANY`, `NX_APP_NAME` | Links, empresa e nome padrão do app |
 | `NX_LOCK_SERVER` | `1` (padrão) trava os campos acima, no formulário e no servidor |
 | `NX_ICON_FILE`, `NX_LOGO_FILE` | Imagens padrão (PNG quadrado) quando nenhuma é enviada |
@@ -53,7 +54,10 @@ Sem `NX_SERVER_HOST` o gerador se comporta como o original.
 
 ## Inscrição global das máquinas
 
-Com `NX_ENROLL_KEY` definida, o gerador coloca `enroll_key` e `enroll_panel` (URL de `NX_API_SERVER`) no `secrets_<uuid>.zip` cifrado.
+A cada build o gerador busca a chave vigente no painel (`GET {NX_PANEL_INTERNAL_URL}/api/nextec/gen/enroll-key`, timeout de 3 s, cabeçalho
+`X-Nextec-Gen-Secret` com o `SH_SECRET`, que é o mesmo `NX_RDGEN_SHARED_SECRET` da API; sem redirecionamento; nem a chave nem o segredo vão a log).
+Se a busca falhar, usa `NX_ENROLL_KEY` do ambiente. Com uma chave válida, coloca `enroll_key` e `enroll_panel` (URL de `NX_API_SERVER`) no `secrets_<uuid>.zip` cifrado.
+Exige o patch `0033-gen-enroll-key.patch` na API do painel (painel 2.11.8 ou mais novo).
 O workflow (mascarados no Actions) grava `{"v":1,"painel":"<URL>","chave":"<chave>"}` e o instala assim:
 
 - MSI e EXE (que embute o MSI): `inscricao.json` ao lado dos scripts, componente `Nextec.Enrollment`, sem alterar os hashes dos scripts.
@@ -61,16 +65,17 @@ O workflow (mascarados no Actions) grava `{"v":1,"painel":"<URL>","chave":"<chav
   `coordenador-agente-nextec-linux.py`, que é a fonte que o coordenador lê (e depois copia para `/var/lib/nextec-connect`).
   Instalado por `nextec/atualizacao/inscricao-linux.sh`.
 
-Sem a variável, o build segue e o instalador sai sem o arquivo, com aviso na tela e na saída do build. A chave é o segredo que autoriza
+Sem chave (painel inacessível e sem `NX_ENROLL_KEY`), o build segue e o instalador sai sem o arquivo, com aviso na tela e na saída do build. A chave é o segredo que autoriza
 inscrição: rotacione-a no painel se um instalador vazar.
 
 Requisitos na stack:
 
-- `NX_ENROLL_KEY`: a credencial **corrente** do card de inscrição global do painel.
+- `SH_SECRET` do gerador igual ao `NX_RDGEN_SHARED_SECRET` da API (a stack já usa `GERADOR_SH_SECRET` nos dois) e os dois serviços na mesma rede
+  Docker (`rustdesk:21114`). `NX_ENROLL_KEY` fica só como reserva.
 - `NX_API_SERVER`: a URL HTTPS do painel **aceita pelo agente** (hoje `https://painel-remoto.nex.tec.br`; o agente recusa
   qualquer outro valor com `invalid_panel`, então um instalador com outra URL não se inscreve).
 - **Girar a chave no painel NÃO atualiza instaladores já gerados ou instalados**: eles guardam a chave antiga e passam a receber 401
-  (autorização manual). Depois de girar, atualize `NX_ENROLL_KEY` na stack e gere instaladores novos.
+  (autorização manual). Depois de girar, basta gerar instaladores novos: o gerador busca a chave nova sozinho.
 
 Os scripts empacotados (`Provisionar-Agente-Nextec.ps1`, `Coordenar-Agente-Nextec.ps1`, `Agente-Senha-Nextec.ps1`,
 `coordenador-agente-nextec-linux.py`) são cópias versionadas de `Sou-Nextec/rustdesk-api-web` (commit e hash em
@@ -83,7 +88,7 @@ self-enroll contra um painel falso local: 200 pendente, 404 retry, 401/409 manua
 
 ## Versão e imagens
 
-`rdgenerator/VERSION` guarda a versão da experiência do gerador, atualmente `2.1.0`. Ao alterar layout ou recursos próprios,
+`rdgenerator/VERSION` guarda a versão da experiência do gerador, atualmente `2.2.0`. Ao alterar layout ou recursos próprios,
 atualize esse arquivo e acrescente uma entrada em `nextec/CHANGELOG.md`. Essa versão é separada da versão-base RustDesk usada
 no build e da versão do produto publicada na tela de atualizações do painel.
 

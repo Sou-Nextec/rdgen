@@ -327,10 +327,9 @@ def generate_custom_client(params, full_url, created_by='', profile=''):
     }
 
     # Chave de inscricao global: vem so do ambiente, entra apenas no pacote cifrado do build (nunca em banco/log/resposta).
-    enrollment_problem = nextec.enrollment_warning(apiServer)
-    enroll_key = ''
+    enroll_key = nextec.resolve_enroll_key()
+    enrollment_problem = nextec.enrollment_warning(apiServer, key=enroll_key)
     if not enrollment_problem:
-        enroll_key = nextec.enroll_key()
         inputs_raw['enroll_key'] = enroll_key
         inputs_raw['enroll_panel'] = nextec.enroll_panel(apiServer)
     # sem servidor Nextec configurado o gerador e o original: nao ha o que avisar

@@ -10,11 +10,21 @@ na stack. Sem NX_SERVER_HOST nada muda: o gerador se comporta como o original.
   NX_URL_LINK, NX_DOWNLOAD_LINK, NX_COMPANY, NX_APP_NAME
   NX_LOCK_SERVER    1 (padrao) trava host, porta, API, chave, links e empresa: nem o formulario nem a API mudam
   NX_ICON_FILE, NX_LOGO_FILE   imagens padrao (PNG) usadas quando nenhuma for enviada
-  NX_ENROLL_KEY     chave de inscricao global (nx1.<epoca>.<hmac>) embutida em todo instalador; nunca vai ao banco
+  NX_ENROLL_KEY     chave de inscricao global (nx1.<epoca>.<hmac>): override opcional, usado so quando a busca no painel falha
+  NX_PANEL_INTERNAL_URL   painel na rede interna da stack (padrao http://rustdesk:21114); vazio desliga a busca automatica
+
+A chave de inscricao e buscada no painel a cada build (GET /api/nextec/gen/enroll-key, cabecalho X-Nextec-Gen-Secret com
+o SH_SECRET), entao girar a chave no painel nao exige mexer na stack. Ela nunca vai ao banco nem a logs.
 """
+import json
 import os
 import re
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
+
+from django.conf import settings
 
 from django.core.files.base import ContentFile
 
@@ -56,13 +66,71 @@ ENROLL_KEY_RE = re.compile(r'nx1\.[0-9]{1,12}\.[A-Za-z0-9_-]{16,128}')
 _ENROLL_PANEL_RE = re.compile(r'https?://[A-Za-z0-9._:\[\]-]+(?:/[A-Za-z0-9._~%/-]*)?')
 
 
-def enroll_key():
-    """Chave de inscricao global (NX_ENROLL_KEY). Vazia quando ausente ou com formato invalido.
+PANEL_INTERNAL_DEFAULT = 'http://rustdesk:21114'
+PANEL_FETCH_TIMEOUT = 3
+_FETCH_CACHE_OK, _FETCH_CACHE_FAIL = 60, 15
+_fetch_cache = {'at': 0.0, 'key': '', 'ok': False}
 
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):  # o segredo nunca segue para outro endereco
+        return None
+
+
+def _panel_internal_url():
+    if 'NX_PANEL_INTERNAL_URL' in os.environ:
+        value = _env('NX_PANEL_INTERNAL_URL')
+    else:
+        value = PANEL_INTERNAL_DEFAULT
+    value = value.rstrip('/')
+    return value if value and _ENROLL_PANEL_RE.fullmatch(value) and value.startswith(('http://', 'https://')) else ''
+
+
+def fetch_panel_key():
+    """Busca a chave vigente no painel (rede interna, 3 s). Devolve '' em qualquer falha, sem logar chave nem segredo."""
+    secret = (getattr(settings, 'SH_SECRET', '') or '').strip()
+    base = _panel_internal_url()
+    if not is_configured() or not base or not secret or secret == 'secret':
+        return ''
+    request = urllib.request.Request(base + '/api/nextec/gen/enroll-key', headers={'X-Nextec-Gen-Secret': secret}, method='GET')
+    opener = urllib.request.build_opener(_NoRedirect)
+    try:
+        with opener.open(request, timeout=PANEL_FETCH_TIMEOUT) as response:
+            data = json.loads(response.read(4096).decode('utf-8'))
+        value = data.get('enroll_key', '') if isinstance(data, dict) else ''
+        return value if isinstance(value, str) and ENROLL_KEY_RE.fullmatch(value) else ''
+    except urllib.error.HTTPError as exc:
+        print(f"Painel recusou a busca da chave de inscricao (HTTP {exc.code}).")
+    except Exception as exc:  # rede, timeout, JSON invalido: so o tipo, nunca a mensagem
+        print(f"Nao foi possivel buscar a chave de inscricao no painel ({type(exc).__name__}).")
+    return ''
+
+
+def resolve_enroll_key(use_cache=False):
+    """Chave de inscricao: a do painel (busca automatica) ou, se falhar, NX_ENROLL_KEY. Vazia se nada valer.
+
+    O build chama sem cache (sempre a chave vigente). A tela do formulario usa cache curto para nao travar a pagina.
     Nunca deve ser gravada em banco, modelo salvo, log ou resposta: so entra no pacote cifrado do build.
     """
+    now = time.monotonic()
+    if use_cache:
+        ttl = _FETCH_CACHE_OK if _fetch_cache['ok'] else _FETCH_CACHE_FAIL
+        if _fetch_cache['at'] and now - _fetch_cache['at'] < ttl:
+            if _fetch_cache['key']:
+                return _fetch_cache['key']
+            value = _env('NX_ENROLL_KEY')
+            return value if ENROLL_KEY_RE.fullmatch(value) else ''
+    fetched = fetch_panel_key()
+    _fetch_cache.update(at=now, key=fetched, ok=bool(fetched))
+    if fetched:
+        return fetched
     value = _env('NX_ENROLL_KEY')
     return value if ENROLL_KEY_RE.fullmatch(value) else ''
+
+
+def enroll_key():
+    """Compatibilidade: chave vigente sem cache."""
+    return resolve_enroll_key()
 
 
 def enroll_panel(api_server=''):
@@ -74,15 +142,21 @@ def enroll_panel(api_server=''):
     return ''
 
 
-def enrollment_warning(api_server=''):
-    """Aviso (sem a chave) quando o instalador sair sem inscricao automatica; vazio quando tudo certo."""
-    raw = _env('NX_ENROLL_KEY')
-    if not raw:
-        return ('Inscrição automática desativada: NX_ENROLL_KEY não está configurada no gerador. '
+def enrollment_warning(api_server='', key=None):
+    """Aviso (sem a chave) quando o instalador sair sem inscricao automatica; vazio quando tudo certo.
+
+    `key` e a chave ja resolvida pelo build; sem ela usa a resolucao com cache curto (tela do formulario).
+    """
+    if key is None:
+        key = resolve_enroll_key(use_cache=True)
+    if not key:
+        raw = _env('NX_ENROLL_KEY')
+        if raw:
+            return ('Inscrição automática desativada: o gerador não conseguiu buscar a chave no painel e NX_ENROLL_KEY tem formato inválido '
+                    '(esperado nx1.<época>.<assinatura>). O instalador será gerado sem inscricao.json.')
+        return ('Inscrição automática desativada: o gerador não conseguiu buscar a credencial de inscrição no painel '
+                '(confira se o painel está no ar e se GERADOR_SH_SECRET é o mesmo nos dois) e NX_ENROLL_KEY não está configurada. '
                 'O instalador será gerado sem inscricao.json e a máquina não se inscreverá sozinha no painel.')
-    if not ENROLL_KEY_RE.fullmatch(raw):
-        return ('Inscrição automática desativada: NX_ENROLL_KEY tem formato inválido (esperado nx1.<época>.<assinatura>). '
-                'O instalador será gerado sem inscricao.json.')
     if not enroll_panel(api_server):
         return ('Inscrição automática desativada: a URL do painel (NX_API_SERVER) não foi definida. '
                 'O instalador será gerado sem inscricao.json.')

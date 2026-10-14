@@ -18,6 +18,10 @@ class GenerateForm(forms.Form):
         label='Versão do pacote Nextec', help_text='Ex.: 2.0.7. Uma nova imagem ou configuração precisa de uma nova versão.')
     profile = forms.ChoiceField(choices=[('default', 'Cliente padrão'), ('analysts', 'Analistas'), ('client', 'Cliente específico')], required=False)
     client_name = forms.CharField(required=False, max_length=120, label='Cliente / carteira')
+    # Cliente do painel: o instalador sai com a credencial desse cliente e a maquina entra aprovada nele, com a
+    # senha automatica. Vazio = instalador geral (a maquina aparece em Pendentes para o admin atribuir).
+    client_id = forms.ChoiceField(required=False, choices=[('', 'Qualquer cliente (a máquina entra pendente)')],
+                                  label='Cliente do painel')
     notes = forms.CharField(required=False, max_length=1000, widget=forms.Textarea(attrs={'rows': 2}), label='Notas desta versão')
     sh_secret_field = forms.CharField(required=False)
     #Platform
@@ -108,6 +112,8 @@ class GenerateForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        from . import nextec as _nextec
+        self.fields['client_id'].choices = [('', 'Qualquer cliente (a máquina entra pendente)')] + _nextec.panel_clients()
         for name, hint in (('exename', 'Nextec-Connect'), ('appname', 'Nextec-Connect'),
                            ('package_version', '2.0.7'), ('client_name', 'Ex.: Carteira Bruno')):
             self.fields[name].widget.attrs.setdefault('placeholder', hint)

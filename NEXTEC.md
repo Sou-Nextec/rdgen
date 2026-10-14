@@ -94,6 +94,19 @@ Testes da inscrição empacotada: `rdgenerator/test_enrollment.py` (gerador), `.
 self-enroll contra um painel falso local: 200 pendente, 404 retry, 401/409 manual, 403 parada) e
 `nextec/atualizacao/test_inscricao_deb_linux.py` (caminho e consumo no DEB).
 
+## Instalador por cliente
+
+Com o seletor **Cliente do painel** preenchido, o build usa a credencial por cliente (`nx2.<cliente>.<época>.<assinatura>`) em vez da
+global. A máquina que instalar se inscreve já **aprovada nesse cliente** e com a regra de senha do cliente (ligada na primeira máquina se
+o cliente nunca teve regra; respeitada se o admin a desligou). Máquina que já pertence a outro cliente fica pendente.
+
+- A lista de clientes e a credencial vêm do painel pela rede interna (`NX_PANEL_INTERNAL_URL`, segredo `SH_SECRET`), a cada abertura do
+  formulário (cache de 30 s) e a cada build. Falha em obter a credencial do cliente **interrompe** o build: nada de cair na global.
+- A credencial do cliente vai só no pacote cifrado do build, como a global; girar a chave de inscrição no painel invalida as duas.
+- Dois instaladores de clientes diferentes são arquivos diferentes: gere e distribua o do cliente certo.
+- EXE: `Setup.exe --silent` (ou `/S`) instala sem nenhuma tela e devolve o código de saída do `msiexec`; sem argumento, o botão padrão é
+  "Instalar nesta máquina".
+
 ## Nome do app livre e agente por flag
 
 O nome do app pode ser qualquer um (`XPTO`, `Client-Nextec-Connect`, `Nextec-Connect`...). Nada decide por comparação de nome.

@@ -84,6 +84,18 @@ def generate_custom_client(params, full_url, created_by='', profile=''):
         return {'success': False, 'error': 'Metadados da geração inválidos.', 'status_code': 400}
     if any(ord(char) < 32 and char not in '\t\n\r' for char in package_version + notes + client_label):
         return {'success': False, 'error': 'Metadados da geração inválidos.', 'status_code': 400}
+    # Instalador por cliente: a credencial do cliente vem do painel a cada build. Se nao vier, o build NAO segue com a
+    # chave global: o instalador pedido para um cliente nao pode sair "pendente" sem ninguem perceber.
+    client_id = str(params.get('client_id', '') or '').strip()
+    client_enroll_key = ''
+    if client_id:
+        client_enroll_key, client_panel_name = nextec.client_key(client_id)
+        if not client_enroll_key:
+            return {'success': False, 'status_code': 503,
+                    'error': 'Não foi possível obter a credencial do cliente no painel. Confira se o painel está no ar '
+                             'e se o cliente ainda existe, e tente de novo.'}
+        if not (client_label or '').strip():
+            client_label = client_panel_name
     user_secret = params.get('sh_secret_field', '')
     selfhosted = (_settings.SH_SECRET == user_secret)
     platform = params.get('platform', 'windows')
@@ -330,8 +342,16 @@ def generate_custom_client(params, full_url, created_by='', profile=''):
     }
 
     # Chave de inscricao global: vem so do ambiente, entra apenas no pacote cifrado do build (nunca em banco/log/resposta).
-    enroll_key = nextec.resolve_enroll_key()
+    enroll_key = client_enroll_key or nextec.resolve_enroll_key()
     enrollment_problem = nextec.enrollment_warning(apiServer, key=enroll_key)
+    # Instalador por cliente sem inscricao automatica nao existe: sem a URL do painel (ou sem o agente) a maquina nunca
+    # entraria no cliente. Recusa antes de gastar 30 a 45 min de build, em vez de so avisar.
+    if client_id and not nx_agent:
+        return {'success': False, 'status_code': 400,
+                'error': 'Instalador por cliente precisa do agente Nextec (o app de suporte avulso não se inscreve).'}
+    if client_id and enrollment_problem:
+        return {'success': False, 'status_code': 503,
+                'error': 'Instalador por cliente sem inscrição automática: ' + enrollment_problem}
     if not enrollment_problem:
         inputs_raw['enroll_key'] = enroll_key
         inputs_raw['enroll_panel'] = nextec.enroll_panel(apiServer)
@@ -413,6 +433,7 @@ def generate_custom_client(params, full_url, created_by='', profile=''):
                 "platform": platform,
                 "log_url": github_data.get('html_url'),
                 "enrollment": bool(enroll_key),
+                "client_id": client_id,
                 "avisos": avisos,
             }
         else:
@@ -529,7 +550,7 @@ def _received_files(uuid_val, filename):
 
 
 # Campos do bloco principal; um erro fora deles abre a seção Avançado.
-SIMPLE_FIELDS = {'exename', 'appname', 'client_name', 'package_version', 'profile', 'iconfile', 'notes', 'platform'}
+SIMPLE_FIELDS = {'exename', 'appname', 'client_name', 'client_id', 'package_version', 'profile', 'iconfile', 'notes', 'platform'}
 # Mensagens destes campos são fixas em português (nunca ecoam o valor enviado).
 SAFE_MESSAGE_FIELDS = {'exename', 'appname', 'serverPort', 'key', 'iconfile', 'compname'}
 
@@ -559,7 +580,12 @@ def generator_view(request):
             else:
                 return JsonResponse({"error": result['error']}, status=result.get('status_code', 500))
     else:
-        form = GenerateForm(initial=nextec.initial())
+        initial = nextec.initial()
+        # Link do painel ("Baixar instalador deste cliente"): ?cliente=<id> ja escolhe o cliente.
+        chosen = request.GET.get('cliente', '').strip()
+        if chosen.isdigit() and len(chosen) <= 10:
+            initial = dict(initial, client_id=chosen)
+        form = GenerateForm(initial=initial)
     if form.is_bound:
         for name, errors in form.errors.as_data().items():
             field = form.fields.get(name)

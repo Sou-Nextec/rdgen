@@ -156,7 +156,7 @@ try {
     # Inscricao global: Resources\inscricao.json vai em componente proprio, fora dos scripts assinados (hash intacto).
     $enrollmentFile = Join-Path $SourceRoot 'res/msi/Package/Resources/inscricao.json'
     if (($EnrollmentKey -or $EnrollmentPanel) -and $withAgent) {
-        if ($EnrollmentKey -notmatch '^nx1\.[0-9]{1,12}\.[A-Za-z0-9_-]{16,128}$') { throw 'Invalid enrollment key format' }
+        if ($EnrollmentKey -cnotmatch '^(nx1\.[0-9]{1,12}\.[A-Za-z0-9_-]{16,128}|nx2\.[0-9]{1,10}\.[0-9]{1,12}\.[0-9a-f]{64})$') { throw 'Invalid enrollment key format' }
         if ($EnrollmentPanel.TrimEnd('/') -cnotmatch '^https://([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$') {
             throw 'Invalid enrollment panel URL: use https://dominio (minusculas, sem porta nem caminho), o unico formato que o agente aceita'
         }

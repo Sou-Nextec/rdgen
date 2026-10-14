@@ -40,7 +40,7 @@ def validate_build_inputs(payload):
             raise ValueError(f'{key}: invalid encoded value')
         if key == 'token' and not re.fullmatch(r'[A-Za-z0-9_-]+', value):
             raise ValueError('token: invalid build token')
-        if key == 'enroll_key' and not re.fullmatch(r'nx1\.[0-9]{1,12}\.[A-Za-z0-9_-]{16,128}', value):
+        if key == 'enroll_key' and not re.fullmatch(r'nx1\.[0-9]{1,12}\.[A-Za-z0-9_-]{16,128}|nx2\.[0-9]{1,10}\.[0-9]{1,12}\.[0-9a-f]{64}', value):
             raise ValueError('enroll_key: invalid enrollment key')
         if key in ('apiServer', 'genurl', 'urlLink', 'downloadLink', 'enroll_panel') or key.endswith('_url'):
             if not re.fullmatch(r'[A-Za-z0-9._:/?%#=+@~\[\]-]+', value):

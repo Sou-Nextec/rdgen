@@ -193,6 +193,26 @@ try {
             if (Test-Path -LiteralPath (Join-Path $caseResources 'inscricao.json')) { throw "Support app must not carry the enrollment key ($label)" }
         }
     }
+    # Credencial por cliente (nx2): entra no inscricao.json igual a global; formato errado e recusado.
+    $clientKey = 'nx2.7.3.' + ('ab12' * 16)
+    foreach ($case in @(@{ Key = $clientKey; Ok = $true }, @{ Key = 'nx2.7.3.' + ('AB12' * 16); Ok = $false }, @{ Key = 'nx2.7.curta'; Ok = $false })) {
+        $kRoot = Join-Path $fixture ('client-key-' + [Guid]::NewGuid().ToString('N'))
+        $kBinary = Join-Path $kRoot 'rustdesk'
+        $kWxs = Join-Path $kRoot 'res/msi/Package/Package.wxs'
+        New-Item -ItemType Directory -Force $kBinary, (Split-Path $kWxs) | Out-Null
+        [IO.File]::WriteAllText((Join-Path $kBinary 'XPTO.exe'), 'fixture')
+        [IO.File]::WriteAllText($kWxs, '<Wix><Package><Feature></Feature><InstallExecuteSequence></InstallExecuteSequence></Package></Wix>')
+        $env:enroll_key = $case.Key; $env:enroll_panel = 'https://painel.xpto.example'
+        $built = $true
+        try { & $buildScript -AppName 'XPTO' -IncludeAgent 'true' -PackageVersion '2.0.7' -SourceRoot $kRoot -BinaryDirectory $kBinary -UpdaterSource $updaterSource | Out-Null }
+        catch { $built = $false }
+        finally { Remove-Item Env:enroll_key, Env:enroll_panel -ErrorAction SilentlyContinue }
+        if ($built -ne $case.Ok) { throw "Client enrollment key handling is wrong for $($case.Key)" }
+        if ($case.Ok) {
+            $stored = [IO.File]::ReadAllText((Join-Path $kRoot 'res/msi/Package/Resources/inscricao.json')) | ConvertFrom-Json
+            if ($stored.chave -ne $clientKey -or $stored.v -ne 1) { throw 'Client key was not written to inscricao.json' }
+        }
+    }
     # Instalador SEM chave de inscricao (painel inacessivel no build): o painel continua no marcador, para o agente
     # nao cair no endereco padrao. Painel fora do formato do agente sai sem o campo.
     foreach ($case in @(@{ Api = 'https://painel.semchave.example'; Painel = 'https://painel.semchave.example' }, @{ Api = 'painel.semchave.example:21114'; Painel = $null })) {

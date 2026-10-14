@@ -63,6 +63,8 @@ def server_defaults():
 
 
 ENROLL_KEY_RE = re.compile(r'nx1\.[0-9]{1,12}\.[A-Za-z0-9_-]{16,128}')
+CLIENT_KEY_RE = re.compile(r'nx2\.[0-9]{1,10}\.[0-9]{1,12}\.[0-9a-f]{64}')
+CLIENT_ID_RE = re.compile(r'[0-9]{1,10}')
 _ENROLL_PANEL_RE = re.compile(r'https?://[A-Za-z0-9._:\[\]-]+(?:/[A-Za-z0-9._~%/-]*)?')
 
 
@@ -104,6 +106,65 @@ def fetch_panel_key():
     except Exception as exc:  # rede, timeout, JSON invalido: so o tipo, nunca a mensagem
         print(f"Nao foi possivel buscar a chave de inscricao no painel ({type(exc).__name__}).")
     return ''
+
+
+def _panel_get_json(path, what):
+    """GET interno no painel com o segredo compartilhado. Devolve o JSON (dict) ou None; nunca loga chave nem segredo."""
+    secret = (getattr(settings, 'SH_SECRET', '') or '').strip()
+    base = _panel_internal_url()
+    if not is_configured() or not base or not secret or secret == 'secret':
+        return None
+    request = urllib.request.Request(base + path, headers={'X-Nextec-Gen-Secret': secret}, method='GET')
+    opener = urllib.request.build_opener(_NoRedirect)
+    try:
+        with opener.open(request, timeout=PANEL_FETCH_TIMEOUT) as response:
+            data = json.loads(response.read(262144).decode('utf-8'))
+        return data if isinstance(data, dict) else None
+    except urllib.error.HTTPError as exc:
+        print(f"Painel recusou {what} (HTTP {exc.code}).")
+    except Exception as exc:
+        print(f"Nao foi possivel obter {what} no painel ({type(exc).__name__}).")
+    return None
+
+
+_CLIENT_NAME_BLOCKED = '<>&"\'\\'
+_clients_cache = {'at': 0.0, 'items': []}
+
+
+def panel_clients(use_cache=True):
+    """Clientes do painel [(id, nome)] para o seletor do formulario. Lista vazia quando o painel nao responde."""
+    now = time.monotonic()
+    if use_cache and _clients_cache['at'] and now - _clients_cache['at'] < 30:
+        return list(_clients_cache['items'])
+    data = _panel_get_json('/api/nextec/gen/clients', 'a lista de clientes')
+    items = []
+    if data and isinstance(data.get('clients'), list):
+        for row in data['clients'][:1000]:
+            if isinstance(row, dict) and isinstance(row.get('id'), int) and isinstance(row.get('name'), str):
+                name = ''.join(ch for ch in row['name'] if ch.isprintable() and ch not in _CLIENT_NAME_BLOCKED).strip()[:80]
+                if row['id'] > 0 and name:
+                    items.append((str(row['id']), name))
+    _clients_cache.update(at=now, items=items)
+    return list(items)
+
+
+def client_key(client_id):
+    """Credencial por cliente (nx2) e nome do cliente, buscadas no painel a cada build. ('', '') se falhar.
+
+    Falhar aqui NUNCA cai na chave global: o instalador pedido para um cliente nao pode sair "pendente" sem aviso."""
+    client_id = str(client_id or '').strip()
+    if not CLIENT_ID_RE.fullmatch(client_id) or int(client_id) <= 0:
+        return '', ''
+    data = _panel_get_json('/api/nextec/gen/enroll-key?group=' + client_id, 'a credencial do cliente')
+    if not data:
+        return '', ''
+    value = data.get('enroll_key', '')
+    name = data.get('client_name', '')
+    if not (isinstance(value, str) and CLIENT_KEY_RE.fullmatch(value)):
+        return '', ''
+    if not value.startswith('nx2.%s.' % int(client_id)):
+        return '', ''
+    return value, (name if isinstance(name, str) else '')[:120]
 
 
 def resolve_enroll_key(use_cache=False):

@@ -113,6 +113,7 @@ def generate_custom_client(params, full_url, created_by='', profile=''):
     direction = params.get('direction', 'both')
     installation = params.get('installation', 'installationY')
     settings = params.get('settings', 'settingsY')
+    nx_agent = nextec.agent_enabled(params)
     appname = params.get('appname', '')
     if not appname:
         appname = "rustdesk"
@@ -324,6 +325,8 @@ def generate_custom_client(params, full_url, created_by='', profile=''):
         "androidappid":androidappid,
         "filename":filename,
         "package_version": params.get('package_version', ''),
+        # inclui o agente Nextec no pacote; independe do nome do app (workflows leem env.nx_agent)
+        "nx_agent": 'true' if nx_agent else 'false',
     }
 
     # Chave de inscricao global: vem so do ambiente, entra apenas no pacote cifrado do build (nunca em banco/log/resposta).

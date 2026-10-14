@@ -38,6 +38,8 @@ class GenerateForm(forms.Form):
         ('installationY', 'Permitir instalação'),
         ('installationN', 'Desativar instalação')
     ], initial='installationY')
+    # Inclui o agente Nextec no pacote. Vazio = padrao do servidor (ligado; desligado so no app de suporte avulso).
+    nx_agent = forms.ChoiceField(choices=[('', 'Padrão'), ('true', 'Com agente'), ('false', 'Sem agente (suporte avulso)')], required=False, widget=forms.HiddenInput)
     settings = forms.ChoiceField(label="Configurações", choices=[
         ('settingsY', 'Permitir configurações'),
         ('settingsN', 'Desativar configurações')

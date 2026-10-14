@@ -1,4 +1,6 @@
 import importlib.util
+import sys
+import types
 import json
 import os
 import stat
@@ -9,10 +11,17 @@ from subprocess import CompletedProcess
 from unittest import mock
 
 
+try:
+    import fcntl  # noqa: F401
+except ImportError:  # execucao local em Windows: o modulo so existe no Linux
+    sys.modules['fcntl'] = types.ModuleType('fcntl')
+
 MODULE_PATH = Path(__file__).with_name("agente-senha-linux.py")
 SPEC = importlib.util.spec_from_file_location("nextec_linux_agent", MODULE_PATH)
 agent_module = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(agent_module)
+# O painel vem do build (inscricao.json); nos testes o valor e fixado explicitamente, com host de exemplo.
+agent_module.PANEL_HOST = "painel-remoto.nex.tec.br"
 
 
 PEER_ID = "123456789"

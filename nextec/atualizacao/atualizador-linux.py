@@ -7,6 +7,7 @@ import json
 import os
 import platform
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -16,7 +17,40 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-BASE_URL = "https://painel-remoto.nex.tec.br/api/nextec/update"
+
+def _configured_panel(paths):
+    """Painel https gravado no build em inscricao.json (instalado pelo pacote, dono root, sem escrita de grupo/outros).
+
+    Nunca vem da rede nem de variavel de ambiente. Vazio = painel nao configurado (o componente nao age)."""
+    for path in paths:
+        try:
+            info = os.lstat(path)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid not in (0, os.geteuid()) or info.st_mode & 0o022:
+                continue
+            with open(path, "r", encoding="utf-8") as handle:
+                raw = handle.read(4097)
+            if len(raw) > 4096:
+                continue
+            value = json.loads(raw)
+            panel = value.get("painel") if isinstance(value, dict) else None
+            if not isinstance(panel, str):
+                continue
+            parsed = urllib.parse.urlsplit(panel)
+            if (parsed.scheme != "https" or parsed.port not in (None, 443) or parsed.username or parsed.password
+                    or parsed.query or parsed.fragment or parsed.path not in ("", "/")
+                    or not re.fullmatch(r"[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?", parsed.hostname or "")):
+                continue
+            return "https://" + parsed.hostname
+        except (OSError, ValueError, UnicodeError, AttributeError):
+            continue
+    return ""
+
+
+_PANEL_SOURCES = (Path(__file__).resolve().with_name("inscricao.json"), Path("/var/lib/nextec-connect/inscricao.json"))
+
+PANEL = _configured_panel(_PANEL_SOURCES)
+PANEL_HOST = urllib.parse.urlsplit(PANEL).hostname or ""
+BASE_URL = PANEL + "/api/nextec/update"
 PACKAGE = "__PACKAGE_NAME__"
 STATE = Path("/var/lib/nextec-connect/update-state.json")
 LOCK = Path("/run/lock/nextec-connect-update.lock")
@@ -63,12 +97,12 @@ def arch_name():
 
 
 def request_bytes(url, limit):
-    if not url.startswith("https://painel-remoto.nex.tec.br/"):
+    if not PANEL or not url.startswith(PANEL + "/"):
         raise ValueError("Servidor de atualização inválido.")
     req = urllib.request.Request(url, headers={"Cache-Control": "no-store", "User-Agent": "Nextec-Connect-Updater/1"})
     with urllib.request.urlopen(req, timeout=30) as response:
         final = urllib.parse.urlsplit(response.geturl())
-        if response.status != 200 or final.scheme != "https" or final.hostname != "painel-remoto.nex.tec.br" or int(response.headers.get("Content-Length", "0") or 0) > limit:
+        if response.status != 200 or final.scheme != "https" or final.hostname != PANEL_HOST or int(response.headers.get("Content-Length", "0") or 0) > limit:
             raise ValueError("Resposta ou tamanho inválido do servidor.")
         data = response.read(limit + 1)
     if len(data) > limit:
@@ -76,23 +110,110 @@ def request_bytes(url, limit):
     return data
 
 
-def get_peer_id():
-    # O ID é apenas usado pelo painel para aplicar o grupo piloto; não é credencial.
-    for path in ("/usr/bin/Nextec-Connect", "/usr/bin/nextec-connect", "/usr/bin/rustdesk", "/usr/lib/Nextec-Connect/rustdesk", "/usr/lib/nextec-connect/rustdesk"):
+MARKER_PATHS = (Path(__file__).resolve().with_name("nextec-marker.json"), Path("/usr/lib/nextec-connect/nextec-marker.json"))
+SCAN_DIRS = ("/usr/bin", "/opt", "/usr/lib", "/usr/share")
+_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+
+def app_names(marker_paths=None):
+    """Nomes do app (app e upgrade_code do nextec-marker.json, minusculos). O nome do app e livre."""
+    names = []
+    for path in (MARKER_PATHS if marker_paths is None else marker_paths):
+        try:
+            with open(path, "r", encoding="utf-8-sig") as handle:
+                raw = handle.read(4097)
+            value = json.loads(raw) if len(raw) <= 4096 else None
+        except (OSError, ValueError, UnicodeError):
+            continue
+        if isinstance(value, dict):
+            for key in ("app", "upgrade_code"):
+                item = value.get(key)
+                if isinstance(item, str) and _NAME_RE.fullmatch(item) and item.lower() not in names:
+                    names.append(item.lower())
+    if PACKAGE.lower() not in names and _NAME_RE.fullmatch(PACKAGE):
+        names.append(PACKAGE.lower())
+    return names
+
+
+def _query_id(runner, path):
+    try:
+        result = runner([path, "--get-id"], text=True, capture_output=True, timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    match = re.fullmatch(r"\d{6,}", (result.stdout or "").strip())
+    return match.group(0) if match and result.returncode == 0 else ""
+
+
+def get_peer_id(runner=subprocess.run, marker_paths=None, scan_dirs=None):
+    """ID do cliente instalado, descoberto sem nome fixo: (1) marcador e pasta do app, (2) servico systemd cujo
+    ExecStart e o binario do app, (3) varredura limitada. Falha explicita com o que foi procurado (nunca vazio)."""
+    # O ID e apenas usado pelo painel para aplicar o grupo piloto; nao e credencial.
+    names = app_names(marker_paths)
+    dirs = SCAN_DIRS if scan_dirs is None else tuple(scan_dirs)
+    searched = ["nomes:" + ",".join(names)]
+    candidates = []
+    for base in dirs:
+        for name in names:
+            for path in (os.path.join(base, name), os.path.join(base, name, name)):
+                if path not in candidates:
+                    candidates.append(path)
+    for path in candidates:
         if os.path.isfile(path) and os.access(path, os.X_OK):
+            value = _query_id(runner, path)
+            if value:
+                return value
+    searched.append("caminhos:" + str(len(candidates)))
+    try:
+        units = runner(["systemctl", "list-units", "--all", "--type=service", "--no-legend", "--no-pager"],
+                       text=True, capture_output=True, timeout=10, check=False)
+        services = [line.split()[0] for line in (units.stdout or "").splitlines() if line.split()]
+    except (OSError, subprocess.SubprocessError):
+        services = []
+    searched.append("servicos:" + str(len(services)))
+    for service in services[:200]:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@:-]{0,180}\.service", service):
+            continue
+        try:
+            shown = runner(["systemctl", "show", "--system", service, "--property=ExecStart", "--value"],
+                           text=True, capture_output=True, timeout=10, check=False)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        match = re.search(r"path=([^;\r\n]+)\s*;", shown.stdout or "")
+        if match and os.path.basename(match.group(1).strip()).lower() in names:
+            exe = match.group(1).strip()
+            if os.path.isfile(exe) and os.access(exe, os.X_OK):
+                value = _query_id(runner, exe)
+                if value:
+                    return value
+    seen = 0
+    for base in dirs:
+        try:
+            roots = [base] + [os.path.join(base, e) for e in sorted(os.listdir(base)) if e.lower() in names]
+        except OSError:
+            continue
+        for root in roots:
             try:
-                result = subprocess.run([path, "--get-id"], text=True, capture_output=True, timeout=10, check=False)
-                match = re.search(r"\b\d{6,}\b", result.stdout + "\n" + result.stderr)
-                if match:
-                    return match.group(0)
-            except (OSError, subprocess.SubprocessError):
-                pass
-    return ""
+                entries = sorted(os.listdir(root))
+            except OSError:
+                continue
+            for entry in entries:
+                seen += 1
+                if seen > 400:
+                    break
+                path = os.path.join(root, entry)
+                if entry.lower() in names and os.path.isfile(path) and os.access(path, os.X_OK):
+                    value = _query_id(runner, path)
+                    if value:
+                        return value
+    raise RuntimeError("ID do cliente nao encontrado (procurado: " + "; ".join(searched) + ")")
 
 
 def update():
     if os.geteuid() != 0:
         raise PermissionError("O atualizador precisa rodar como root.")
+    if not PANEL:
+        print("Painel não configurado neste pacote (inscricao.json ausente ou inválido); nada a atualizar.")
+        return
     LOCK.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
     with LOCK.open("w") as lock:
         try:
@@ -133,7 +254,7 @@ def update():
                 req = urllib.request.Request(url, headers={"User-Agent": "Nextec-Connect-Updater/1"})
                 with urllib.request.urlopen(req, timeout=30) as response:
                     final = urllib.parse.urlsplit(response.geturl())
-                    if response.status != 200 or final.scheme != "https" or final.hostname != "painel-remoto.nex.tec.br":
+                    if response.status != 200 or final.scheme != "https" or final.hostname != PANEL_HOST:
                         raise ValueError("Download do pacote falhou.")
                     while True:
                         block = response.read(1024 * 1024)

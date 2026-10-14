@@ -7,7 +7,9 @@ updater_dir=${2:?Informe a pasta nextec/atualizacao}
 app_name=${3:-Nextec-Connect}
 package_version=${4:-${package_version:-}}
 [[ -z "$package_version" || "$package_version" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || { echo "Versão do pacote inválida." >&2; exit 2; }
-[[ "$app_name" == "Nextec-Connect" ]] || { echo "Atualizador só se aplica ao Nextec-Connect." >&2; exit 2; }
+# O nome do app e livre (qualquer um); so precisa ser seguro para JSON e nome de arquivo. A inclusao do agente
+# e decidida pelo flag nx_agent do build, nunca pelo nome.
+[[ "$app_name" =~ ^[A-Za-z0-9._-]{1,64}$ ]] || { echo "Nome do app inválido." >&2; exit 2; }
 
 tmp=$(mktemp -d)
 cleanup() { rm -rf -- "$tmp"; }
@@ -33,6 +35,10 @@ install -m 0644 "$updater_dir/nextec-connect-update.timer" "$tmp/root/usr/lib/sy
 install -m 0644 "$updater_dir/nextec-connect-agent.service" "$tmp/root/usr/lib/systemd/system/nextec-connect-agent.service"
 install -m 0644 "$updater_dir/nextec-connect-agent.timer" "$tmp/root/usr/lib/systemd/system/nextec-connect-agent.timer"
 chmod 0755 "$tmp/root/usr/lib/nextec-connect/atualizador-linux.py"
+# Marcador de instalacao independente do nome do app (lido por Coordenar/Provisionar/atualizador, se precisarem).
+# No DEB o equivalente do upgrade_code do MSI e o nome do pacote.
+printf '{"v":1,"app":"%s","upgrade_code":"%s"}' "$app_name" "$pkg" > "$tmp/root/usr/lib/nextec-connect/nextec-marker.json"
+chmod 0644 "$tmp/root/usr/lib/nextec-connect/nextec-marker.json"
 
 control="$tmp/root/DEBIAN/control"
 if [[ -f "$control" ]] && ! grep -qiE '^Depends:.*(^|[, ])python3([, ]|$)' "$control"; then

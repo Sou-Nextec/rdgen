@@ -89,10 +89,14 @@ function Assert-NextecPasswordApplied {
 
   # Contrato confirmado no upstream RustDesk 1.5.0: sucesso IPC imprime Done!;
   # builds sem esse contrato precisam ser verificados antes de serem declarados compatíveis.
-  if ($Result.ExitCode -ne 0) { throw 'password_apply_failed: o cliente recusou a aplicação da senha.' }
   $lines = @(([string]$Result.Output -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  # A resposta do cliente (uma linha curta, sem a senha) acompanha o erro: "Installation and administrative privileges
+  # required!" quer dizer app nao instalado ou sem privilegio, e "Done!" so vem depois do IPC aceitar a troca.
+  $resposta = if ($lines.Count) { ([string]$lines[-1]) -replace '[^ -~]', '?' } else { '(vazia)' }
+  if ($resposta.Length -gt 120) { $resposta = $resposta.Substring(0, 120) }
+  if ($Result.ExitCode -ne 0) { throw "password_apply_failed: o cliente recusou a aplicação da senha (código $($Result.ExitCode); resposta: $resposta)." }
   if ($lines.Count -eq 0 -or $lines[-1] -cne 'Done!') {
-    throw 'password_apply_failed: o cliente não confirmou a aplicação via IPC.'
+    throw "password_apply_failed: o cliente não confirmou a aplicação via IPC (resposta: $resposta)."
   }
 }
 

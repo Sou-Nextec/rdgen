@@ -1,5 +1,9 @@
 # Gerador Nextec
 
+## 2.2.1
+
+- Trava de CI: `.github/scripts/verificar-integridade.mjs` barra CRLF em `.sh`, `.service`, `.timer`, Dockerfile e workflows e `.ps1` com acento sem BOM UTF-8; `.gitattributes` com LF para esses tipos. BOM adicionado a 5 `.ps1` que tinham acento sem ele. Sem mudança de comportamento do gerador.
+
 ## 2.2.0
 
 - A chave de inscrição agora é obtida automaticamente: a cada build o gerador a busca no painel pela rede interna (`http://rustdesk:21114/api/nextec/gen/enroll-key`, timeout de 3 s, segredo compartilhado `SH_SECRET`). Girar a chave no painel não exige mexer na stack nem no Portainer.

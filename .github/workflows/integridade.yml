@@ -1,0 +1,28 @@
+# Trava de integridade: LF em sh/yml/Dockerfile/systemd e BOM UTF-8 em .ps1 com acento.
+name: Integridade do repositorio
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integridade-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integridade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node .github/scripts/verificar-integridade.mjs

@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Connect-SigningSession.ps1')
 
 $tokens = $null

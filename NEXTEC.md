@@ -198,3 +198,9 @@ Não trocar o healthcheck para esconder a falta de configuração. SECRET_KEY va
 `atualizar-servidor.sh` atualiza o rdgen **antigo** (fora da stack) por cron. Fica obsoleto quando o servidor antigo for
 desligado; pode ser removido.
 
+## Trava de integridade (CI)
+
+`node .github/scripts/verificar-integridade.mjs` roda em todo PR (workflow "Integridade do repositorio", sem filtro de caminho,
+sem dependências). Falha listando os arquivos se `.sh`, `.service`, `.timer`, Dockerfile ou workflow estiver com CRLF no
+repositório, ou se um `.ps1` com caractere não ASCII não começar com BOM UTF-8 (o Windows PowerShell 5.1 quebra o parse).
+`.gitattributes` força LF nesses tipos; os `.ps1` não são normalizados (o git preserva o BOM).

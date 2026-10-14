@@ -1,4 +1,4 @@
-# Requires Windows PowerShell, Python 3, OpenSSL, and the encrypted Nextec monitoring private key.
+﻿# Requires Windows PowerShell, Python 3, OpenSSL, and the encrypted Nextec monitoring private key.
 # The passphrase is entered only in OpenSSL's prompt. The private key stays on this PC.
 $ErrorActionPreference = 'Stop'
 

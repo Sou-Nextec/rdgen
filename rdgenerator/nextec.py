@@ -272,6 +272,57 @@ def product_version():
     return value if value and len(value) <= 32 else '2.0.2'
 
 
+def package_version():
+    """Versao do pacote gerado = versao do gerador (fonte unica: rdgenerator/VERSION).
+
+    ProductVersion do MSI e X.Y.Z.0 com limites 255.255.65535; o formato dos scripts e o do formulario antigo (1 a 3 digitos).
+    """
+    value = product_version()
+    found = re.fullmatch(r'(\d{1,3})\.(\d{1,3})\.(\d{1,5})', value)
+    if not found or int(found[1]) > 255 or int(found[2]) > 255 or int(found[3]) > 65535:
+        raise ValueError('rdgenerator/VERSION fora do formato X.Y.Z do MSI (255.255.65535)')
+    return value
+
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+PACKAGE_LOCK = _REPO_ROOT / 'nextec' / 'conteudo-pacote.lock'
+_AGENT_DIR = 'nextec/atualizacao'
+_AGENT_SET = ('Agente-Senha-Nextec.ps1', 'Coordenar-Agente-Nextec.ps1', 'Provisionar-Agente-Nextec.ps1',
+              'Instalar-Nextec.ps1', 'Manifesto-Connect.ps1')
+_LINUX_SET = ('atualizador-linux.py', 'agente-senha-linux.py', 'coordenador-agente-nextec-linux.py',
+              'inscricao-linux.sh', 'empacotar-deb-atualizador.sh', 'nextec-agent-bootstrap.service',
+              'nextec-agent-bootstrap.timer', 'nextec-connect-agent.service', 'nextec-connect-agent.timer',
+              'nextec-connect-update.service', 'nextec-connect-update.timer')
+PACKAGE_FILES = tuple(
+    [f'{_AGENT_DIR}/{n}' for n in _AGENT_SET] + [f'{_AGENT_DIR}/FONTE-AGENTE.json'] +
+    [f'{_AGENT_DIR}/{n}' for n in _LINUX_SET] +
+    ['nextec/branding/WixUIBannerBmp.bmp', 'nextec/branding/WixUIDialogBmp.bmp',
+     '.github/scripts/build-msi.ps1', '.github/scripts/install-msi-artwork.ps1', '.github/scripts/build-setup-exe.ps1'])
+
+
+def agent_set_hash(root=None):
+    """Hash do conjunto de scripts do agente, a partir de FONTE-AGENTE.json (mesmo calculo do build-msi.ps1)."""
+    import hashlib
+    path = Path(root or _REPO_ROOT) / _AGENT_DIR / 'FONTE-AGENTE.json'
+    data = json.loads(path.read_text(encoding='utf-8-sig'))
+    lines = ''.join(f'{name}={str(sha).lower()}\n' for name, sha in sorted(data['sha256'].items(), key=lambda kv: kv[0].lower()))
+    return hashlib.sha256(lines.encode('utf-8')).hexdigest()
+
+
+def package_content_hash(root=None):
+    """(hash, {arquivo: sha256}) do conteudo empacotado; texto normalizado para LF (independe de autocrlf)."""
+    import hashlib
+    base = Path(root or _REPO_ROOT)
+    files = {}
+    for rel in PACKAGE_FILES:
+        raw = (base / rel).read_bytes()
+        if not rel.endswith('.bmp'):
+            raw = raw.replace(b'\r\n', b'\n')
+        files[rel] = hashlib.sha256(raw).hexdigest()
+    digest = hashlib.sha256(''.join(f'{k}={v}\n' for k, v in sorted(files.items())).encode('utf-8')).hexdigest()
+    return digest, files
+
+
 def config_problems():
     """Lista, em portugues, o que falta configurar para o gerador funcionar. Vazia = tudo certo."""
     from django.conf import settings

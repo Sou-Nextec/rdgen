@@ -1,0 +1,29 @@
+{
+  "agente_hash": "3933c1f765fb0fbb43b87d2c336efdf34cee03760772e97c08458ec034c6bafa",
+  "arquivos": {
+    ".github/scripts/build-msi.ps1": "f2c17f779a8f70d35707449291489bf6585a6096ad431f7db5fca0a234348419",
+    ".github/scripts/build-setup-exe.ps1": "9df1eaaefdb8c108cafdd9386c50cf3c49962d080196037c62b7b40e1a51f2f6",
+    ".github/scripts/install-msi-artwork.ps1": "1593e770cd0c30608fa9a4b92649a4ce963bddde18bb0adb5bc016a2e580e4af",
+    "nextec/atualizacao/Agente-Senha-Nextec.ps1": "e6743a33850fdf319326fc6912ed4b55e573f03c068829b9d9c2aff3e448824f",
+    "nextec/atualizacao/Coordenar-Agente-Nextec.ps1": "e51850c5a579b24a7f27ccd969941d57ef73123aeebae5398fc5badf926f821d",
+    "nextec/atualizacao/FONTE-AGENTE.json": "7cbb64c8565130495c17902103294c45476f5bf75c4fc095a40db0d91a18a2c5",
+    "nextec/atualizacao/Instalar-Nextec.ps1": "742f9474da6c47fc4ec5ed1ae5d0408806f943102ac61ece0cb32e1cbc980058",
+    "nextec/atualizacao/Manifesto-Connect.ps1": "5b671d03b15f253240fc2f2baf1ad3c32efb0acb9996e97d13b46145f504ad97",
+    "nextec/atualizacao/Provisionar-Agente-Nextec.ps1": "31b8467f107741bbd210f0fe7f83a19fa7bb92e93200ea2496143255e79cf4ec",
+    "nextec/atualizacao/agente-senha-linux.py": "87da7b26948de10219c542fb31fdb939dfe4415bd169a2866978ffd29605aca4",
+    "nextec/atualizacao/atualizador-linux.py": "1050bce70c6aada9bc632bafb62e7f292a085b33c58fb058ced44dcd04000967",
+    "nextec/atualizacao/coordenador-agente-nextec-linux.py": "68023afadce1b8d8089bfb739acdd49b75687e361c5b438b60c6dcfb8d84873d",
+    "nextec/atualizacao/empacotar-deb-atualizador.sh": "3f66b4996c80a1c49fac33453bfb42d274fccb8bc61b7f4683888ee286687ccf",
+    "nextec/atualizacao/inscricao-linux.sh": "91b59588a9fbfd0f158ea673216898af495a3304d1f64b0ca1cfde5129bcaf27",
+    "nextec/atualizacao/nextec-agent-bootstrap.service": "08741fa59c52a4dd811231e4fa137ec836d37b4f07230b48d32e72a99f8128b3",
+    "nextec/atualizacao/nextec-agent-bootstrap.timer": "24706c5db4136379376fdb69e63f97c743b67d66d57c41c8cb9d61f7a9d51d57",
+    "nextec/atualizacao/nextec-connect-agent.service": "a07361be329612c2a19948255f46b190da3edcc9cb96d8da67fc5c6dca89fe48",
+    "nextec/atualizacao/nextec-connect-agent.timer": "4f26507e0354596eec9de38a87ae33e967b9b5eeb1f5a8c455ab4244a06b699c",
+    "nextec/atualizacao/nextec-connect-update.service": "54d0dbf0ee6a74831ab3885c63e61b2d852bfc272fc18bca10bcb61da1d6d3ba",
+    "nextec/atualizacao/nextec-connect-update.timer": "1aa6821b645b36ebfff87ea30ced6bf19e6601cea185d2ea93816675dfa5c580",
+    "nextec/branding/WixUIBannerBmp.bmp": "01aad0479aec1a553273718b7851ee5bacb02628343a2508a0ffb0fa0a4f729c",
+    "nextec/branding/WixUIDialogBmp.bmp": "6c8dbaa702832f2590bd35b44bb21bf0c708c79aae20ce26a2f9e13884198771"
+  },
+  "hash": "e45f6479bbae953ddee99847160ed74229c1c8cfb1f9d9726e69dae4974894d6",
+  "versao": "2.3.6"
+}

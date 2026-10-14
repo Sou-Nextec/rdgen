@@ -75,7 +75,8 @@ def generate_custom_client(params, full_url, created_by='', profile=''):
     profile = profile or params.get('profile', '')
     if profile not in ('', 'default', 'client', 'analysts'):
         return {'success': False, 'error': 'Perfil inválido.', 'status_code': 400}
-    package_version = params.get('package_version', '')
+    # A versao do pacote e sempre a do gerador (rdgenerator/VERSION); valor enviado e ignorado.
+    package_version = nextec.package_version()
     notes = params.get('notes', '')
     client_label = params.get('client_name', '')
     if (not isinstance(package_version, str) or len(package_version) > 32
@@ -325,7 +326,7 @@ def generate_custom_client(params, full_url, created_by='', profile=''):
         "compname": compname,
         "androidappid":androidappid,
         "filename":filename,
-        "package_version": params.get('package_version', ''),
+        "package_version": package_version,
         # inclui o agente Nextec no pacote; independe do nome do app (workflows leem env.nx_agent)
         "nx_agent": 'true' if nx_agent else 'false',
     }

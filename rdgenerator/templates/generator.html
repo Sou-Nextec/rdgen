@@ -180,11 +180,10 @@
                     {% if field_errors.client_name %}<p class="field-error">{{ field_errors.client_name }}</p>{% endif %}
                     <p class="hint">Só organiza o histórico. Ex.: Carteira Bruno.</p>
                 </div>
-                <div class="field{% if field_errors.package_version %} has-error{% endif %}">
-                    <label for="{{ form.package_version.id_for_label }}">Versão do pacote <span class="opt">(ex.: 2.0.7)</span></label>
+                <div class="field">
+                    <label>Versão do pacote</label>
+                    <p class="hint" id="packageVersionInfo"><strong>{{ product_version }}</strong> (a do gerador). Define o ProductVersion do instalador e fica registrada nele.</p>
                     {{ form.package_version }}
-                    {% if field_errors.package_version %}<p class="field-error">{{ field_errors.package_version }}</p>{% endif %}
-                    <p class="hint">Use uma versão nova para publicar como atualização.</p>
                 </div>
 
                 <div class="field{% if field_errors.profile %} has-error{% endif %}">

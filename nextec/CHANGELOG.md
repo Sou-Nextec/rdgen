@@ -1,5 +1,14 @@
 # Gerador Nextec
 
+## 2.3.6
+
+A versão do instalador gerado passa a ser a versão do gerador (`rdgenerator/VERSION`), para saber exatamente qual gerador e qual conjunto de scripts do agente estão dentro do pacote.
+
+- **Fonte única da versão:** o formulário não pede mais a versão do pacote (mostra a do gerador). O campo segue aceito por compatibilidade com API e modelos salvos, mas o servidor ignora o valor enviado e grava a do gerador (antes um 2.0.9 manual ficava no instalador mesmo com o agente novo dentro).
+- **Onde a versão entra:** ProductVersion do MSI (`X.Y.Z.0`, limites 255.255.65535 validados), `Version` da DEB, `nextec-marker.json` (`package_version`, `generator_version` e `agent_hash`, hash do conjunto de scripts calculado de `FONTE-AGENTE.json`), registro `HKLM\SOFTWARE\Nextec\Agente` (`Version`, `GeneratorVersion`, `AgentHash`; `Acesso\Versao` segue como antes), itens gerados e pedido de importação para Atualizações. 2.3.x é maior que 2.0.x, então instalações antigas continuam atualizáveis.
+- **Trava no CI:** `nextec/conteudo-pacote.lock` guarda versão e hash do conteúdo empacotado (scripts do agente Windows e Linux, `FONTE-AGENTE.json`, imagens MSI, `build-msi.ps1`, `install-msi-artwork.ps1`, `build-setup-exe.ps1`). `rdgenerator/test_pacote_versao.py` falha com "conteúdo do pacote mudou: suba a versão do gerador" se o conteúdo mudar sem subir `rdgenerator/VERSION`. Atualização: `python manage.py atualizar_lock_pacote`.
+- **Workflows:** o build copia `FONTE-AGENTE.json` junto dos scripts para o `build-msi.ps1` identificar o conjunto; `Validar MSI Nextec` usa a versão do gerador em vez de 2.0.7.
+
 ## 2.3.5
 
 Agente ressincronizado com o painel 2.11.24 (master 7dacd85, PRs #92 a #95), por `nextec/scripts/sincronizar-agente.py`, sem edição manual.

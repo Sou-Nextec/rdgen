@@ -4,12 +4,15 @@ $buildScript = Join-Path $PSScriptRoot 'build-msi.ps1'
 $installTestScript = Join-Path $PSScriptRoot 'test-msi-install.ps1'
 $updaterSource = Join-Path $repoRoot 'nextec/atualizacao'
 $agentSource = Join-Path $updaterSource 'Agente-Senha-Nextec.ps1'
+# Versao do pacote = versao do gerador (fonte unica); o ProductVersion do MSI e X.Y.Z.0.
+$generatorVersion = ([IO.File]::ReadAllText((Join-Path $repoRoot 'rdgenerator/VERSION'))).Trim()
+if ($generatorVersion -notmatch '^\d{1,3}\.\d{1,3}\.\d{1,5}$') { throw "rdgenerator/VERSION invalid: $generatorVersion" }
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('nextec-msi-build-test-' + [Guid]::NewGuid().ToString('N'))
 $sourceRoot = Join-Path $fixture 'source'
 $binaryDirectory = Join-Path $sourceRoot 'rustdesk'
 $packageWxs = Join-Path $sourceRoot 'res/msi/Package/Package.wxs'
 
-function python { $global:LASTEXITCODE = 0 }
+function python { $global:PreprocessArgs = @($args); $global:LASTEXITCODE = 0 }
 function nuget { $global:LASTEXITCODE = 0 }
 function msbuild {
     $global:LASTEXITCODE = 0
@@ -51,9 +54,14 @@ try {
 
     # 1) Sem chave: o build continua, avisa com clareza e nao produz inscricao.json nem componente.
     $env:enroll_key = ''; $env:enroll_panel = ''
-    $noKeyOutput = (& $buildScript -AppName 'Nextec-Connect' -PackageVersion '2.0.7' -SourceRoot $sourceRoot `
+    $noKeyOutput = (& $buildScript -AppName 'Nextec-Connect' -PackageVersion $generatorVersion -SourceRoot $sourceRoot `
             -BinaryDirectory $binaryDirectory -UpdaterSource $updaterSource *>&1 | Out-String)
     if ($LASTEXITCODE -ne 0) { throw 'MSI fixture build without enrollment key returned a failure code' }
+    $pp = @($global:PreprocessArgs)
+    $ix = [array]::IndexOf($pp, '--version')
+    if ($ix -lt 0 -or $pp[$ix + 1] -ne $generatorVersion) { throw "MSI --version is not the generator version ($generatorVersion): $($pp -join ' ')" }
+    $rx = [array]::IndexOf($pp, '--revision-version')
+    if ($rx -lt 0 -or $pp[$rx + 1] -ne '0') { throw 'MSI ProductVersion must be X.Y.Z.0 (revision 0)' }
     if ($noKeyOutput -notmatch 'SEM inscricao\.json') { throw 'Missing-key warning was not printed' }
     if (Test-Path -LiteralPath $enrollmentResource) { throw 'inscricao.json must not exist without a key' }
     if ([IO.File]::ReadAllText($packageWxs).Contains('Nextec.Enrollment')) { throw 'Enrollment component must not exist without a key' }
@@ -64,7 +72,7 @@ try {
     $env:enroll_key = $enrollKey; $env:enroll_panel = $enrollPanel
     $withKeyOutput = ''
     1..2 | ForEach-Object {
-        $withKeyOutput += (& $buildScript -AppName 'Nextec-Connect' -PackageVersion '2.0.7' -SourceRoot $sourceRoot `
+        $withKeyOutput += (& $buildScript -AppName 'Nextec-Connect' -PackageVersion $generatorVersion -SourceRoot $sourceRoot `
                 -BinaryDirectory $binaryDirectory -UpdaterSource $updaterSource *>&1 | Out-String)
         if ($LASTEXITCODE -ne 0) { throw 'MSI fixture build returned a failure code' }
     }
@@ -153,7 +161,7 @@ try {
         [IO.File]::WriteAllText($badWxs, '<Wix><Package><Feature></Feature><InstallExecuteSequence></InstallExecuteSequence></Package></Wix>')
         $env:enroll_key = $enrollKey; $env:enroll_panel = $badPanel
         $refused = $false
-        try { & $buildScript -AppName 'XPTO' -IncludeAgent 'true' -PackageVersion '2.0.7' -SourceRoot $badRoot -BinaryDirectory $badBinary -UpdaterSource $updaterSource | Out-Null }
+        try { & $buildScript -AppName 'XPTO' -IncludeAgent 'true' -PackageVersion $generatorVersion -SourceRoot $badRoot -BinaryDirectory $badBinary -UpdaterSource $updaterSource | Out-Null }
         catch { $refused = $_.Exception.Message -match 'Invalid enrollment panel URL' }
         finally { Remove-Item Env:enroll_key, Env:enroll_panel -ErrorAction SilentlyContinue }
         if (!$refused) { throw "Build accepted a panel the agent rejects: $badPanel" }
@@ -168,7 +176,7 @@ try {
         [IO.File]::WriteAllText($caseWxs, '<Wix><?define UpgradeCode = "{' + $upgradeCodeFixture.ToUpperInvariant() + '}"?><Package><Feature></Feature><InstallExecuteSequence></InstallExecuteSequence></Package></Wix>')
         $env:enroll_key = $enrollKey; $env:enroll_panel = $case.Panel
         try {
-            & $buildScript -AppName $case.Name -IncludeAgent $case.Flag -PackageVersion '2.0.7' -SourceRoot $caseRoot -BinaryDirectory $caseBinary -UpdaterSource $updaterSource | Out-Null
+            & $buildScript -AppName $case.Name -IncludeAgent $case.Flag -PackageVersion $generatorVersion -SourceRoot $caseRoot -BinaryDirectory $caseBinary -UpdaterSource $updaterSource | Out-Null
         } finally { Remove-Item Env:enroll_key, Env:enroll_panel -ErrorAction SilentlyContinue }
         $caseText = [IO.File]::ReadAllText($caseWxs)
         $caseResources = Join-Path $caseRoot 'res/msi/Package/Resources'
@@ -189,6 +197,13 @@ try {
             if ($markerData.v -ne 1 -or $markerData.app -ne $case.Name -or $markerData.upgrade_code -ne $upgradeCodeFixture) { throw "nextec-marker.json content is wrong ($label)" }
             # o painel do build fica no marcador (o agente le da pasta de dados, mesmo sem inscricao.json)
             if ($markerData.painel -ne $case.Panel) { throw "nextec-marker.json does not carry the build panel ($label)" }
+            # o marcador identifica o pacote: versao do gerador e hash do conjunto de scripts do agente
+            if ($markerData.package_version -ne $generatorVersion -or $markerData.generator_version -ne $generatorVersion) { throw "nextec-marker.json versions are not the generator version ($label)" }
+            $fonteJson = [IO.File]::ReadAllText((Join-Path $updaterSource 'FONTE-AGENTE.json')) | ConvertFrom-Json
+            $fonteText = ''
+            foreach ($fn in @($fonteJson.sha256.PSObject.Properties.Name | Sort-Object { $_.ToLowerInvariant() })) { $fonteText += $fn + '=' + ([string]$fonteJson.sha256.$fn).ToLowerInvariant() + "`n" }
+            $expectedAgentHash = -join ([Security.Cryptography.SHA256]::Create().ComputeHash([Text.UTF8Encoding]::new($false).GetBytes($fonteText)) | ForEach-Object { $_.ToString('x2') })
+            if ($markerData.agent_hash -ne $expectedAgentHash) { throw "nextec-marker.json agent_hash is wrong ($label)" }
             [xml]$caseXml = $caseText
             $registry = $caseXml.SelectSingleNode('//RegistryKey[@Key="SOFTWARE\Nextec\Agente"]')
             if (!$registry -or $registry.Root -ne 'HKLM') { throw "HKLM\SOFTWARE\Nextec\Agente registration missing ($label)" }
@@ -196,6 +211,7 @@ try {
             foreach ($v in $registry.SelectNodes('RegistryValue')) { $values[$v.Name] = $v.Value }
             if ($values['AppName'] -ne $case.Name -or $values['InstallDir'] -ne '[INSTALLFOLDER_INNER]') { throw "Registry values are wrong ($label)" }
             # o painel do build tambem no registro (valor Painel), independente de haver chave de inscricao
+            if ($values['Version'] -ne $generatorVersion -or $values['GeneratorVersion'] -ne $generatorVersion -or $values['AgentHash'] -ne $expectedAgentHash) { throw "HKLM Version/GeneratorVersion/AgentHash registry values are wrong ($label)" }
             if ($values['Painel'] -ne $case.Panel) { throw "HKLM Painel registry value does not carry the build panel ($label)" }
             $expectedUrl = $case.Panel + '/api/nextec/update'
             if ($case.Panel.StartsWith('https://')) {
@@ -219,7 +235,7 @@ try {
         [IO.File]::WriteAllText((Join-Path $nBinary 'XPTO.exe'), 'fixture')
         [IO.File]::WriteAllText($nWxs, '<Wix><?define UpgradeCode = "{' + $upgradeCodeFixture.ToUpperInvariant() + '}"?><Package><Feature></Feature><InstallExecuteSequence></InstallExecuteSequence></Package></Wix>')
         $env:enroll_key = ''; $env:enroll_panel = ''; $env:apiServer = $case.Api
-        try { & $buildScript -AppName 'XPTO' -IncludeAgent 'true' -PackageVersion '2.0.7' -SourceRoot $nRoot -BinaryDirectory $nBinary -UpdaterSource $updaterSource | Out-Null }
+        try { & $buildScript -AppName 'XPTO' -IncludeAgent 'true' -PackageVersion $generatorVersion -SourceRoot $nRoot -BinaryDirectory $nBinary -UpdaterSource $updaterSource | Out-Null }
         finally { Remove-Item Env:enroll_key, Env:enroll_panel, Env:apiServer -ErrorAction SilentlyContinue }
         $nResources = Join-Path $nRoot 'res/msi/Package/Resources'
         if (Test-Path -LiteralPath (Join-Path $nResources 'inscricao.json')) { throw 'inscricao.json present without a key' }

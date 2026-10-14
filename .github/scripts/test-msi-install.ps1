@@ -14,6 +14,23 @@ $log = Join-Path $env:RUNNER_TEMP 'nextec-real-install.log'
 $uninstallLog = Join-Path $env:RUNNER_TEMP 'nextec-real-uninstall.log'
 $agentPath = $null
 
+# Intervalos esperados: FONTE UNICA em Get-NextecAgentIntervals (Agente-Senha-Nextec.ps1 do pacote), nunca literais aqui.
+function Get-ExpectedNextecIntervals {
+    $source = Join-Path $PSScriptRoot '..\..\nextec\atualizacao\Agente-Senha-Nextec.ps1'
+    $tokens = $null; $errors = $null
+    $ast = [Management.Automation.Language.Parser]::ParseFile((Resolve-Path -LiteralPath $source).Path, [ref]$tokens, [ref]$errors)
+    if ($errors.Count) { throw 'Agente-Senha-Nextec.ps1 has syntax errors' }
+    $function = $ast.Find({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-NextecAgentIntervals' }, $true)
+    if (-not $function) { throw 'Get-NextecAgentIntervals not found in the packaged agent' }
+    . ([scriptblock]::Create($function.Extent.Text))
+    $table = Get-NextecAgentIntervals
+    return [pscustomobject]@{
+        Coordinator = ('PT{0}M' -f [int]$table.CoordinatorMinutes)
+        Password    = ('PT{0}M' -f [int]$table.PasswordMinutes)
+    }
+}
+$expectedIntervals = Get-ExpectedNextecIntervals
+
 function Get-NextecAclEntries {
     param([Security.AccessControl.FileSecurity]$Acl)
     return $Acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])
@@ -152,7 +169,7 @@ try {
     $task = Get-ScheduledTask -TaskName 'Nextec Acesso - Atualizacao' -ErrorAction Stop
     if ($task.Principal.UserId -notin @('SYSTEM','S-1-5-18') -or $task.Triggers[0].RandomDelay -ne 'PT2H') { throw 'Updater task is not correctly configured' }
     $coordinator = Get-ScheduledTask -TaskName 'Nextec Acesso - Cadastro de agente' -ErrorAction Stop
-    if ($coordinator.Principal.UserId -notin @('SYSTEM','S-1-5-18') -or $coordinator.Triggers[0].Repetition.Interval -ne 'PT5M') { throw 'Coordinator task not registered as SYSTEM every five minutes' }
+    if ($coordinator.Principal.UserId -notin @('SYSTEM','S-1-5-18') -or $coordinator.Triggers[0].Repetition.Interval -ne $expectedIntervals.Coordinator) { throw ('Coordinator task not registered as SYSTEM every ' + $expectedIntervals.Coordinator + ', found ' + $coordinator.Triggers[0].Repetition.Interval) }
     $root = Join-Path $env:ProgramData 'Nextec/Acesso'
     foreach ($component in @('Coordenar-Agente-Nextec.ps1','Provisionar-Agente-Nextec.ps1','Agente-Senha-Nextec.ps1')) {
         $path = Join-Path $root $component
@@ -252,7 +269,7 @@ try {
         if ($serviceExe) { try { $realId = ((& $serviceExe --get-id 2>&1 | Out-String).Trim() -split "`r?`n")[-1] } catch { } }
         if ($realId -match '^\d{6,}$' -and $state.PeerId -ne $realId) { throw "Enrolled ID $($state.PeerId) differs from the RustDesk ID $realId" }
         $senhaTask = Get-ScheduledTask -TaskName 'Nextec Acesso - Senha' -ErrorAction Stop
-        if ($senhaTask.Principal.UserId -notin @('SYSTEM','S-1-5-18') -or $senhaTask.Triggers[0].Repetition.Interval -ne 'PT5M') { throw 'Password task is not SYSTEM every five minutes' }
+        if ($senhaTask.Principal.UserId -notin @('SYSTEM','S-1-5-18') -or $senhaTask.Triggers[0].Repetition.Interval -ne $expectedIntervals.Password) { throw ('Password task is not SYSTEM every ' + $expectedIntervals.Password + ', found ' + $senhaTask.Triggers[0].Repetition.Interval) }
         # Primeira sincronizacao de senha: o agente instalado propoe a senha, aplica no RustDesk (--password, "Done!") e confirma.
         $limit = (Get-Date).AddSeconds(240)
         while (-not $state.Confirmed -and (Get-Date) -lt $limit) { Start-Sleep -Seconds 3 }

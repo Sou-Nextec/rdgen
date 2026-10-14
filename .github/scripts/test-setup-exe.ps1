@@ -39,12 +39,16 @@ try {
     if (!$manifest.Contains('level="asInvoker"') -or $manifest.Contains('requireAdministrator')) { throw 'Portable mode must not require elevation' }
     $source = Get-Content (Join-Path $env:RUNNER_TEMP 'nextec-setup-wrapper.cs') -Raw
     if (!$source.Contains('Nextec Support teste Setup') -or $source.Contains('__HASH__') -or $source.Contains('__PORTABLE_HASH__') -or $source.Contains('__DISPLAY__') -or $source.Contains('__EXE__')) { throw 'Installer substitutions failed' }
+    # Instalar e o padrao (Enter) e existe modo silencioso para implantacao em massa, sem tela e com codigo de saida.
+    if (!$source.Contains('choice.AcceptButton = setup')) { throw 'Install must be the default button' }
+    if (!$source.Contains('"--silent"') -or !$source.Contains('" /qn /norestart"')) { throw 'Silent install mode is missing' }
+    if (!$source.Contains('if (!silent) MessageBox.Show')) { throw 'Silent mode must never show a message box' }
     # Nome livre: o EXE portatil e o rotulo seguem o nome do app, nada fixo.
     if ($source.Contains('Nextec-Connect.exe') -or $source.Contains('Nextec Connect?')) { throw 'Wrapper still hardcodes the app name' }
     if (!$source.Contains('"NextecSupportteste.exe"')) { throw 'Portable name should follow the app name' }
     & "$PSScriptRoot/build-setup-exe.ps1" -MsiPath $msi -PortablePath $portable -OutputPath (Join-Path $fixture 'xpto.exe') -DisplayName 'XPTO'
     $source = Get-Content (Join-Path $env:RUNNER_TEMP 'nextec-setup-wrapper.cs') -Raw
-    if (!$source.Contains('"XPTO.exe"') -or !$source.Contains('usar o XPTO?')) { throw 'XPTO wrapper naming failed' }
+    if (!$source.Contains('"XPTO.exe"') -or !$source.Contains('Instalar o XPTO nesta')) { throw 'XPTO wrapper naming failed' }
     Write-Output 'OK: real EXE compiles, sanitizes display name, and embeds the exact MSI and portable payloads'
 } finally {
     # Loaded assemblies lock the EXE until PowerShell exits; runner temp is ephemeral.

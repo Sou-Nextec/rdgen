@@ -174,8 +174,14 @@
                     <p class="hint">Aparece no atalho. Só letras, números e hífen, sem espaços.</p>
                 </div>
 
+                <div class="field{% if field_errors.client_id %} has-error{% endif %}">
+                    <label for="{{ form.client_id.id_for_label }}">Cliente do painel</label>
+                    {{ form.client_id }}
+                    {% if field_errors.client_id %}<p class="field-error">{{ field_errors.client_id }}</p>{% endif %}
+                    <p class="hint">Escolha o cliente: a máquina que instalar este arquivo aparece já nele, com a senha automática, sem atribuir nada. Sem cliente, ela entra em Pendentes.</p>
+                </div>
                 <div class="field{% if field_errors.client_name %} has-error{% endif %}">
-                    <label for="{{ form.client_name.id_for_label }}">Cliente <span class="opt">(opcional)</span></label>
+                    <label for="{{ form.client_name.id_for_label }}">Nome para o histórico <span class="opt">(opcional)</span></label>
                     {{ form.client_name }}
                     {% if field_errors.client_name %}<p class="field-error">{{ field_errors.client_name }}</p>{% endif %}
                     <p class="hint">Só organiza o histórico. Ex.: Carteira Bruno.</p>

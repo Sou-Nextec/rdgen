@@ -48,8 +48,14 @@ internal static class NextecSetup {
     [STAThread]
     private static int Main(string[] args) {
         string folder = null;
+        bool silent = false;
         try {
-            bool install = args.Length == 1 && args[0] == "--install";
+            // --install: instala com a interface do MSI; --silent (ou /S): instala sem nenhuma tela, para GPO, RMM e scripts.
+            bool install = false;
+            if (args.Length == 1) {
+                if (args[0] == "--install") install = true;
+                else if (args[0] == "--silent" || args[0] == "/S" || args[0] == "/s") { install = true; silent = true; }
+            }
             if (!install) {
                 Application.EnableVisualStyles();
                 using (var choice = new Form()) {
@@ -59,19 +65,19 @@ internal static class NextecSetup {
                     choice.MaximizeBox = false; choice.MinimizeBox = false;
                     choice.StartPosition = FormStartPosition.CenterScreen;
                     var label = new Label { Left = 22, Top = 20, Width = 385, Height = 65,
-                        Text = "Como deseja usar o __DISPLAY__?\nExecute agora para suporte avulso ou instale para manter o aplicativo atualizado nesta máquina." };
-                    var portable = new Button { Text = "Executar sem instalar", Left = 22, Top = 98, Width = 180, Height = 42, DialogResult = DialogResult.No };
-                    var setup = new Button { Text = "Instalar nesta máquina", Left = 216, Top = 98, Width = 185, Height = 42, DialogResult = DialogResult.Yes };
+                        Text = "Instalar o __DISPLAY__ nesta máquina?\nA instalação mantém o acesso, a senha automática e as atualizações em dia. Use \"Executar sem instalar\" só para um suporte avulso." };
+                    var setup = new Button { Text = "Instalar nesta máquina", Left = 22, Top = 98, Width = 185, Height = 42, DialogResult = DialogResult.Yes };
+                    var portable = new Button { Text = "Executar sem instalar", Left = 221, Top = 98, Width = 180, Height = 42, DialogResult = DialogResult.No };
                     var cancel = new Button { Text = "Cancelar", Left = 300, Top = 153, Width = 100, DialogResult = DialogResult.Cancel };
                     choice.Controls.AddRange(new Control[] { label, portable, setup, cancel });
-                    choice.AcceptButton = portable; choice.CancelButton = cancel;
+                    choice.AcceptButton = setup; choice.CancelButton = cancel;
                     var answer = choice.ShowDialog();
                     if (answer != DialogResult.Yes && answer != DialogResult.No) return 0;
                     install = answer == DialogResult.Yes;
                 }
             }
             if (install && !Administrator()) {
-                var elevated = Process.Start(new ProcessStartInfo(Assembly.GetExecutingAssembly().Location, "--install") { UseShellExecute = true, Verb = "runas" });
+                var elevated = Process.Start(new ProcessStartInfo(Assembly.GetExecutingAssembly().Location, silent ? "--silent" : "--install") { UseShellExecute = true, Verb = "runas" });
                 elevated.WaitForExit();
                 return elevated.ExitCode;
             }
@@ -101,7 +107,7 @@ internal static class NextecSetup {
             string msi = Path.Combine(folder, "client.msi");
             Extract("Nextec.Client.msi", msi, ExpectedHash);
             string log = Path.Combine(folder, "instalacao.log");
-            var process = Process.Start(new ProcessStartInfo("msiexec.exe", "/i \"" + msi + "\" /L*v \"" + log + "\"") { UseShellExecute = false });
+            var process = Process.Start(new ProcessStartInfo("msiexec.exe", "/i \"" + msi + "\"" + (silent ? " /qn /norestart" : "") + " /L*v \"" + log + "\"") { UseShellExecute = false });
             process.WaitForExit();
             if (process.ExitCode != 0 && process.ExitCode != 3010) {
                 // Preserve diagnostics on failure; the folder is restricted to SYSTEM/admins.
@@ -110,7 +116,8 @@ internal static class NextecSetup {
             }
             return process.ExitCode;
         } catch (Exception ex) {
-            MessageBox.Show(ex.Message, "__DISPLAY__ Setup", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            // em modo silencioso nao existe ninguem para fechar a janela: so o codigo de saida
+            if (!silent) MessageBox.Show(ex.Message, "__DISPLAY__ Setup", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         } finally {
             if (folder != null) { try { Directory.Delete(folder, true); } catch { } }

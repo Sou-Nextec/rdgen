@@ -14,7 +14,7 @@ trap cleanup EXIT
 DEST_DIR=/usr/lib/nextec-connect
 COORDINATOR=coordenador-agente-nextec-linux.py
 DEST_NAME=inscricao.json
-KEY_RE='^nx1\.[0-9]{1,12}\.[A-Za-z0-9_-]{16,128}$'
+KEY_RE='^(nx1\.[0-9]{1,12}\.[A-Za-z0-9_-]{16,128}|nx2\.[0-9]{1,10}\.[0-9]{1,12}\.[0-9a-f]{64})$'
 PANEL_RE='^https?://[]A-Za-z0-9._:[-]+(/[A-Za-z0-9._~%/-]*)?$'
 
 gerar() {
@@ -41,7 +41,7 @@ incorporar() {
   fi
   local content
   content=$(cat -- "$json")
-  [[ "$content" =~ ^\{\"v\":1,\"painel\":\"https?://[^\"]+\",\"chave\":\"nx1\.[0-9]{1,12}\.[A-Za-z0-9_-]{16,128}\"\}$ ]] \
+  [[ "$content" =~ ^\{\"v\":1,\"painel\":\"https?://[^\"]+\",\"chave\":\"(nx1\.[0-9]{1,12}\.[A-Za-z0-9_-]{16,128}|nx2\.[0-9]{1,10}\.[0-9]{1,12}\.[0-9a-f]{64})\"\}$ ]] \
     || { echo "inscricao.json com formato inesperado." >&2; return 2; }
   TMP_DIR=$(mktemp -d)
   local tmp=$TMP_DIR

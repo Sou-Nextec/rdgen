@@ -257,7 +257,7 @@
                     <div class="fields">
                         <div class="field full"><span class="legend">Tipo de conexão</span>{{ form.direction }}</div>
                         <div class="field"><label for="{{ form.installation.id_for_label }}">Instalação</label>{{ form.installation }}</div>
-                        <div class="field"><label for="{{ form.settings.id_for_label }}">Configurações</label>{{ form.settings }}</div>
+                        <div class="field"><label for="{{ form.settings.id_for_label }}">Configurações</label>{{ form.settings }}<p class="hint">Com o agente, as configurações ficam ocultas e travadas, mas a senha automática continua funcionando.</p></div>
                         <div class="field full"><label for="{{ form.androidappid.id_for_label }}">ID do aplicativo Android <span class="opt">(não altera Windows nem Linux)</span></label>{{ form.androidappid }}{% if field_errors.androidappid %}<p class="field-error">{{ field_errors.androidappid }}</p>{% endif %}</div>
                     </div>
                 </section>

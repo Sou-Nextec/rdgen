@@ -238,6 +238,30 @@ try {
         $senhaText = if (Test-Path -LiteralPath $senhaLog) { (Get-Content -LiteralPath $senhaLog -Tail 20) -join "`n" } else { '(sem agente-senha.log)' }
         Write-Output "agente-senha.log:`n$senhaText"
         if (-not $state.Confirmed) {
+            # Como SYSTEM (conta da tarefa do agente): o mesmo CLI por tres formas de invocacao, para ver o que a captura recebe.
+            if ($serviceExe) {
+                $probeScript = Join-Path $dataRoot 'sonda-cli.ps1'
+                $probeOut = Join-Path $dataRoot 'sonda-cli.txt'
+                $probeLines = @(
+                    '$exe = ''' + $serviceExe + '''',
+                    '$o = @()',
+                    '$a = & $exe --password CiSonda0A9aaaaaaaaaaaa 2>&1; $o += ''A atribuicao: exit='' + $LASTEXITCODE + '' saida=['' + ((@($a) -join '' '')) + '']''',
+                    '$b = (& $exe --password CiSonda0B9aaaaaaaaaaaa 2>&1 | Out-String); $o += ''B pipe: exit='' + $LASTEXITCODE + '' saida=['' + $b.Trim() + '']''',
+                    '$t = Join-Path $env:TEMP ''sonda-saida.txt''; $p = Start-Process -FilePath $exe -ArgumentList ''--password'',''CiSonda0C9aaaaaaaaaaaa'' -Wait -PassThru -NoNewWindow -RedirectStandardOutput $t -RedirectStandardError ($t + ''.err'')',
+                    '$o += ''C Start-Process: exit='' + $p.ExitCode + '' saida=['' + ((Get-Content -LiteralPath $t -Raw -ErrorAction SilentlyContinue)) + '']''',
+                    '$g = & $exe --get-id 2>&1; $o += ''D get-id: exit='' + $LASTEXITCODE + '' saida=['' + ((@($g) -join '' '')) + '']''',
+                    '[IO.File]::WriteAllLines(''' + $probeOut + ''', [string[]]$o)'
+                )
+                [IO.File]::WriteAllLines($probeScript, [string[]]$probeLines)
+                $probeTask = 'Nextec CI Sonda'
+                $action = New-ScheduledTaskAction -Execute (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $probeScript + '"')
+                Register-ScheduledTask -TaskName $probeTask -Action $action -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
+                Start-ScheduledTask -TaskName $probeTask
+                $probeLimit = (Get-Date).AddSeconds(60)
+                while (-not (Test-Path -LiteralPath $probeOut) -and (Get-Date) -lt $probeLimit) { Start-Sleep -Seconds 2 }
+                Unregister-ScheduledTask -TaskName $probeTask -Confirm:$false -ErrorAction SilentlyContinue
+                if (Test-Path -LiteralPath $probeOut) { Get-Content -LiteralPath $probeOut | ForEach-Object { Write-Output "SONDA SYSTEM $_" } } else { Write-Output 'SONDA SYSTEM sem saida' }
+            }
             # diagnostico do CLI do RustDesk como administrador (sem a senha do agente): o que ele imprime e devolve
             if ($serviceExe) {
                 foreach ($cli in @(@('--get-id'), @('--option', 'approve-mode'), @('--password', 'CiTeste0Descartavel9'))) {

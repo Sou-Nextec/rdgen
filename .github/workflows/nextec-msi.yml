@@ -40,6 +40,10 @@ jobs:
         shell: pwsh
         run: |
           & ./.github/scripts/test-msi-build.ps1
+          python nextec/scripts/sincronizar-agente.py --verificar
+          if ($LASTEXITCODE -ne 0) { throw 'Vendored agent scripts differ from FONTE-AGENTE.json' }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File nextec/atualizacao/test_provisionar_outro_painel_installed.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Other-panel pending journal regression failed' }
           python nextec/atualizacao/test_manifest.py -v
           if ($LASTEXITCODE -ne 0) { throw 'Signature tests failed' }
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File nextec/atualizacao/test_signing_session.ps1

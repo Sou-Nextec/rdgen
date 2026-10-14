@@ -5,6 +5,7 @@ param(
   [switch]$Executar,
   [switch]$Receber,
   [switch]$Remover,
+  [switch]$SubstituirAgenteAntigo,
   [string]$ArquivoAutorizacao,
   [string]$PastaDados = (Join-Path $env:ProgramData 'Nextec\Acesso')
 )
@@ -277,6 +278,9 @@ function Invoke-NextecCoordinator {
   & $worker -Executar
 }
 
+# -SubstituirAgenteAntigo so existe junto de -Receber: e o Ativar-Nextec-<ID>.cmd (arquivo baixado do painel por um
+# administrador autenticado, valido por 15 minutos e amarrado ao ID/uuid) que autoriza trocar um agente antigo ou quebrado.
+if ($SubstituirAgenteAntigo -and -not $Receber) { throw 'Use -SubstituirAgenteAntigo somente com -Receber.' }
 if ($Remover) {
   if ($Registrar -or $Executar -or $Receber) { throw 'Escolha somente -Remover.' }
   Remove-NextecCoordinatorTasks
@@ -319,7 +323,7 @@ if ($Receber) {
   # host do painel: inscricao.json/marcador instalado; sem arquivo, o padrao antigo (compat)
   $script:NextecPainelFixo = Get-NextecPainelConfigurado -Root $PastaDados -Padrao $script:NextecPainelFixo
   $readSelectedFile = { Get-Content -LiteralPath $selectedPath -Raw -Encoding UTF8 }
-  try { Receive-NextecBootstrapAuthorization -Root $PastaDados -ReadInput $readSelectedFile }
+  try { Receive-NextecBootstrapAuthorization -Root $PastaDados -ReadInput $readSelectedFile -SubstituirAgenteAntigo:$SubstituirAgenteAntigo }
   finally {
     # o arquivo entregue ao coordenador é de uso único: sai do disco mesmo se a ativação falhar
     if ($ArquivoAutorizacao) { Remove-Item -LiteralPath $selectedPath -Force -ErrorAction SilentlyContinue }

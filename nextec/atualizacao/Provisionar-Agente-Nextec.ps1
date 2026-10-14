@@ -3,6 +3,7 @@
 param(
   [switch]$Executar,
   [switch]$Receber,
+  [switch]$SubstituirAgenteAntigo,
   [string]$PastaDados = (Join-Path $env:ProgramData 'Nextec\Acesso')
 )
 
@@ -195,7 +196,7 @@ function New-NextecProposedToken {
 
 function Write-NextecProvisionLog {
   param([Parameter(Mandatory)][string]$Code, [string]$Root = (Join-Path $env:ProgramData 'Nextec\Acesso'))
-  if ($Code -notmatch '^(pending|complete|network_retry|manual_authorization_required|already_configured|identity_conflict|already_enrolled|registration_retry|invalid_input|invalid_panel|invalid_identity|invalid_bootstrap|protocol_error|unsafe_path|component_missing|self_enrolled|self_backoff|self_blocked|self_manual|peer_not_registered|rate_limited|painel_padrao|agent_config_replaced|agent_config_unreadable|identity_changed|bootstrap_discarded)$') { $Code = 'protocol_error' }
+  if ($Code -notmatch '^(pending|complete|network_retry|manual_authorization_required|already_configured|identity_conflict|already_enrolled|registration_retry|invalid_input|invalid_panel|invalid_identity|invalid_bootstrap|protocol_error|unsafe_path|component_missing|self_enrolled|self_backoff|self_blocked|self_manual|peer_not_registered|rate_limited|painel_padrao|agent_config_replaced|agent_config_unreadable|identity_changed|bootstrap_discarded|old_agent_replaced|old_agent_kept|panel_unreachable|pending_other_panel|pending_expired)$') { $Code = 'protocol_error' }
   $paths = Get-NextecProvisionPaths -Root $Root
   Assert-NextecProvisionPath -Path $paths.Root
   if (-not (Test-Path -LiteralPath $paths.Root -PathType Container)) { Initialize-NextecProvisionDirectory -Root $paths.Root }
@@ -409,6 +410,9 @@ function Read-NextecSelfState {
   if (-not $raw) { return $null }
   $expected = @('state','chave_sha256','proposed_token_protected','attempts','next_try_utc_ticks','blocked_until_utc_ticks')
   $actual = @($raw.PSObject.Properties | ForEach-Object { $_.Name })
+  # 'painel' (host normalizado em que o estado foi criado) e opcional: estados gravados antes dele continuam validos.
+  $painelGravado = ''
+  if ($actual -contains 'painel') { $painelGravado = [string]$raw.painel; $actual = @($actual | Where-Object { $_ -cne 'painel' }) }
   if ($actual.Count -ne $expected.Count -or @($expected | Where-Object { $_ -notin $actual }).Count -ne 0) { throw 'protocol_error' }
   if ([string]$raw.state -notin @('self','manual','blocked')) { throw 'protocol_error' }
   $token = ''
@@ -420,6 +424,7 @@ function Read-NextecSelfState {
     attempts = [int]$raw.attempts
     next_try_utc = [long]$raw.next_try_utc_ticks
     blocked_until_utc = [long]$raw.blocked_until_utc_ticks
+    painel = $painelGravado
   }
 }
 
@@ -434,6 +439,7 @@ function Save-NextecSelfState {
     attempts = [int]$State.attempts
     next_try_utc_ticks = [long]$State.next_try_utc
     blocked_until_utc_ticks = [long]$State.blocked_until_utc
+    painel = [string]$State.painel
   })
 }
 
@@ -483,6 +489,12 @@ function Invoke-NextecSelfEnrollment {
   $utc = $Now.ToUniversalTime()
   $state = Read-NextecSelfState -Path $paths.SelfState
   if ($state -and $state.chave_sha256 -cne $keyHash) { $state = $null }
+  # Estado de inscricao criado contra outro painel (troca de dominio): descarta e recomeca no painel atual.
+  # Sem 'painel' gravado (estado antigo) vale o limite de tempo abaixo, nunca uma espera sem fim.
+  $enrollPanel = ConvertTo-NextecPainelUrl ([string]$enroll.painel)
+  if ($state -and $state.painel) {
+    if ((ConvertTo-NextecPainelUrl $state.painel) -cne $enrollPanel) { Write-NextecProvisionLog 'pending_other_panel' -Root $Root; $state = $null }
+  }
 
   if ($state -and $state.state -eq 'manual' -and $utc.Ticks -lt $state.next_try_utc) {
     Write-NextecProvisionLog 'self_manual' -Root $Root
@@ -500,9 +512,10 @@ function Invoke-NextecSelfEnrollment {
   if (-not $state -or -not $state.proposed_token) {
     $proposed = [string](& $NewToken)
     if ($proposed -notmatch '^[A-Za-z0-9_-]{43}$') { Write-NextecProvisionLog 'protocol_error' -Root $Root; throw 'protocol_error' }
-    $state = [pscustomobject]@{ state='self'; chave_sha256=$keyHash; proposed_token=$proposed; attempts=0; next_try_utc=0L; blocked_until_utc=0L }
+    $state = [pscustomobject]@{ state='self'; chave_sha256=$keyHash; proposed_token=$proposed; attempts=0; next_try_utc=0L; blocked_until_utc=0L; painel=$enrollPanel }
   } else {
     $state.state = 'self'
+    $state.painel = $enrollPanel
   }
   # O token proposto fica gravado antes da chamada: o replay reenvia o mesmo par id/uuid/token.
   Save-NextecSelfState -Path $paths.SelfState -State $state
@@ -577,6 +590,27 @@ function Invoke-NextecProvisioning {
 
   $journal = Read-NextecProvisionJournal -Path $paths.Journal
   if ($journal -and $journal.state -notin @('pending','manual')) { throw 'protocol_error' }
+  # Pendente de OUTRO painel (troca de dominio) nunca bloqueia a inscricao no painel atual: o journal e descartado
+  # (so o codigo vai ao log, sem segredos) e o fluxo segue como maquina sem pendencia.
+  if ($journal) {
+    $journalPanel = ConvertTo-NextecPainelUrl $journal.painel
+    if (-not $journalPanel -or $journalPanel -cne (ConvertTo-NextecPainelUrl ([string]$script:NextecPainelFixo))) {
+      Remove-Item -LiteralPath $paths.Journal -Force -ErrorAction SilentlyContinue
+      Write-NextecProvisionLog 'pending_other_panel' -Root $Root
+      $journal = $null
+    }
+  }
+  # Pendente do mesmo painel espera ate expirar (autorizacao: 15 min; recusa manual: 24 h) e depois reinscreve.
+  if ($journal -and -not (Test-Path -LiteralPath $paths.Input -PathType Leaf)) {
+    $pendingAge = ($Now.ToUniversalTime() - $journal.created_utc).TotalSeconds
+    $pendingLimit = 900
+    if ($journal.state -eq 'manual') { $pendingLimit = 86400 }
+    if ($pendingAge -ge $pendingLimit -or $pendingAge -lt -60) {
+      Remove-Item -LiteralPath $paths.Journal -Force -ErrorAction SilentlyContinue
+      Write-NextecProvisionLog 'pending_expired' -Root $Root
+      $journal = $null
+    }
+  }
   $input = $null
   if (Test-Path -LiteralPath $paths.Input -PathType Leaf) {
     $raw = Get-Content -LiteralPath $paths.Input -Raw -Encoding UTF8
@@ -699,14 +733,102 @@ function Invoke-NextecProvisioning {
   return 'complete'
 }
 
+function Invoke-NextecAgentTokenProbe {
+  # Pergunta ao painel se ele ainda reconhece o token local (a mesma chamada /sync que o agente faz a cada ciclo).
+  # Devolve so o status HTTP (0 = sem resposta). Nunca lanca e nunca devolve nem registra o token.
+  param([Parameter(Mandatory)][string]$Panel, [Parameter(Mandatory)][string]$Id, [Parameter(Mandatory)][string]$Token)
+  try {
+    $uri = [Uri]::new($Panel.TrimEnd('/') + '/api/nextec/agent/sync')
+    if ($uri.Scheme -cne 'https' -or $uri.Host -cne ([Uri]$script:NextecPainelFixo).Host -or $uri.UserInfo -or $uri.Query -or $uri.Fragment) { return 0 }
+    Invoke-RestMethod -Uri $uri.AbsoluteUri -Method Post -ContentType 'application/json' -Body (@{ id = $Id; token = $Token } | ConvertTo-Json -Compress) -TimeoutSec 30 -MaximumRedirection 0 -UserAgent 'Nextec-Connect-Agent/1' | Out-Null
+    return 200
+  } catch {
+    $status = 0
+    try { if ($_.Exception.Response -and $_.Exception.Response.StatusCode) { $status = [int]$_.Exception.Response.StatusCode } } catch { $status = 0 }
+    return $status
+  }
+}
+
+function Move-NextecProvisionFileAside {
+  # Backup protegido (CreateNew + ACL SYSTEM/Administradores) e so entao sai do lugar. O conteudo nunca e apagado:
+  # se ja existe uma copia identica (<nome>.antigo-*), o original so deixa o caminho.
+  param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Stamp)
+  Assert-NextecProvisionPath -Path $Path
+  $bytes = [IO.File]::ReadAllBytes($Path)
+  $folder = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($Path))
+  $leaf = [IO.Path]::GetFileName($Path)
+  foreach ($candidate in @(Get-ChildItem -LiteralPath $folder -Filter ($leaf + '.antigo-*') -File -ErrorAction SilentlyContinue)) {
+    if ($candidate.Length -ne $bytes.Length) { continue }
+    $same = [IO.File]::ReadAllBytes($candidate.FullName)
+    $equal = $true
+    for ($i = 0; $i -lt $bytes.Length; $i++) { if ($same[$i] -ne $bytes[$i]) { $equal = $false; break } }
+    if ($equal) { Remove-Item -LiteralPath $Path -Force; return $candidate.FullName }
+  }
+  $dest = $Path + '.antigo-' + $Stamp
+  $n = 1
+  while (Test-Path -LiteralPath $dest) { $n++; $dest = $Path + '.antigo-' + $Stamp + '-' + $n }
+  Assert-NextecProvisionPath -Path $dest
+  $stream = [IO.File]::Open($dest, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+  $stream.Dispose()
+  Set-Acl -LiteralPath $dest -AclObject (New-NextecProvisionAcl)
+  [IO.File]::WriteAllBytes($dest, $bytes)
+  Remove-Item -LiteralPath $Path -Force
+  return $dest
+}
+
+# Agente antigo ou quebrado (so com -SubstituirAgenteAntigo, passado pelo Ativar-Nextec-<ID>.cmd baixado do painel por um
+# administrador autenticado): o cadastro local sai do caminho SOMENTE se estiver em formato que o fluxo novo nao le, for de
+# outro ID ou o painel recusar o token (HTTP 401). Painel que reconhece o token (ou nao responde) mantem o cadastro e o uso
+# normal continua recusando cadastro duplicado (already_enrolled).
+function Move-NextecOldAgentAside {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$Root,
+    [Parameter(Mandatory)][string]$LocalId,
+    [scriptblock]$Probe = { param($panel, $id, $token) Invoke-NextecAgentTokenProbe -Panel $panel -Id $id -Token $token },
+    [DateTime]$Now = [DateTime]::UtcNow
+  )
+  $paths = Get-NextecProvisionPaths -Root $Root
+  if (-not (Test-Path -LiteralPath $paths.AgentConfig -PathType Leaf)) { return 'none' }
+  $reason = ''
+  $config = $null
+  try { $config = Read-NextecAgentTokenConfig -Path $paths.AgentConfig } catch { $reason = 'formato_antigo' }
+  if (-not $reason) {
+    if ($config.id -cne $LocalId) { $reason = 'outro_id' }
+    else {
+      $status = 0
+      try { $status = [int](& $Probe $config.painel $config.id $config.token) } catch { $status = 0 }
+      if ($status -eq 401) { $reason = 'token_recusado' }
+      elseif ($status -eq 0) { Write-NextecProvisionLog 'panel_unreachable' -Root $Root; throw 'panel_unreachable' }
+      else { Write-NextecProvisionLog 'old_agent_kept' -Root $Root; throw 'already_enrolled' }
+    }
+  }
+  $stamp = $Now.ToUniversalTime().ToString('yyyyMMdd-HHmmss')
+  [void](Move-NextecProvisionFileAside -Path $paths.AgentConfig -Stamp $stamp)
+  if (Test-Path -LiteralPath $paths.Journal -PathType Leaf) { [void](Move-NextecProvisionFileAside -Path $paths.Journal -Stamp $stamp) }
+  Write-NextecProvisionLog 'old_agent_replaced' -Root $Root
+  return $reason
+}
+
 function Receive-NextecBootstrapAuthorization {
-  param([string]$Root = (Join-Path $env:ProgramData 'Nextec\Acesso'), [scriptblock]$ReadInput = { Read-NextecSecureInput }, [scriptblock]$DiscoverId = { Get-NextecProvisionLocalId })
+  param(
+    [string]$Root = (Join-Path $env:ProgramData 'Nextec\Acesso'),
+    [scriptblock]$ReadInput = { Read-NextecSecureInput },
+    [scriptblock]$DiscoverId = { Get-NextecProvisionLocalId },
+    [switch]$SubstituirAgenteAntigo,
+    [scriptblock]$ProbeToken
+  )
   Initialize-NextecProvisionDirectory -Root $Root
   $paths = Get-NextecProvisionPaths -Root $Root
   if (Test-Path -LiteralPath $paths.Input) { throw 'pending_authorization' }
   $payload = ConvertFrom-NextecStrictBootstrapJson -Json ([string](& $ReadInput))
   $localId = [string](& $DiscoverId)
   if ($payload.id -cne $localId) { throw 'identity_conflict' }
+  if ($SubstituirAgenteAntigo) {
+    # Depois de validar formato, painel e ID: um arquivo invalido nunca mexe no cadastro existente.
+    if ($ProbeToken) { [void](Move-NextecOldAgentAside -Root $Root -LocalId $localId -Probe $ProbeToken) }
+    else { [void](Move-NextecOldAgentAside -Root $Root -LocalId $localId) }
+  }
   Write-NextecProtectedJson -Path $paths.Input -Value $payload
   Assert-NextecProvisionPath -Path $paths.Input
   Set-Acl -LiteralPath $paths.Input -AclObject (New-NextecProvisionAcl)
@@ -715,7 +837,7 @@ function Receive-NextecBootstrapAuthorization {
 
 # O host do painel vem de inscricao.json (ou do marcador); sem arquivo, cai no padrao antigo com aviso.
 $script:NextecPainelFixo = Get-NextecPainelConfigurado -Root $PastaDados -Padrao $script:NextecPainelFixo
-if ($Receber) { Receive-NextecBootstrapAuthorization -Root $PastaDados; return }
+if ($Receber) { Receive-NextecBootstrapAuthorization -Root $PastaDados -SubstituirAgenteAntigo:$SubstituirAgenteAntigo; return }
 if ($Executar) {
   try {
     if ($script:NextecPainelOrigem -ceq 'padrao') { Write-NextecProvisionLog 'painel_padrao' -Root $PastaDados }

@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $buildScript = Join-Path $PSScriptRoot 'build-msi.ps1'
 $installTestScript = Join-Path $PSScriptRoot 'test-msi-install.ps1'
@@ -90,7 +90,17 @@ try {
     $authTest = Join-Path $updaterSource 'test_agent_401_integration.ps1'
     $authOutput = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $authTest -InstallDir $resourceDir 2>&1 | Out-String)
     if ($LASTEXITCODE -ne 0 -or $authOutput -notmatch 'PASS: agent 401 recovery') { throw "Packaged agent 401 recovery integration test failed: $authOutput" }
-    # Chave mal formada e recusada sem repetir o valor.
+    # Integrado: pendente (provisionamento-agente.json) de OUTRO painel no pacote: descartado em 0 e em 20 min, chega ao self-enroll.
+    $otherPanelTest = Join-Path $updaterSource 'test_provisionar_outro_painel_installed.ps1'
+    $otherPanelOutput = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $otherPanelTest -InstallDir $resourceDir 2>&1 | Out-String)
+    if ($LASTEXITCODE -ne 0 -or $otherPanelOutput -notmatch 'PASS: other-panel pending journal regression') { throw "Packaged other-panel pending regression failed: $otherPanelOutput" }
+    if ($otherPanelOutput.Contains($enrollKey)) { throw 'Enrollment key leaked to other-panel test output' }
+    # Hash do pacote = hash registrado em FONTE-AGENTE.json (fonte unica do painel), para todos os scripts vendored.
+    $fonte = [IO.File]::ReadAllText((Join-Path $updaterSource 'FONTE-AGENTE.json')) | ConvertFrom-Json
+    foreach ($name in $scriptNames) {
+        $registered = [string]$fonte.sha256.$name
+        if (-not $registered -or (Get-FileHash -LiteralPath (Join-Path $resourceDir $name) -Algorithm SHA256).Hash -ne $registered.ToUpperInvariant()) { throw "Packaged script hash differs from FONTE-AGENTE.json: $name" }
+    }    # Chave mal formada e recusada sem repetir o valor.
     $env:enroll_key = 'nx1.1.curta'; $env:enroll_panel = $enrollPanel
     $rejected = $false
     try { & $buildScript -AppName 'Nextec-Connect' -SourceRoot $sourceRoot -BinaryDirectory $binaryDirectory -UpdaterSource $updaterSource | Out-Null }

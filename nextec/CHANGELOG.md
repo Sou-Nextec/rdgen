@@ -2,6 +2,8 @@
 
 ## 2.1.0
 
+- Scripts do agente ressincronizados com a master do painel (a81ec60, PR #77): Coordenar com `-ArquivoAutorizacao` para o `Ativar-Nextec-<ID>.cmd`; inclui a correção do Replace nulo (#73).
+
 - Inscrição global: todo instalador (MSI, EXE e DEB) leva `inscricao.json` com `{"v":1,"painel","chave"}` para a máquina se inscrever sozinha no painel.
 - A chave vem da variável `NX_ENROLL_KEY` do contêiner e viaja só no pacote cifrado do build; não é gravada em banco, modelos, exportações, logs nem erros.
 - Sem `NX_ENROLL_KEY` o build continua e gera instalador sem `inscricao.json`, com aviso no formulário, na espera e na saída do build.

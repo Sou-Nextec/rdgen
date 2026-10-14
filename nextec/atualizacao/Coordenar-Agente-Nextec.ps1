@@ -5,6 +5,7 @@ param(
   [switch]$Executar,
   [switch]$Receber,
   [switch]$Remover,
+  [string]$ArquivoAutorizacao,
   [string]$PastaDados = (Join-Path $env:ProgramData 'Nextec\Acesso')
 )
 
@@ -151,6 +152,18 @@ function Show-NextecBootstrapFileDialog {
   } finally { $dialog.Dispose() }
 }
 
+# Sem -ArquivoAutorizacao abre o seletor de arquivo (uso manual). Com ele, usa exatamente aquele bootstrap.json,
+# sem nenhum diálogo (usado pelo Ativar-Nextec-<ID>.cmd baixado do painel). As mesmas checagens de nome e de link
+# simbólico valem nos dois caminhos.
+function Get-NextecBootstrapSelection {
+  param([string]$Path)
+  if ($Path) {
+    $fixed = $Path
+    return Select-NextecBootstrapFilePath -PickFile { $fixed }.GetNewClosure()
+  }
+  return Select-NextecBootstrapFilePath -PickFile { Show-NextecBootstrapFileDialog }
+}
+
 function Assert-NextecInteractiveAdministrator {
   $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
   $principal = [Security.Principal.WindowsPrincipal]::new($identity)
@@ -180,7 +193,7 @@ if ($Receber) {
   $worker = Join-Path $PastaDados 'Provisionar-Agente-Nextec.ps1'
   if (-not (Test-Path -LiteralPath $worker -PathType Leaf)) { throw 'component_missing' }
   Assert-NextecCoordinatorFileAcl -Path $worker
-  $selectedPath = Select-NextecBootstrapFilePath -PickFile { Show-NextecBootstrapFileDialog }
+  $selectedPath = Get-NextecBootstrapSelection -Path $ArquivoAutorizacao
   if (-not $selectedPath) { return }
 
   # Load the provisioner's tested functions at script scope so the shared
@@ -195,7 +208,11 @@ if ($Receber) {
     . ([scriptblock]::Create($definition.Extent.Text))
   }
   $readSelectedFile = { Get-Content -LiteralPath $selectedPath -Raw -Encoding UTF8 }
-  Receive-NextecBootstrapAuthorization -Root $PastaDados -ReadInput $readSelectedFile
+  try { Receive-NextecBootstrapAuthorization -Root $PastaDados -ReadInput $readSelectedFile }
+  finally {
+    # o arquivo entregue ao coordenador é de uso único: sai do disco mesmo se a ativação falhar
+    if ($ArquivoAutorizacao) { Remove-Item -LiteralPath $selectedPath -Force -ErrorAction SilentlyContinue }
+  }
   return
 }
 if ($Executar) {

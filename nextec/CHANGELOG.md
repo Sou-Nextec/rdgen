@@ -1,5 +1,9 @@
 # Gerador Nextec
 
+## 2.3.4
+
+- **"Desativar configurações" não quebra mais a senha automática:** com o agente (`nx_agent` ligado), o gerador não grava mais `disable-settings`, que no RustDesk 1.5.0 faz `--password` e `--option` responderem "Settings are disabled!" (o agente registrava `password_apply_failed` a cada rodada e o painel ficava em "Aguardando a primeira troca"). No lugar, entram as opções `hide-general-settings`, `hide-security-settings`, `hide-network-settings`, `hide-server-settings`, `hide-proxy-settings`, `hide-websocket-settings`, `hide-remote-printer-settings` e `hide-stop-service`, que ocultam as mesmas abas na interface e também a aba Geral (que `disable-settings` deixava editável). Sem o agente (suporte avulso), nada muda. Clientes já instalados com essa opção precisam de um instalador novo instalado por cima.
+
 ## 2.3.3
 
 Achados da revisão do PR #45 (instalador Windows). Os scripts do agente foram ressincronizados com o painel 2.11.17.

@@ -184,11 +184,12 @@ def generate_custom_client(params, full_url, created_by='', profile=''):
         decodedCustom['conn-type'] = direction
     if installation == "installationN":
         decodedCustom['disable-installation'] = 'Y'
-    if settings == "settingsN":
-        decodedCustom['disable-settings'] = 'Y'
+    # Com o agente, "Desativar configuracoes" vira opcoes hide-* (disable-settings bloquearia o --password do agente).
+    lock_root, lock_override = nextec.settings_lock(nx_agent, settings == "settingsN")
+    decodedCustom.update(lock_root)
     if appname.lower() != "rustdesk":
         decodedCustom['app-name'] = appname
-    decodedCustom['override-settings'] = {}
+    decodedCustom['override-settings'] = dict(lock_override)
     decodedCustom['default-settings'] = {}
     if permPass != "":
         decodedCustom['password'] = permPass

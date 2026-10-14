@@ -217,6 +217,35 @@ def agent_enabled(params):
     return params.get('installation', 'installationY') != 'installationN'
 
 
+# Opcoes builtin do RustDesk 1.5.0 (libs/base/src/config/keys.rs, KEYS_BUILDIN_SETTINGS) que ocultam as mesmas
+# abas que `disable-settings` oculta (Seguranca, Rede, Impressora), mais a aba Geral (que disable-settings deixava
+# editavel: servico, atualizacao automatica, punch TCP/UDP/IPv6, gravacao) e o "parar servico" da bandeja, sem
+# tocar no CLI/IPC.
+AGENT_SETTINGS_LOCK = {
+    'hide-general-settings': 'Y',
+    'hide-security-settings': 'Y',
+    'hide-network-settings': 'Y',
+    'hide-server-settings': 'Y',
+    'hide-proxy-settings': 'Y',
+    'hide-websocket-settings': 'Y',
+    'hide-remote-printer-settings': 'Y',
+    'hide-stop-service': 'Y',
+}
+
+
+def settings_lock(agent, lock_settings):
+    """Traduz 'Desativar configuracoes' em (opcoes de raiz do custom, override-settings).
+
+    `disable-settings=Y` faz o RustDesk recusar `--password`/`--option` pelo CLI ("Settings are disabled!"), e o
+    agente de senha depende desse comando. Com o agente, nunca gera `disable-settings`: oculta as abas pela interface.
+    Sem o agente (suporte avulso), mantem o comportamento original."""
+    if not lock_settings:
+        return {}, {}
+    if agent:
+        return {}, dict(AGENT_SETTINGS_LOCK)
+    return {'disable-settings': 'Y'}, {}
+
+
 def default_image(kind):
     """Imagem padrão gerenciada quando nenhuma foi enviada no formulário."""
     env_name = {'icon': 'NX_ICON_FILE', 'logo': 'NX_LOGO_FILE', 'logo_light': 'NX_LOGO_LIGHT_FILE', 'logo_dark': 'NX_LOGO_DARK_FILE', 'privacy': 'NX_PRIVACY_FILE'}.get(kind)

@@ -77,6 +77,24 @@ function Get-NextecCoordinatorFilePanel {
   } catch { return $null }
 }
 
+# Intervalo do coordenador: FONTE UNICA em Get-NextecAgentIntervals (Agente-Senha-Nextec.ps1), lido sem executar nada.
+# Sem a funcao (agente de versao anterior) ou com valor invalido, vale o legado de 5 minutos.
+function Get-NextecCoordinatorMinutes {
+  param([Parameter(Mandatory)][string]$AgentScript)
+  try {
+    $tokens = $null; $errors = $null
+    $ast = [Management.Automation.Language.Parser]::ParseFile($AgentScript, [ref]$tokens, [ref]$errors)
+    if ($errors.Count) { return 5 }
+    $function = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-NextecAgentIntervals' }, $true)
+    if (-not $function) { return 5 }
+    $table = $function.Body.Find({ param($node) $node -is [Management.Automation.Language.HashtableAst] }, $true)
+    if (-not $table) { return 5 }
+    $minutes = [int]($table.SafeGetValue())['CoordinatorMinutes']
+    if ($minutes -lt 1 -or $minutes -gt 60) { return 5 }
+    return $minutes
+  } catch { return 5 }
+}
+
 function Register-NextecCoordinatorTask {
   param([string]$Root = (Join-Path $env:ProgramData 'Nextec\Acesso'), [string]$SourceRoot = $PSScriptRoot)
   Assert-NextecCoordinatorPath -Path $Root
@@ -190,13 +208,14 @@ function Register-NextecCoordinatorTask {
   $powershellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
   $argument = '-NoProfile -ExecutionPolicy Bypass -File "' + $coordinatorPath + '" -Executar'
   $action = New-ScheduledTaskAction -Execute $powershellExe -Argument $argument
-  $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration (New-TimeSpan -Days 3650)
+  $coordinatorMinutes = Get-NextecCoordinatorMinutes -AgentScript $agentSource
+  $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes $coordinatorMinutes) -RepetitionDuration (New-TimeSpan -Days 3650)
   $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 4) -MultipleInstances IgnoreNew
   Register-ScheduledTask -TaskName 'Nextec Acesso - Cadastro de agente' -Action $action -Trigger $trigger -Settings $settings -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
-  'Coordenador registrado para verificar autorizações pendentes a cada 5 minutos.'
+  ('Coordenador registrado para verificar autorizações pendentes a cada {0} min.' -f $coordinatorMinutes)
 }
 
-# Log do coordenador (sem segredos: so codigos e nomes de arquivo). A instalacao e o ciclo de 5 minutos
+# Log do coordenador (sem segredos: so codigos e nomes de arquivo). A instalacao e o ciclo periodico
 # nunca falham em silencio.
 function Write-NextecCoordinatorLog {
   param([string]$Root, [string]$Message)
@@ -328,7 +347,7 @@ if ($Receber) {
     # o arquivo entregue ao coordenador é de uso único: sai do disco mesmo se a ativação falhar
     if ($ArquivoAutorizacao) { Remove-Item -LiteralPath $selectedPath -Force -ErrorAction SilentlyContinue }
   }
-  # cadastra agora, sem esperar o próximo ciclo de 5 minutos
+  # cadastra agora, sem esperar o próximo ciclo do coordenador
   try { Start-ScheduledTask -TaskName $script:TaskName -ErrorAction Stop } catch { Write-NextecCoordinatorLog -Root $PastaDados -Message ('receber: tarefa nao iniciada ' + $_.Exception.Message) }
   return
 }

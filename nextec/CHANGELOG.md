@@ -1,5 +1,13 @@
 # Gerador Nextec
 
+## 2.3.5
+
+Agente ressincronizado com o painel 2.11.24 (master 7dacd85, PRs #92 a #95), por `nextec/scripts/sincronizar-agente.py`, sem edição manual.
+
+- **Scripts atualizados:** `Agente-Senha-Nextec.ps1` (estado honesto 0035, troca rápida e intervalo único 0036, `app_name` por máquina 0037, `client_settings_locked`), `Coordenar-Agente-Nextec.ps1` e `Provisionar-Agente-Nextec.ps1` (reinstalação sem beco, sondagem `probe`, reparo com a credencial existente). `Instalar-Nextec.ps1` e `Manifesto-Connect.ps1` não mudaram. `FONTE-AGENTE.json` e a proveniência apontam para o novo commit; MSI, EXE e DEB empacotam o conjunto com hash instalado = pacote = registro.
+- **Sem `disable-settings` com o agente:** já garantido desde 2.3.4 (`test_settings_lock.py`); mantido.
+- **Linux:** os arquivos Linux do rdgen não fazem parte da fonte única e seguem como estavam.
+
 ## 2.3.4
 
 - **"Desativar configurações" não quebra mais a senha automática:** com o agente (`nx_agent` ligado), o gerador não grava mais `disable-settings`, que no RustDesk 1.5.0 faz `--password` e `--option` responderem "Settings are disabled!" (o agente registrava `password_apply_failed` a cada rodada e o painel ficava em "Aguardando a primeira troca"). No lugar, entram as opções `hide-general-settings`, `hide-security-settings`, `hide-network-settings`, `hide-server-settings`, `hide-proxy-settings`, `hide-websocket-settings`, `hide-remote-printer-settings` e `hide-stop-service`, que ocultam as mesmas abas na interface e também a aba Geral (que `disable-settings` deixava editável). Sem o agente (suporte avulso), nada muda. Clientes já instalados com essa opção precisam de um instalador novo instalado por cima.

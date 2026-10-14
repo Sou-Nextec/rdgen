@@ -4,7 +4,7 @@
 
 .DESCRIPTION
   -Instalar: cadastra a máquina no painel (usa a chave de cadastro que o admin gera em Segurança > Senhas dos servidores),
-             guarda o token protegido e cria a tarefa agendada (SYSTEM, a cada 5 minutos).
+             guarda o token protegido e cria a tarefa agendada (SYSTEM, a cada minuto; ver Get-NextecAgentIntervals).
   -Executar: uma verificação (o que a tarefa roda). Pergunta ao painel se a máquina é gerenciada e se é hora de trocar a
              senha. Se for, gera uma senha forte, envia ao painel como pendente, aplica no RustDesk (--password) e só então
              confirma. Se aplicar falhar, não confirma e a senha anterior continua valendo no painel.
@@ -37,6 +37,29 @@ $Config = Join-Path $PastaDados 'agente-senha.json'
 $Log    = Join-Path $PastaDados 'agente-senha.log'
 $Tarefa = 'Nextec Acesso - Senha'
 Add-Type -AssemblyName System.Security
+
+# FONTE UNICA dos intervalos (em minutos) das tarefas agendadas do agente. Provisionar-Agente-Nextec.ps1 e
+# Coordenar-Agente-Nextec.ps1 leem estes valores DESTE arquivo (so os literais do hashtable abaixo, sem executar nada);
+# nao existe outro numero de intervalo nos tres scripts. Valor valido: inteiro de 1 a 60. Para mudar o ritmo, altere aqui.
+#   PasswordMinutes:    tarefa 'Nextec Acesso - Senha' (uma consulta leve ao painel por execucao).
+#   CoordinatorMinutes: tarefa 'Nextec Acesso - Cadastro de agente' (cadastro, reparo e autorizacoes pendentes).
+function Get-NextecAgentIntervals {
+  return @{
+    PasswordMinutes    = 1
+    CoordinatorMinutes = 2
+  }
+}
+
+function Get-NextecPasswordTaskInterval {
+  $minutes = [int](Get-NextecAgentIntervals).PasswordMinutes
+  if ($minutes -lt 1 -or $minutes -gt 60) { throw 'invalid_interval: PasswordMinutes precisa estar entre 1 e 60.' }
+  return (New-TimeSpan -Minutes $minutes)
+}
+
+# Intervalo real de consulta (segundos) informado ao painel no sync; 0 se o valor configurado for invalido.
+function Get-NextecSyncIntervalSeconds {
+  try { return [int](Get-NextecPasswordTaskInterval).TotalSeconds } catch { return 0 }
+}
 
 function Get-NextecServiceExecutablePath {
   param([Parameter(Mandatory)]$Service)
@@ -84,8 +107,78 @@ function Get-NextecPeerId {
   return $lines[-1]
 }
 
+# Cliente gerado com "Bloquear configurações" (disable-settings=Y): no RustDesk 1.5.0, `--password` e `--option`
+# imprimem "Settings are disabled!" e saem com código 0 (src/core_main.rs, is_cli_setting_change_disabled). Nenhuma
+# nova tentativa resolve: só um instalador gerado de novo. Código estável: client_settings_locked.
+function Test-NextecSettingsLockedOutput([string]$Output) {
+  return [bool](@(([string]$Output -split "`r?`n") | Where-Object { $_.Trim() -ceq 'Settings are disabled!' }).Count)
+}
+
+function Assert-NextecClientSettingsUnlocked([string]$Output, [string]$Comando) {
+  if (Test-NextecSettingsLockedOutput $Output) {
+    throw "client_settings_locked: o cliente recusou $Comando (resposta: Settings are disabled!)."
+  }
+}
+
+# Ultimo erro do agente (codigo estavel, sem texto livre e sem segredos) para o painel mostrar "A troca de senha esta
+# falhando". So mensagens com prefixo de codigo ("client_settings_locked: ...") sao registradas; falha de rede ou HTTP
+# (o painel nem recebeu a rodada) nao muda o registro. Rodada sem erro apaga o arquivo.
+function Get-NextecErrorCode([string]$Message) {
+  if ([string]$Message -cmatch '^([a-z][a-z0-9_]{0,47}):') { return $Matches[1] }
+  return ''
+}
+
+function Set-NextecLastErrorCode {
+  param([Parameter(Mandatory)][string]$Path, [string]$Message)
+  $code = Get-NextecErrorCode $Message
+  if (-not $code) { return }
+  [IO.File]::WriteAllText($Path, $code, [Text.UTF8Encoding]::new($false))
+}
+
+function Get-NextecLastErrorCode {
+  param([Parameter(Mandatory)][string]$Path)
+  try {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return '' }
+    $code = ([IO.File]::ReadAllText($Path)).Trim()
+    if ($code -cmatch '^[a-z][a-z0-9_]{0,47}$') { return $code }
+  } catch { }
+  return ''
+}
+
+# Espera longa depois de client_settings_locked: até $Hours horas, ou até o executável do cliente mudar (reinstalação).
+function Test-NextecSettingsLockedWait {
+  param([Parameter(Mandatory)][string]$Path, [string]$Fingerprint, [DateTime]$Now = [DateTime]::UtcNow)
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+  try {
+    $wait = [IO.File]::ReadAllText($Path) | ConvertFrom-Json
+    $until = [DateTime]::Parse([string]$wait.until, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
+  } catch { Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue; return $false }
+  if ($Now -ge $until -or [string]$wait.client -cne [string]$Fingerprint) {
+    Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    return $false
+  }
+  return $true
+}
+
+function Set-NextecSettingsLockedWait {
+  param([Parameter(Mandatory)][string]$Path, [string]$Fingerprint, [DateTime]$Now = [DateTime]::UtcNow, [int]$Hours = 6)
+  $value = @{ code = 'client_settings_locked'; until = $Now.AddHours($Hours).ToString('o'); client = [string]$Fingerprint } | ConvertTo-Json -Compress
+  [IO.File]::WriteAllText($Path, $value, [Text.UTF8Encoding]::new($false))
+}
+
+# Identifica o executável instalado (caminho, tamanho, data): instalar por cima muda e encerra a espera na hora.
+function Get-NextecClientFingerprint {
+  try { $cliente = ClienteInstalado } catch { return '' }
+  if (-not $cliente -or -not $cliente.ExePath) { return '' }
+  try {
+    $item = Get-Item -LiteralPath $cliente.ExePath -ErrorAction Stop
+    return ('{0}|{1}|{2}' -f $item.FullName.ToLowerInvariant(), $item.Length, $item.LastWriteTimeUtc.Ticks)
+  } catch { return '' }
+}
+
 function Assert-NextecPasswordApplied {
   param([Parameter(Mandatory)]$Result)
+  Assert-NextecClientSettingsUnlocked -Output ([string]$Result.Output) -Comando '--password'
 
   # Contrato confirmado no upstream RustDesk 1.5.0: sucesso IPC imprime Done!;
   # builds sem esse contrato precisam ser verificados antes de serem declarados compatíveis.
@@ -250,6 +343,34 @@ function Get-NextecPainelConfigurado {
   return $Padrao
 }
 
+# Nome do app instalado (AppName do marcador: valor AppName em HKLM\SOFTWARE\Nextec\Agente ou nextec-marker.json).
+# O painel monta o link de conexao desta maquina com ele (o RustDesk registra o protocolo com o nome do app em
+# minusculas). Nenhum nome e fixo aqui: sem marcador valido devolve '' e o painel usa o protocolo global.
+function Get-NextecAppName {
+  [CmdletBinding()]
+  param(
+    [string]$Root = (Join-Path $env:ProgramData 'Nextec\Acesso'),
+    [string]$RegistryKey = 'HKLM:\SOFTWARE\Nextec\Agente'
+  )
+  try {
+    $reg = Get-ItemProperty -LiteralPath $RegistryKey -ErrorAction Stop
+    $nome = ([string]$reg.AppName).Trim()
+    if ($nome -cmatch '^[A-Za-z0-9-]{1,64}$') { return $nome }
+  } catch { }
+  try {
+    if ([string]::IsNullOrWhiteSpace($Root)) { return '' }
+    $arquivo = Join-Path $Root 'nextec-marker.json'
+    if ((Test-Path -LiteralPath $arquivo -PathType Leaf) -and (Get-Item -LiteralPath $arquivo).Length -le 4096) {
+      $valor = [IO.File]::ReadAllText($arquivo, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF) | ConvertFrom-Json
+      foreach ($campo in 'AppName', 'app_name', 'app') {
+        $nome = ([string]$valor.$campo).Trim()
+        if ($nome -cmatch '^[A-Za-z0-9-]{1,64}$') { return $nome }
+      }
+    }
+  } catch { }
+  return ''
+}
+
 function Escrever([string]$msg) {
   if (-not (Test-Path $PastaDados)) { New-Item -ItemType Directory -Path $PastaDados -Force | Out-Null }
   if ((Test-Path $Log) -and (Get-Item $Log).Length -gt 1MB) { Move-Item $Log "$Log.antigo" -Force }
@@ -292,7 +413,10 @@ function Register-NextecAuthFailure {
 }
 
 # Resultado de um ciclo que falhou: so 401 conta, e so se for seguido de outros 401. Qualquer outra falha (503, rede,
-# timeout) interrompe a sequencia e zera a contagem. Devolve $true quando a credencial foi aposentada.
+# timeout) interrompe a sequencia e zera a contagem. 429 nao diz nada sobre a credencial (o painel so segurou a consulta,
+# por falhas do IP ou por excesso de chamadas): a contagem fica como esta, sem somar nem zerar, para a aposentadoria de uma
+# credencial morta nao ficar adiada para sempre quando varias maquinas do mesmo IP estao na mesma situacao.
+# Devolve $true quando a credencial foi aposentada.
 function Update-NextecAuthFailures {
   param(
     [int]$Status,
@@ -301,6 +425,7 @@ function Update-NextecAuthFailures {
     [Parameter(Mandatory)][string]$DataRoot
   )
   if ($Status -eq 401) { return (Register-NextecAuthFailure -CounterPath $CounterPath -ConfigPath $ConfigPath -DataRoot $DataRoot) }
+  if ($Status -eq 429) { return $false }
   Remove-Item -LiteralPath $CounterPath -Force -ErrorAction SilentlyContinue
   return $false
 }
@@ -362,6 +487,8 @@ function ProtegerPastaAgente {
     $Config,
     $Log,
     "$Log.antigo",
+    (Join-Path $PastaDados 'agente-senha.bloqueio.json'),
+    (Join-Path $PastaDados 'agente-senha.ultimo-erro'),
     (Join-Path $PastaDados 'Agente-Senha-Nextec.ps1')
   )
   foreach ($path in $managedFiles) {
@@ -439,9 +566,11 @@ function SenhaForte {
 function Opcao([string]$chave, [string]$valor) {
   if ($Simular) { Escrever "[simulação] --option $chave $valor"; return }
   $consulta = InvocarRustDesk -Argumentos @('--option', $chave)
+  Assert-NextecClientSettingsUnlocked -Output ([string]$consulta.Output) -Comando "--option $chave"
   if ($consulta.ExitCode -ne 0) { throw "O RustDesk não conseguiu consultar '$chave' (código $($consulta.ExitCode)): $($consulta.Output)" }
   if ($consulta.Output -ne $valor) {
     $alteracao = InvocarRustDesk -Argumentos @('--option', $chave, $valor)
+    Assert-NextecClientSettingsUnlocked -Output ([string]$alteracao.Output) -Comando "--option $chave"
     if ($alteracao.ExitCode -ne 0) { throw "O RustDesk não conseguiu aplicar '$chave' (código $($alteracao.ExitCode)): $($alteracao.Output)" }
     Escrever "Opção $chave = $valor"
   }
@@ -464,8 +593,12 @@ function Set-NextecStateValue([psobject]$State, [string]$Name, $Value) {
 }
 
 function Confirm-NextecOperation([psobject]$Cfg, [psobject]$Operation, [string]$Token) {
-  $result = Chamar '/api/nextec/agent/confirm' @{
-    id = $Cfg.id; token = $Token; operation_id = $Operation.operation_id; pending_version = [int]$Operation.pending_version
+  # A confirmacao e idempotente no painel (mesmo operation_id e versao): repetir na mesma execucao, depois de uma falha de
+  # rede, resolve inclusive o caso em que o painel gravou e a resposta se perdeu.
+  $result = Invoke-NextecTransientRetry {
+    Chamar '/api/nextec/agent/confirm' @{
+      id = $Cfg.id; token = $Token; operation_id = $Operation.operation_id; pending_version = [int]$Operation.pending_version
+    }
   }
   if (-not $result.ok -or [int]$result.active_version -ne [int]$Operation.pending_version) {
     throw 'confirmation_failed: o painel nao confirmou a versao esperada.'
@@ -476,16 +609,38 @@ function Confirm-NextecOperation([psobject]$Cfg, [psobject]$Operation, [string]$
   Save-NextecAgentState $Cfg
 }
 
-function Invoke-NextecPasswordCycle([psobject]$Cfg) {
+# Aplica a senha no cliente. Repete na mesma execucao quando o cliente recusa (servico ainda subindo logo apos a
+# instalacao); so e chamada depois de o painel aceitar a proposta, e aplicar duas vezes a mesma senha e inofensivo.
+# Timeout do cliente (60 s) nao e repetido.
+function Invoke-NextecApplyPassword([string]$Password) {
+  Invoke-NextecTransientRetry -Retryable { param($e) ([string]$e.Message) -like 'password_apply_failed*' } -Action {
+    Assert-NextecPasswordApplied -Result (InvocarRustDesk -Argumentos @('--password', $Password))
+  }
+}
+
+# -SemCliente: o sync com o painel continua (presença), mas nada é pedido ao cliente (espera de client_settings_locked).
+function Invoke-NextecPasswordCycle([psobject]$Cfg, [switch]$SemCliente) {
+  $script:NextecClienteAdiado = $false
   $token = Revelar $Cfg.token
-  $state = Chamar '/api/nextec/agent/sync' @{id=$Cfg.id;token=$token;capabilities=@('transaction_v1')}
+  # Campos aditivos (painel antigo ignora): interval_seconds, para o painel calcular a janela de "ativo" com o ritmo real
+  # deste agente; app_name, so com marcador valido (sem ele o painel usa o protocolo global).
+  $corpoSync = @{id=$Cfg.id;token=$token;capabilities=@('transaction_v1');interval_seconds=(Get-NextecSyncIntervalSeconds)}
+  $nomeApp = Get-NextecAppName -Root $PastaDados
+  if ($nomeApp) { $corpoSync.app_name = $nomeApp }
+  # last_error (0035): codigo estavel da ultima rodada que falhou (ex.: client_settings_locked). Sem o campo, o painel
+  # entende que a ultima rodada nao falhou e limpa o aviso.
+  if ($PastaDados) {
+    $ultimoErro = Get-NextecLastErrorCode -Path (Join-Path $PastaDados 'agente-senha.ultimo-erro')
+    if ($ultimoErro) { $corpoSync.last_error = $ultimoErro }
+  }
+  $state = Chamar '/api/nextec/agent/sync' $corpoSync
   if ($state.pending_approval -and -not $state.managed) {
     # Inscricao global: a maquina ja esta no painel, mas ainda sem atribuicao. Nunca rotaciona.
     if ($Cfg.enrollment_state -ne 'pending_approval') {
       Set-NextecStateValue $Cfg 'enrollment_state' 'pending_approval'
       Save-NextecAgentState $Cfg
     }
-    Escrever 'Aguardando atribuicao no painel; nenhuma senha foi aplicada.'
+    Write-NextecIdleLog 'Aguardando atribuicao no painel; nenhuma senha foi aplicada.'
     return
   }
   if ($Cfg.enrollment_state) {
@@ -516,12 +671,13 @@ function Invoke-NextecPasswordCycle([psobject]$Cfg) {
           $Cfg.applied_pending_version -eq $operation.pending_version) {
         Confirm-NextecOperation $Cfg $operation $token
         Escrever 'Operacao previamente aplicada reconciliada com o painel.'
-      } else { Escrever 'Sem regra ativa; nenhuma senha foi aplicada.' }
+      } else { Write-NextecIdleLog 'Sem regra ativa; nenhuma senha foi aplicada.' }
       return
     }
+    if ($SemCliente) { $script:NextecClienteAdiado = $true; return }
     Opcao 'approve-mode' $state.approve_mode
     Opcao 'verification-method' $state.verification_method
-    if (-not $state.rotate) { Escrever 'Sincronizacao concluida; nenhuma troca necessaria.'; return }
+    if (-not $state.rotate) { Write-NextecIdleLog 'Sincronizacao concluida; nenhuma troca necessaria.'; return }
     if (-not $operation) { throw 'invalid_operation: rotacao sem identificador de operacao.' }
 
     $password = [string]$operation.pending_password
@@ -535,13 +691,16 @@ function Invoke-NextecPasswordCycle([psobject]$Cfg) {
     Set-NextecStateValue $Cfg 'pending_password' (Proteger $password)
     Save-NextecAgentState $Cfg
     if (-not $operation.pending_password) {
-      $proposed = Chamar '/api/nextec/agent/password' @{
-        id=$Cfg.id;token=$token;operation_id=$operation.operation_id;pending_version=[int]$operation.pending_version;password=$password
+      # Idempotente no painel (mesma operacao, versao e senha): falha transitoria repete na mesma execucao.
+      $proposed = Invoke-NextecTransientRetry {
+        Chamar '/api/nextec/agent/password' @{
+          id=$Cfg.id;token=$token;operation_id=$operation.operation_id;pending_version=[int]$operation.pending_version;password=$password
+        }
       }
       if (-not $proposed.ok -or $proposed.operation_id -ne $operation.operation_id -or [int]$proposed.pending_version -ne [int]$operation.pending_version) { throw 'proposal_failed: o painel nao confirmou a proposta.' }
     }
     if ($Simular -and -not $Exe) { Escrever '[simulacao] senha aplicada' }
-    else { Assert-NextecPasswordApplied -Result (InvocarRustDesk -Argumentos @('--password',$password)) }
+    else { Invoke-NextecApplyPassword $password }
     Set-NextecStateValue $Cfg 'applied_operation_id' $operation.operation_id
     Set-NextecStateValue $Cfg 'applied_pending_version' ([int]$operation.pending_version)
     Save-NextecAgentState $Cfg
@@ -551,6 +710,7 @@ function Invoke-NextecPasswordCycle([psobject]$Cfg) {
   }
   # API anterior: manter a compatibilidade somente enquanto este dispositivo nao negociou v1.
   if (-not $state.managed) { Escrever 'Sem regra ativa; aguardando politica.'; return }
+  if ($SemCliente) { $script:NextecClienteAdiado = $true; return }
   Opcao 'approve-mode' $state.approve_mode
   Opcao 'verification-method' $state.verification_method
   if (-not $state.rotate) { return }
@@ -574,9 +734,80 @@ function Register-NextecPasswordTask {
   $powershellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
   $argument = "-NoProfile -ExecutionPolicy Bypass -File `"$destination`" -Executar"
   $action = New-ScheduledTaskAction -Execute $powershellExe -Argument $argument
-  $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration (New-TimeSpan -Days 3650)
+  $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (Get-NextecPasswordTaskInterval) -RepetitionDuration (New-TimeSpan -Days 3650)
   $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 4) -MultipleInstances IgnoreNew
   Register-ScheduledTask -TaskName $Tarefa -Action $action -Trigger $trigger -Settings $settings -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
+}
+
+# Dispara a tarefa de senha agora (sem esperar a repeticao): usado depois de cadastrar, registrar ou reparar a tarefa.
+# Nao duplica: se a tarefa ja esta em execucao, nada e feito (o Agendador tambem usa IgnoreNew). Nunca lanca: uma tarefa
+# que nao pode ser iniciada agora roda na proxima repeticao. Devolve $true somente quando pediu a execucao.
+function Start-NextecPasswordTaskNow {
+  try {
+    $task = Get-ScheduledTask -TaskName $Tarefa -ErrorAction Stop
+    if ([string]$task.State -in @('Running', 'Disabled')) { return $false }
+    Start-ScheduledTask -TaskName $Tarefa -ErrorAction Stop
+    return $true
+  } catch {
+    Escrever "Aviso: a tarefa de senha nao foi iniciada agora ($($_.Exception.Message)); ela roda na proxima repeticao."
+    return $false
+  }
+}
+
+# Registra (ou repara) a tarefa de senha e ja a executa. E o unico caminho de registro do coordenador e do cadastro por
+# autorizacao/inscricao: toda maquina cadastrada sincroniza na hora, sem esperar o proximo minuto.
+function Register-NextecPasswordTaskAndStart {
+  param([Parameter(Mandatory)][string]$Source)
+  Register-NextecPasswordTask -Source $Source
+  [void](Start-NextecPasswordTaskNow)
+}
+
+# Trava de execucao unica: duas execucoes (tarefa + manual, ou o disparo imediato junto da repeticao) nunca trocam a
+# senha ao mesmo tempo. Arquivo aberto sem compartilhamento; o sistema o libera sozinho se o processo morrer.
+function Enter-NextecAgentLock {
+  param([Parameter(Mandatory)][string]$Path)
+  Assert-NextecNoReparsePoints -Path $Path
+  try {
+    return [IO.File]::Open($Path, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+  } catch [IO.IOException] { return $null }
+}
+
+# Linha repetida a cada ciclo (nada a trocar, aguardando atribuicao, a mesma falha de rede): com uma execucao por minuto
+# a mesma frase nao pode inundar o log. A mensagem e gravada quando muda e, igual, no maximo uma vez por hora.
+# O marcador guarda so a ultima mensagem (sem segredos: o log nunca recebe senha nem token).
+function Write-NextecIdleLog {
+  param([Parameter(Mandatory)][string]$Message)
+  if (-not $PastaDados) { Escrever $Message; return }
+  $marker = Join-Path $PastaDados 'agente-senha.ocioso'
+  try {
+    if (Test-Path -LiteralPath $marker -PathType Leaf) {
+      $age = [DateTime]::UtcNow - (Get-Item -LiteralPath $marker -Force).LastWriteTimeUtc
+      $last = [IO.File]::ReadAllText($marker, [Text.Encoding]::UTF8)
+      if ($last -ceq $Message -and $age -ge [TimeSpan]::Zero -and $age -lt [TimeSpan]::FromHours(1)) { return }
+    }
+  } catch { }
+  Escrever $Message
+  try { [IO.File]::WriteAllText($marker, $Message, [Text.UTF8Encoding]::new($false)) } catch { }
+}
+
+# Falha de rede ou do servidor no meio da transacao (propor, aplicar, confirmar): tenta de novo na MESMA execucao, em vez
+# de esperar a proxima rodada. 401, 403 e 409 nunca sao repetidos (credencial, aprovacao e conflito pedem decisao).
+function Get-NextecRetryDelays { return @(2, 5) }
+function Wait-NextecRetry([int]$Seconds) { if ($Seconds -gt 0) { Start-Sleep -Seconds $Seconds } }
+function Test-NextecTransientFailure($Exception) {
+  $status = Get-NextecHttpStatus $Exception
+  return ($status -eq 0 -or $status -eq 408 -or $status -eq 429 -or $status -ge 500)
+}
+function Invoke-NextecTransientRetry {
+  param([Parameter(Mandatory)][scriptblock]$Action, [scriptblock]$Retryable = { param($e) Test-NextecTransientFailure $e })
+  $delays = @(Get-NextecRetryDelays)
+  for ($attempt = 0; ; $attempt++) {
+    try { return (& $Action) }
+    catch {
+      if ($attempt -ge $delays.Count -or -not (& $Retryable $_.Exception)) { throw }
+      Wait-NextecRetry ([int]$delays[$attempt])
+    }
+  }
 }
 
 if ($Registrar) {
@@ -588,8 +819,7 @@ if ($Registrar) {
   if (-not (ConvertTo-NextecPainelUrl ([string]$cfg.painel)) -or -not $cfg.token) { throw 'invalid_agent_config' }
   if ((MeuId) -ne $cfg.id) { throw 'identity_conflict' }
   Revelar $cfg.token | Out-Null
-  Register-NextecPasswordTask -Source $PSCommandPath
-  Start-ScheduledTask -TaskName $Tarefa
+  Register-NextecPasswordTaskAndStart -Source $PSCommandPath
   Escrever 'Tarefa de senha registrada; primeira sincronizacao iniciada.'
   return
 }
@@ -630,10 +860,10 @@ if ($Instalar) {
     $arg = "-NoProfile -ExecutionPolicy Bypass -File `"$copia`" -Executar"
     if ($Exe) { $arg += " -Exe `"$Exe`"" }
     $acao = New-ScheduledTaskAction -Execute $powershellExe -Argument $arg
-    $gatilho = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration (New-TimeSpan -Days 3650)
+    $gatilho = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (Get-NextecPasswordTaskInterval) -RepetitionDuration (New-TimeSpan -Days 3650)
     $conf = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 4) -MultipleInstances IgnoreNew
     Register-ScheduledTask -TaskName $Tarefa -Action $acao -Trigger $gatilho -Settings $conf -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
-    Escrever "Tarefa agendada criada: $Tarefa (a cada 5 minutos)"
+    Escrever "Tarefa agendada criada: $Tarefa (a cada $([int](Get-NextecPasswordTaskInterval).TotalMinutes) min)"
     $inicioExecucao = (Get-Date).AddSeconds(-2)
     Start-ScheduledTask -TaskName $Tarefa
     $limiteExecucao = (Get-Date).AddSeconds(45)
@@ -643,7 +873,7 @@ if ($Instalar) {
       $estadoExecucao = (Get-ScheduledTask -TaskName $Tarefa).State
     } while (($infoExecucao.LastRunTime -lt $inicioExecucao -or $estadoExecucao -eq 'Running') -and (Get-Date) -lt $limiteExecucao)
     if ($infoExecucao.LastRunTime -lt $inicioExecucao -or $estadoExecucao -eq 'Running') {
-      Escrever 'A primeira sincronização continua em andamento; a tarefa seguirá verificando a cada 5 minutos.'
+      Escrever "A primeira sincronização continua em andamento; a tarefa seguirá verificando a cada $([int](Get-NextecPasswordTaskInterval).TotalMinutes) min."
     } elseif ($infoExecucao.LastTaskResult -ne 0) {
       $erroExecucao = Get-Content $Log -Tail 5 -ErrorAction SilentlyContinue | Where-Object { $_ -match 'ERRO:' } | Select-Object -Last 1
       throw "A primeira sincronização falhou (código $($infoExecucao.LastTaskResult)). $erroExecucao Consulte '$Log'."
@@ -659,6 +889,9 @@ if ($Instalar) {
 # no log e, se for 401, conta para a aposentadoria da credencial (3 seguidos).
 function Invoke-NextecAgentExecute {
   $falhas = Join-Path $PastaDados 'agente-senha.falhas'
+  $espera = Join-Path $PastaDados 'agente-senha.bloqueio.json'
+  $ultimoErro = Join-Path $PastaDados 'agente-senha.ultimo-erro'
+  $impressao = ''
   try {
     $cfg = Get-Content $Config -Raw | ConvertFrom-Json
     # troca de dominio: vale o painel configurado hoje; sem arquivo, o gravado no cadastro (validado)
@@ -678,11 +911,21 @@ function Invoke-NextecAgentExecute {
     if ($idServico -ne $meuId) {
       throw "O agente está vinculado ao ID $meuId, mas o serviço RustDesk atende o ID $idServico. A execução foi interrompida para não trocar a senha da máquina errada. Remova o agente antigo no painel e cadastre novamente para vincular o ID do serviço."
     }
-    Invoke-NextecPasswordCycle $cfg | Out-Null
+    $impressao = Get-NextecClientFingerprint
+    $emEspera = Test-NextecSettingsLockedWait -Path $espera -Fingerprint $impressao
+    Invoke-NextecPasswordCycle $cfg -SemCliente:$emEspera | Out-Null
     Remove-Item -LiteralPath $falhas -Force -ErrorAction SilentlyContinue
+    # Em espera: o painel recebeu o sync, mas o cliente continua bloqueado; sem nova linha no log a cada rodada.
+    if ($emEspera -and $script:NextecClienteAdiado) { return $false }
+    Remove-Item -LiteralPath $ultimoErro -Force -ErrorAction SilentlyContinue
     return $true
   } catch {
-    Escrever "ERRO: $($_.Exception.Message)"
+    Write-NextecIdleLog "ERRO: $($_.Exception.Message)"
+    try { Set-NextecLastErrorCode -Path $ultimoErro -Message ([string]$_.Exception.Message) } catch { }
+    if ($_.Exception.Message -like 'client_settings_locked:*') {
+      try { Set-NextecSettingsLockedWait -Path $espera -Fingerprint $impressao } catch { }
+      Escrever "O app foi gerado com 'Bloquear configurações'; gere o instalador de novo com a versão atual do gerador e instale por cima. Nova tentativa em 6 h ou logo após a reinstalação."
+    }
     if (Update-NextecAuthFailures -Status (Get-NextecHttpStatus $_.Exception) -CounterPath $falhas -ConfigPath $Config -DataRoot $PastaDados) {
       Escrever 'O painel recusou a credencial deste agente 3 vezes seguidas (401). Ela foi guardada em agente-senha.json.anterior e o cadastro sera refeito automaticamente.'
     }
@@ -690,11 +933,22 @@ function Invoke-NextecAgentExecute {
   }
 }
 
+# Uma execucao por vez: se outra (repeticao, disparo imediato ou execucao manual) esta em andamento, esta devolve 'busy'
+# sem fazer nada e sem erro. 'ok' = ciclo concluido; 'failed' = ciclo com erro (o chamador sai com codigo 1).
+function Invoke-NextecAgentExecuteExclusive {
+  $trava = Enter-NextecAgentLock -Path (Join-Path $PastaDados 'agente-senha.lock')
+  if (-not $trava) { return 'busy' }
+  try {
+    if (Invoke-NextecAgentExecute) { return 'ok' }
+    return 'failed'
+  } finally { $trava.Dispose() }
+}
+
 if ($Executar) {
   ProtegerPastaAgente
   # Sem credencial: o coordenador ainda vai cadastrar (ou acabou de aposentar a antiga). Nada a fazer, sem erro.
   if (-not (Test-Path -LiteralPath $Config -PathType Leaf)) { return }
-  if (-not (Invoke-NextecAgentExecute)) { exit 1 }
+  if ((Invoke-NextecAgentExecuteExclusive) -eq 'failed') { exit 1 }
   return
 }
 

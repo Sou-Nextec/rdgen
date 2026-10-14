@@ -1,11 +1,20 @@
 # Gerador Nextec
 
-## 2.1.0
+## 2.3.0
 
 - Nome do app livre: o agente (Coordenar/Provisionar/Agente-Senha, atualizador, registro) entra pelo flag `nx_agent` do build (ligado por padrão, desligado só no suporte avulso), não mais pelo sufixo do nome. Substitui a regra por sufixo do #40 em MSI, EXE e DEB.
 - Marcador `nextec-marker.json` `{v,app,upgrade_code}` e registro `HKLM\SOFTWARE\Nextec\Agente` `{InstallDir,AppName}`.
 - Linux: atualizador e coordenador descobrem o cliente sem nome fixo: marcador `nextec-marker.json`, serviço systemd (nome ou ExecStart) e varredura limitada; falha explícita com o que foi procurado, nunca ID vazio.
 - Painel configurável: sem domínio fixo no MSI nem nos scripts Linux; vem do build (`enroll_panel`/`inscricao.json`), só https.
+- A chave de inscrição automática (2.2.0) continua alimentando o `inscricao.json` e o marcador.
+
+## 2.2.0
+
+- A chave de inscrição agora é obtida automaticamente: a cada build o gerador a busca no painel pela rede interna (`http://rustdesk:21114/api/nextec/gen/enroll-key`, timeout de 3 s, segredo compartilhado `SH_SECRET`). Girar a chave no painel não exige mexer na stack nem no Portainer.
+- `NX_ENROLL_KEY` virou override opcional, usado só quando a busca falha; `NX_PANEL_INTERNAL_URL` ajusta (ou, vazio, desliga) a busca. Nem a chave nem o segredo são gravados em banco, modelos ou logs.
+- Requer o painel 2.11.8 (patch `0033-gen-enroll-key.patch`). Testes com painel falso: sucesso, rede falha, segredo errado, chave malformada e fallback.
+
+## 2.1.0
 
 - Scripts do agente ressincronizados com a master do painel (a81ec60, PR #77): Coordenar com `-ArquivoAutorizacao` para o `Ativar-Nextec-<ID>.cmd`; inclui a correção do Replace nulo (#73).
 

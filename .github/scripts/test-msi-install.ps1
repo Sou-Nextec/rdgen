@@ -4,7 +4,10 @@ param(
     [string]$AgentSha256 = '',
     # Quando o MSI foi construido com a chave de inscricao de teste, exige o arquivo instalado e o seu conteudo.
     [string]$EnrollmentKey = '',
-    [string]$EnrollmentPanel = ''
+    [string]$EnrollmentPanel = '',
+    # Com um segundo MSI (versao seguinte do MESMO app), testa a atualizacao por cima: ID, credencial, servico e tarefas.
+    [string]$UpgradeMsiPath = '',
+    [string]$UpgradeVersion = ''
 )
 $ErrorActionPreference = 'Stop'
 # Run only on disposable GitHub Windows runners, never on a user's computer.
@@ -13,6 +16,7 @@ $msi = (Resolve-Path $MsiPath).Path
 $log = Join-Path $env:RUNNER_TEMP 'nextec-real-install.log'
 $uninstallLog = Join-Path $env:RUNNER_TEMP 'nextec-real-uninstall.log'
 $agentPath = $null
+$script:uninstallTarget = $msi
 
 function Get-NextecAclEntries {
     param([Security.AccessControl.FileSecurity]$Acl)
@@ -269,9 +273,45 @@ try {
     $p = Start-Process msiexec.exe -ArgumentList "/fa `"$msi`" /qn /norestart /l*v `"$repairLog`"" -Wait -PassThru -WindowStyle Hidden
     if ($p.ExitCode -notin @(0,3010)) { throw "Repair failed: $($p.ExitCode)" }
     Write-Output 'PASS: real install/repair, SYSTEM updater task, inert password agent payload/hash/ACL, version and restricted updater ACL'
+
+    if ($UpgradeMsiPath) {
+        # Atualizacao por cima (o que o atualizador faz na frota): mesma identidade, mesma credencial, um servico, tres tarefas.
+        $upgrade = (Resolve-Path $UpgradeMsiPath).Path
+        $exeNow = [regex]::Match([string]$service[0].PathName, '^\s*"([^"]+)"').Groups[1].Value
+        $idBefore = ((& $exeNow --get-id 2>&1 | Out-String).Trim() -split "`r?`n")[-1]
+        if ($idBefore -notmatch '^\d{6,}$') { throw "Could not read the RustDesk ID before the upgrade: $idBefore" }
+        $credFile = Join-Path $dataRoot 'agente-senha.json'
+        $credBefore = if (Test-Path -LiteralPath $credFile) { (Get-FileHash -LiteralPath $credFile -Algorithm SHA256).Hash } else { '' }
+        $upgradeLog = Join-Path $env:RUNNER_TEMP 'nextec-real-upgrade.log'
+        $p = Start-Process msiexec.exe -ArgumentList "/i `"$upgrade`" /qn /norestart INSTALLPRINTER=0 /l*v `"$upgradeLog`"" -Wait -PassThru -WindowStyle Hidden
+        if ($p.ExitCode -notin @(0,3010)) {
+            Select-String -Path $upgradeLog -Pattern 'Return value 3|Nextec\.|1722|Error' -Context 2,4 | Select-Object -Last 10
+            throw "Upgrade over the installed version failed: $($p.ExitCode)"
+        }
+        $script:uninstallTarget = $upgrade
+        $after = Get-ItemProperty 'HKLM:\SOFTWARE\Nextec\Acesso'
+        if ($UpgradeVersion -and $after.Versao -ne $UpgradeVersion) { throw "Upgrade did not record version $UpgradeVersion (found $($after.Versao))" }
+        $servicesAfter = @(Get-CimInstance -ClassName Win32_Service | Where-Object { [string]$_.PathName -match '--service' -and [string]$_.PathName -like "*$installDir*" })
+        if ($servicesAfter.Count -ne 1) { throw "Upgrade left $($servicesAfter.Count) RustDesk services in $installDir" }
+        if ($servicesAfter[0].State -ne 'Running') { Start-Service -Name $servicesAfter[0].Name; Start-Sleep -Seconds 5 }
+        $exeAfter = [regex]::Match([string]$servicesAfter[0].PathName, '^\s*"([^"]+)"').Groups[1].Value
+        $idAfter = ((& $exeAfter --get-id 2>&1 | Out-String).Trim() -split "`r?`n")[-1]
+        if ($idAfter -ne $idBefore) { throw "Upgrade changed the RustDesk ID ($idBefore -> $idAfter)" }
+        if ($credBefore) {
+            if (!(Test-Path -LiteralPath $credFile)) { throw 'Upgrade removed the agent credential' }
+            if ((Get-FileHash -LiteralPath $credFile -Algorithm SHA256).Hash -ne $credBefore) { throw 'Upgrade changed the agent credential' }
+        }
+        foreach ($taskName in @('Nextec Acesso - Atualizacao', 'Nextec Acesso - Cadastro de agente')) {
+            if (@(Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue).Count -ne 1) { throw "Upgrade left a wrong number of '$taskName' tasks" }
+        }
+        $agentsAfter = @(Get-ChildItem -LiteralPath $env:ProgramFiles -Filter 'Agente-Senha-Nextec.ps1' -File -Recurse -ErrorAction SilentlyContinue)
+        if ($agentsAfter.Count -ne 1) { throw "Upgrade left $($agentsAfter.Count) password agent payloads" }
+        if ($AgentSha256 -and (Get-FileHash -LiteralPath $agentsAfter[0].FullName -Algorithm SHA256).Hash -ne $AgentSha256) { throw 'Upgraded password agent differs from the reviewed package source' }
+        Write-Output "PASS: upgrade over the installed version kept ID $idBefore, the agent credential, one service and the tasks (version $($after.Versao))"
+    }
 } finally {
     Stop-NextecFakePanel -Panel $script:fakePanel
-    $p = Start-Process msiexec.exe -ArgumentList "/x `"$msi`" /qn /norestart /l*v `"$uninstallLog`"" -Wait -PassThru -WindowStyle Hidden
+    $p = Start-Process msiexec.exe -ArgumentList "/x `"$($script:uninstallTarget)`" /qn /norestart /l*v `"$uninstallLog`"" -Wait -PassThru -WindowStyle Hidden
     if ($p.ExitCode -notin @(0,3010)) { throw "Uninstall failed: $($p.ExitCode)" }
     foreach ($taskName in @('Nextec Acesso - Atualizacao','Nextec Acesso - Cadastro de agente','Nextec Acesso - Senha')) {
         if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) { throw "Uninstall left scheduled task: $taskName" }

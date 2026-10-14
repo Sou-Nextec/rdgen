@@ -1,5 +1,9 @@
 # Gerador Nextec
 
+## 2.4.1
+
+- **Teste de atualização por cima no CI:** o fixture constrói a versão 2.0.7 e a 2.0.8 do mesmo app; o teste instala a primeira, deixa o agente se inscrever e então instala a segunda por cima, como o atualizador faz na frota. Exige: mesmo ID do RustDesk, mesma credencial do agente (hash do arquivo), um único serviço, uma tarefa de cada, um só pacote do agente e a versão nova registrada.
+
 ## 2.4.0
 
 Instalador por cliente e instalação sem cliques extras.

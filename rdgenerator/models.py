@@ -10,6 +10,8 @@ class GithubRun(models.Model):
     # Safe catalog metadata only. Build inputs and credentials stay out of this model.
     created_by = models.EmailField(max_length=254, blank=True, default='', db_index=True)
     client_name = models.CharField(max_length=120, blank=True, default='')
+    # Preenchido quando o painel baixa o MSI para Atualizações: excluir depois disso exige confirmação explícita.
+    imported_at = models.DateTimeField(null=True, blank=True)
     profile = models.CharField(max_length=32, blank=True, default='', choices=[
         ('default', 'Padrão'), ('client', 'Cliente'), ('analysts', 'Analistas'),
     ])

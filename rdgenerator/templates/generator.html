@@ -9,494 +9,293 @@
     <link rel="icon" type="image/png" href="{% url 'get_artwork' 'favicon' %}">
     <link rel="apple-touch-icon" href="{% url 'get_artwork' 'favicon' %}">
     <style>
-        body {
-            font-family: 'Roboto', sans-serif;
-            background-color: #000;
-            color: #e0e0e0;
-            margin: 0;
-            padding: 20px;
-        }
-        .platform {
-            display: grid;
-            grid-template-columns: 1fr;
-            grid-gap: 20px;
-            margin: 0 auto;
-            padding: 20px;
-            max-width: 1200px;
-        }
-        .container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;  /* Adjust as needed */
-            grid-gap: 20px;
-            margin: 0 auto;  /* Center the container horizontally */
-            padding: 20px;
-            max-width: 1200px;
-        }
-        .column {
-            flex: 50%;
-        }
-        h1 {
-            color: #fff;
-            text-align: center;
-            grid-column: 1 / -1;
-        }
-        h2 {
-            color: #fff;
-            margin-top: 0;
-        }
-        .section {
-            background-color: #111;
-            border-radius: 8px;
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            flex: 50%;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            color: #bbb;
-        }
-        input[type="text"], input[type="password"], select, textarea {
-            width: 100%;
-            padding: 8px;
-            margin-bottom: 10px;
-            background-color: #222;
-            border: 1px solid #444;
-            border-radius: 4px;
-            color: #fff;
-        }
-        input[type="radio"], input[type="checkbox"] {
-            margin-right: 5px;
-        }
-        button {
-            background-color: #0077ff;
-            color: #fff;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.3s ease;
-        }
-        button:hover {
-            background-color: #0066cc;
-        }
-        .platform-icons {
-            display: flex;
-            justify-content: space-around;
-            margin-bottom: 20px;
-        }
-        .platform-icon {
-            font-size: 32px;
-            color: #bbb;
-            cursor: pointer;
-            transition: color 0.3s ease;
-        }
-        .platform-icon:hover, .platform-icon.active {
-            color: #2e52f7;
-        }
-        .text-64 {
-            font-size: 0.5em; 
-            font-weight: bold;
-            bottom: -0.2em; 
-            right: -0.2em;
-            position: absolute; 
-            color: white;
-            transform: translate(-50%, -50%);
-        }
-
-        .text-32 {
-            font-size: 0.5em;
-            font-weight: bold;
-            bottom: -0.2em;
-            right: -0.2em;
-            position: absolute;
-            color: white;
-            transform: translate(-50%, -50%);
-        }
-        .checkbox-group {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 10px;
-        }
-        .checkbox-group label {
-            display: flex;
-            align-items: center;
-        }
-        .preview-image {
-            max-width: 100%;
-            max-height: 100px;
-            margin-top: 10px;
-        }
-        .save-load-section-container { /* New container for fixed positioning */
-            position: fixed;
-            top: 20px; /* Adjust as needed */
-            left: 20px; /* Adjust as needed */
-            background-color: #111; /* Match your section background */
-            padding: 0px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            z-index: 100; /* Ensure it's above other content */
-        }
-        .save-load-section {
-            display: none; /* Initially hidden */
-        }
-        .error {
-            color: red;
-        }
-        .errorlist {
-            color: red;
-            display: flex; /* Enable flexbox for centering */
-            justify-content: center; /* Center horizontally */
-            align-items: center; /* Center vertically (if needed) */
-            list-style: none; /* Remove bullet points if it's a list */
-            padding: 0; /* Remove default padding */
-            margin: 10px auto; /* Center the list itself, add some top/bottom margin */
-            width: fit-content; /* Make the width fit the content */
-        }
-
-        .errorlist li {
-            margin: 5px; /* Add some spacing between list items */
-        }
-        @keyframes blink {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-        }
-
-        .help-text {
-            color: #ffd700;
-            font-style: italic;
-            animation: blink 2s infinite;
-            padding: 5px;
-            border-radius: 4px;
-            display: inline-block;
-            margin-left: 10px;
-        }
-
-        .password-requirement {
-            display: none; /* Hidden by default */
-            color: orange;
-            font-size: 0.9em;
-            margin-top: 5px;
-        }
-
-        .sponsor-button {
-            display: inline-flex;
-            align-items: center;
-            background: linear-gradient(135deg, #00457C 0%, #0079C1 100%);
-            color: white;
-            padding: 12px 28px;
-            border-radius: 50px;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 16px;
-            letter-spacing: 0.5px;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(0, 69, 124, 0.2);
-            border: 2px solid rgba(255, 255, 255, 0.1);
-            text-transform: uppercase;
-        }
-
-        .sponsor-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 69, 124, 0.3);
-            background: linear-gradient(135deg, #005AA7 0%, #0095EA 100%);
-            border-color: rgba(255, 255, 255, 0.2);
-        }
-
-        .sponsor-button i {
-            margin-right: 12px;
-            font-size: 20px;
-            background: white;
-            color: #00457C;
-            padding: 8px;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-        }
-
-        .sponsor-button:hover i {
-            transform: rotate(360deg);
-            color: #0095EA;
-        }
-        :root { color-scheme:light; --nx-navy:#0D0035; --nx-blue:#613CB3; --nx-cyan:#4230E6; --nx-ink:#1A1C1C; --nx-muted:#464556; --nx-line:#4230E6; --nx-bg:#F4F4F4; --nx-surface:#FFFFFF; --nx-field:#EEEEEE; --nx-border:#E2E2E2; --nx-divider:#F3F3F3; --nx-tint:#E9DDFF; --nx-radius-card:20px; --nx-radius-field:14px; --nx-radius-btn:12px; --nx-shadow-card:0 0 32px rgba(26,28,28,.06); }
+        :root { color-scheme:light; --nx-navy:#0D0035; --nx-blue:#613CB3; --nx-blue-hover:#513095; --nx-line:#4230E6; --nx-ink:#1A1C1C; --nx-muted:#4d4b5c; --nx-bg:#F4F4F4; --nx-surface:#FFFFFF; --nx-field:#EEEEEE; --nx-border:#D9D9DE; --nx-divider:#E8E8EC; --nx-tint:#EFE7FF; --nx-ok-bg:#E8F5EC; --nx-ok-ink:#17592B; --nx-warn-bg:#FFF5D6; --nx-warn-ink:#694700; --nx-err-bg:#FFF0F0; --nx-err-ink:#A12B32; --nx-err-border:#F1CACA; --nx-radius-card:16px; --nx-radius-field:12px; --nx-shadow:0 0 24px rgba(26,28,28,.06); }
+        html.dark { --nx-blue:#7a58d6; --nx-blue-hover:#8d6cea; --nx-line:#b7a9ff; --nx-ok-bg:#16301f; --nx-ok-ink:#9fe0b4; --nx-warn-bg:#3a3010; --nx-warn-ink:#f2d58a; --nx-err-bg:#3b1a1d; --nx-err-ink:#ffb4b8; --nx-err-border:#6b2c31; --nx-shadow:none; }
+        @media (prefers-color-scheme:dark) { html:not([data-embedded]):not(.light) { color-scheme:dark; --nx-bg:#131315; --nx-surface:#1c1c20; --nx-field:#27272b; --nx-border:#414148; --nx-divider:#35353b; --nx-ink:#e8e8ee; --nx-muted:#c8c5ce; --nx-navy:#e8e8ee; --nx-tint:#393044; --nx-blue:#7a58d6; --nx-blue-hover:#8d6cea; --nx-line:#b7a9ff; --nx-ok-bg:#16301f; --nx-ok-ink:#9fe0b4; --nx-warn-bg:#3a3010; --nx-warn-ink:#f2d58a; --nx-err-bg:#3b1a1d; --nx-err-ink:#ffb4b8; --nx-err-border:#6b2c31; --nx-shadow:none; } }
         *, *::before, *::after { box-sizing:border-box; }
-        body { background:#f4f4f4; color:var(--nx-ink); padding:0 0 36px; font-family:'Open Sans',sans-serif; }
-        h1 { margin:0; color:white; text-align:left; font-size:23px; }
-        h2 { color:var(--nx-navy); }
-        .section { background:var(--nx-surface); border:1px solid var(--nx-divider); border-radius:var(--nx-radius-card); box-shadow:var(--nx-shadow-card); color:var(--nx-ink); min-width:0; padding:22px; }
-        .section label, label { color:var(--nx-ink); font-weight:600; }
-        input[type="text"], input[type="password"], input[type="number"], input[type="url"], input[type="file"], select, textarea { background:var(--nx-field); color:var(--nx-ink); border:1px solid transparent; border-radius:var(--nx-radius-field); min-height:44px; max-width:100%; padding:10px 12px; font:inherit; transition:border-color .18s ease,background-color .18s ease,box-shadow .18s ease; }
-        input[type="text"]:hover, input[type="password"]:hover, input[type="number"]:hover, input[type="url"]:hover, select:hover, textarea:hover { background:#E8E8E8; }
-        input[readonly], input:disabled, select:disabled, textarea:disabled { background:#E8E8E8 !important; color:#646179 !important; cursor:not-allowed; }
-        :is(input,select,textarea,button,a,summary):focus-visible { outline:2px solid var(--nx-line); outline-offset:2px; }
-        input[readonly] { background:#E8E8E8 !important; color:#646179 !important; }
-        button { background:var(--nx-blue); color:#fff; font:inherit; font-weight:650; border-radius:var(--nx-radius-btn); min-height:42px; transition:background-color .18s ease,transform .18s ease,box-shadow .18s ease; }
-        button:hover { background:#513095; box-shadow:0 5px 14px rgba(97,60,179,.18); }
-        button:active { transform:translateY(1px); }
-        .help-text { color:var(--nx-muted); background:var(--nx-tint); border:1px solid #d4c4f4; animation:none; }
-        .save-load-section-container { position:static; width:min(1120px,calc(100% - 32px)); margin:18px auto; box-shadow:none; background:transparent; }
-        .save-load-section-container .section { padding:12px 16px; }
-        .save-load-section { display:flex; gap:8px; flex-wrap:wrap; }
-        .nx-header { background:var(--nx-navy); color:#fff; padding:24px max(24px,calc((100vw - 1120px)/2)) 20px; }
+        html { scroll-behavior:smooth; }
+        body { margin:0; padding:0 0 40px; background:var(--nx-bg); color:var(--nx-ink); font-family:'Open Sans',system-ui,sans-serif; font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased; overflow-x:hidden; }
+        h1, h2, h3 { margin:0; color:var(--nx-ink); font-weight:700; letter-spacing:-.01em; text-wrap:balance; }
+        a { color:var(--nx-line); }
         .skip-link { position:absolute; top:8px; left:8px; z-index:101; padding:10px 14px; transform:translateY(-160%); color:#fff; background:var(--nx-blue); border-radius:10px; }
         .skip-link:focus { transform:translateY(0); }
-        main { display:block; }
-        .nx-header p { margin:6px 0 0; color:#E9E4F4; font-size:14px; line-height:1.55; }
-        .nx-header h1 { font-family:'Open Sans',sans-serif; font-weight:700; letter-spacing:-.025em; font-size:24px; text-wrap:balance; }
-        .nx-header-line { display:flex; justify-content:space-between; align-items:center; gap:16px; }
-        .nx-version { border:1px solid #ffffff55; border-radius:8px; padding:6px 10px; color:#fff; font-size:12px; white-space:nowrap; }
-        .nx-nav { display:flex; gap:8px; margin-top:15px; }
-        .nx-nav a { color:#E9E4F4; padding:9px 12px; border-radius:10px; text-decoration:none; font-size:14px; transition:background-color .18s ease,color .18s ease; }
-        .nx-nav a.active,.nx-nav a:hover { color:#fff; background:#ffffff20; }
-        .nx-nav a:focus-visible { outline:3px solid #C9B8F2; outline-offset:2px; }
-        .platform,.container { width:min(1120px,calc(100% - 32px)); padding:0; }
-        .container { gap:18px; align-items:stretch; }
-        .platform { margin-top:20px; }
-        .platform > h2 { font-size:18px; margin:0 0 16px; color:var(--nx-navy); }
-        .field-help { margin:5px 0 14px; color:var(--nx-muted); font-size:13px; line-height:1.55; max-width:72ch; }
-        .field-help strong { color:var(--nx-ink); }
-        .key-row { display:flex; gap:8px; align-items:center; }
-        .key-row input { min-width:0; flex:1; }
-        .secondary-action { background:var(--nx-tint); color:var(--nx-navy); }
-        .secondary-action:hover { background:#DCCBFA; color:var(--nx-navy); }
-        .model-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
-        .model-actions select { flex:1; min-width:220px; margin:0; }
-        .model-actions button { white-space:nowrap; }
-        .section details { margin:10px 0; }
-        .section summary { cursor:pointer; font-weight:650; color:var(--nx-navy); padding:8px 0; }
-        .section details { padding:8px 0; border-top:1px solid var(--nx-divider); }
-        .notice { padding:12px 14px; border-radius:12px; background:var(--nx-tint); color:var(--nx-navy); font-size:13px; }
-        .platform-icons { justify-content:flex-start; gap:10px; margin:0 0 12px; }
-        .platform-icon { color:#646179; }
-        .platform-choice { display:inline-flex; align-items:center; justify-content:center; gap:9px; min-width:132px; padding:10px 14px; color:var(--nx-ink); background:var(--nx-field); border:1px solid var(--nx-border); border-radius:12px; cursor:pointer; }
-        .platform-choice:hover { color:var(--nx-navy); background:var(--nx-tint); border-color:#C8B5ED; }
-        .platform-choice.active { color:var(--nx-navy); background:var(--nx-tint); border-color:#BDA6E8; box-shadow:inset 0 0 0 1px #BDA6E8; }
-        .platform-choice i { font-size:19px; }
-        .platform-choice:focus-visible { outline:3px solid var(--nx-line); outline-offset:2px; }
-        .checkbox-group { grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px; }
-        .checkbox-group label { display:flex; align-items:flex-start; gap:8px; margin:0; padding:10px 12px; background:var(--nx-bg); border:1px solid var(--nx-divider); border-radius:12px; line-height:1.45; cursor:pointer; }
-        .checkbox-group input, input[type="checkbox"], input[type="radio"] { accent-color:var(--nx-blue); }
-        .error, .errorlist { color:#A12B32; }
-        .errorlist { max-width:1120px; padding:12px 16px; background:#FFF0F0; border:1px solid #F1CACA; border-radius:12px; }
-        .password-requirement { color:#694700; background:#FFF5D6; padding:10px 12px; border-radius:10px; line-height:1.5; }
-        .section h2 { font-family:'Open Sans',sans-serif; font-size:18px; letter-spacing:-.01em; color:var(--nx-navy); margin:0 0 16px; }
-        .platform .section { padding:22px; }
-        .platform .section > button[type="submit"] { width:100%; min-height:50px; font-size:16px; }
-        .platform .section > .field-help:last-child { margin-bottom:0; }
-        input[type="file"] { width:100%; padding:8px; }
-        input[type="file"]::file-selector-button { margin-right:10px; padding:8px 12px; color:var(--nx-navy); background:var(--nx-tint); border:0; border-radius:8px; font:inherit; font-weight:600; cursor:pointer; }
-        .preview-image { display:block; object-fit:contain; border-radius:10px; background:var(--nx-bg); padding:6px; }
-        @media (max-width:760px) { .container { grid-template-columns:1fr; } .save-load-section-container { width:calc(100% - 32px); } }
-        @media (max-width:560px) {
-            body { padding-bottom:24px; }
-            .nx-header-line { align-items:flex-start; flex-direction:column; gap:10px; }
-            .nx-header { padding:20px 16px 16px; }
-            .nx-header h1 { font-size:21px; }
-            .nx-nav { flex-wrap:wrap; }
-            .platform,.container,.save-load-section-container { width:calc(100% - 28px); }
-            .section,.platform .section { padding:18px; border-radius:16px; }
-            .model-actions { align-items:stretch; }
-            .model-actions select { flex-basis:100%; min-width:0; }
-            .model-actions button { flex:1 1 calc(50% - 8px); }
-            .key-row { align-items:stretch; }
-            .key-row button { flex:0 0 auto; }
-            .platform-choice { flex:1; min-width:0; }
-        }
-        @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; } }
-        /* Ajustes de consistência para campos, cartões e telas estreitas. */
-        body { overflow-x:hidden; line-height:1.5; -webkit-font-smoothing:antialiased; }
-        .container { grid-template-columns:repeat(2,minmax(0,1fr)); }
-        .container > .section, .platform > .section { min-width:0; }
-        .section br { display:none; }
-        .section > label { margin:14px 0 6px; line-height:1.45; }
-        input[type="text"], input[type="password"], input[type="number"], input[type="url"], select, textarea {
-            display:block; width:100%; min-width:0; margin:0 0 12px;
-        }
-        input[type="checkbox"], input[type="radio"] { display:inline-block; width:auto; min-height:0; margin:0 7px 0 0; padding:0; }
-        input[type="file"] { display:block; width:100%; min-width:0; min-height:0; margin:8px 0 12px; padding:8px; }
-        textarea { min-height:132px; resize:vertical; line-height:1.5; }
-        .visually-hidden {
-            position:absolute !important; width:1px !important; height:1px !important; padding:0 !important;
-            margin:-1px !important; overflow:hidden !important; clip:rect(0,0,0,0) !important;
-            white-space:nowrap !important; border:0 !important;
-        }
-        .platform-icons { display:flex; flex-wrap:wrap; }
-        .platform-choice { min-height:44px; }
-        .model-actions { min-width:0; }
-        .model-actions button { min-width:0; }
+        :is(input,select,textarea,button,a,summary):focus-visible { outline:3px solid var(--nx-line); outline-offset:2px; }
+
+        .nx-header { background:var(--nx-navy); color:#fff; padding:18px max(16px,calc((100vw - 880px)/2)) 0; }
+        html.dark .nx-header, html[data-embedded] .nx-header { background:var(--nx-surface); color:var(--nx-ink); border-bottom:1px solid var(--nx-divider); }
+        html.dark .nx-header h1 { color:var(--nx-ink); }
+        .nx-header h1 { color:#fff; font-size:22px; }
+        .nx-header-line { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+        html[data-embedded] .nx-header { padding-top:10px; }
+        html[data-embedded] .nx-header-line { display:none; }
+        .nx-version { border:1px solid currentColor; opacity:.8; border-radius:8px; padding:3px 9px; font-size:12px; white-space:nowrap; }
+        .nx-nav { display:flex; gap:4px; margin-top:12px; }
+        .nx-nav a { color:inherit; padding:10px 14px; border-radius:10px 10px 0 0; text-decoration:none; font-size:14px; font-weight:600; opacity:.8; border-bottom:3px solid transparent; }
+        .nx-nav a:hover { opacity:1; }
+        .nx-nav a.active { opacity:1; border-bottom-color:currentColor; }
+
+        main { width:min(880px,calc(100% - 32px)); margin:20px auto 0; display:grid; gap:16px; }
+        .card { background:var(--nx-surface); border:1px solid var(--nx-divider); border-radius:var(--nx-radius-card); box-shadow:var(--nx-shadow); padding:22px; min-width:0; }
+        .card > h2 { font-size:18px; }
+        .lead { margin:4px 0 18px; color:var(--nx-muted); font-size:14px; }
+        .fields { display:grid; gap:16px 18px; grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .fields > .full { grid-column:1 / -1; }
+        .field { min-width:0; }
+        .field > label, .legend { display:block; margin:0 0 6px; font-weight:600; font-size:14px; color:var(--nx-ink); }
+        .field > label .opt { font-weight:400; color:var(--nx-muted); }
+        .hint { margin:6px 0 0; color:var(--nx-muted); font-size:13px; line-height:1.5; }
+        .field-error { margin:6px 0 0; color:var(--nx-err-ink); font-size:13px; font-weight:600; }
+        .field.has-error input, .field.has-error select, .field.has-error textarea { border-color:var(--nx-err-ink); }
+        input[type="text"], input[type="password"], input[type="number"], input[type="url"], input[type="file"], select, textarea {
+            display:block; width:100%; max-width:100%; min-width:0; min-height:44px; margin:0; padding:10px 12px; font:inherit; color:var(--nx-ink);
+            background:var(--nx-field); border:1px solid var(--nx-border); border-radius:var(--nx-radius-field); }
+        textarea { min-height:84px; resize:vertical; }
+        input[readonly] { opacity:.75; cursor:not-allowed; }
+        input[type="checkbox"], input[type="radio"] { width:auto; min-height:0; margin:3px 8px 0 0; accent-color:var(--nx-blue); flex:none; }
+        input[type="file"]::file-selector-button { margin-right:10px; padding:7px 12px; color:var(--nx-ink); background:var(--nx-tint); border:0; border-radius:8px; font:inherit; font-weight:600; cursor:pointer; }
+        select { appearance:auto; }
+        .visually-hidden { position:absolute !important; width:1px !important; height:1px !important; padding:0 !important; margin:-1px !important; overflow:hidden !important; clip:rect(0,0,0,0) !important; white-space:nowrap !important; border:0 !important; }
+
+        button { font:inherit; font-weight:600; min-height:44px; padding:0 18px; border:0; border-radius:12px; cursor:pointer; color:#fff; background:var(--nx-blue); }
+        button:hover { background:var(--nx-blue-hover); }
+        button:disabled { opacity:.65; cursor:progress; }
+        button.secondary-action { color:var(--nx-ink); background:var(--nx-tint); }
+        button.secondary-action:hover { filter:brightness(.96); }
+        .platform-icons { display:flex; flex-wrap:wrap; gap:10px; }
+        .platform-choice { display:inline-flex; align-items:center; justify-content:center; gap:9px; flex:1 1 150px; min-height:48px; color:var(--nx-ink); background:var(--nx-field); border:1px solid var(--nx-border); }
+        .platform-choice:hover { background:var(--nx-tint); }
+        .platform-choice.active { background:var(--nx-tint); border-color:var(--nx-blue); box-shadow:inset 0 0 0 1px var(--nx-blue); }
+        .platform-choice i { font-size:18px; }
+
+        .applied { margin-top:20px; padding:14px 16px; border-radius:12px; background:var(--nx-ok-bg); color:var(--nx-ok-ink); font-size:14px; }
+        .applied strong { display:block; margin-bottom:2px; }
+        .applied ul { margin:6px 0 0; padding-left:18px; }
+        .applied.is-problem { background:var(--nx-warn-bg); color:var(--nx-warn-ink); }
+        .applied .problem { margin:8px 0 0; font-weight:600; }
+        .submit-row { margin-top:22px; display:grid; gap:8px; }
+        .submit-row button[type="submit"] { width:100%; min-height:52px; font-size:16px; }
+        .submit-note { margin:0; text-align:center; color:var(--nx-muted); font-size:13px; }
+        .status-live { min-height:20px; margin:0; text-align:center; color:var(--nx-ink); font-size:14px; font-weight:600; }
+
+        details.advanced { padding:0; }
+        details.advanced > summary { list-style:none; cursor:pointer; padding:18px 22px; display:flex; align-items:center; justify-content:space-between; gap:12px; font-weight:700; font-size:16px; min-height:56px; }
+        details.advanced > summary::-webkit-details-marker { display:none; }
+        details.advanced > summary small { display:block; margin-top:2px; font-weight:400; font-size:13px; color:var(--nx-muted); }
+        details.advanced > summary::after { content:"\25BE"; font-size:18px; color:var(--nx-muted); transition:transform .15s; }
+        details.advanced[open] > summary::after { transform:rotate(180deg); }
+        .adv-body { padding:0 22px 22px; display:grid; gap:20px; }
+        .adv-group { border-top:1px solid var(--nx-divider); padding-top:18px; min-width:0; }
+        .adv-group h3 { font-size:15px; }
+        .adv-group .lead { margin:2px 0 14px; font-size:13px; }
+        .checks { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:8px; }
+        .checks label { display:flex; align-items:flex-start; margin:0; padding:10px 12px; background:var(--nx-bg); border:1px solid var(--nx-divider); border-radius:12px; font-weight:400; font-size:14px; line-height:1.4; cursor:pointer; }
+        .checks.block { grid-template-columns:1fr; }
+        .key-row { display:flex; gap:8px; align-items:stretch; }
+        .key-row input { flex:1; }
+        .model-actions { display:flex; flex-wrap:wrap; gap:8px; }
         .model-actions select { flex:1 1 220px; }
-        .section .field-help { margin:8px 0 14px; }
-        .section .field-help:last-child { margin-bottom:0; }
-        .section details { color:var(--nx-muted); line-height:1.55; }
-        .notice { border:1px solid #D4C4F4; }
-        .errorlist { display:block; width:min(1120px,calc(100% - 32px)); margin:14px auto; }
-        @media (max-width:860px) { .container { grid-template-columns:1fr; } }
-        @media (max-width:560px) {
-            .platform,.container,.save-load-section-container { width:calc(100% - 28px); }
-            .section,.platform .section { padding:18px; }
-            .model-actions { align-items:stretch; }
-            .model-actions select { flex-basis:100%; }
-            .model-actions button { flex:1 1 calc(50% - 8px); white-space:normal; }
-            .key-row { align-items:stretch; }
-            .key-row button { flex:0 0 auto; }
-            .platform-choice { flex:1 1 140px; min-width:0; }
+        .password-requirement { display:none; margin:8px 0 0; padding:10px 12px; border-radius:10px; background:var(--nx-warn-bg); color:var(--nx-warn-ink); font-size:13px; }
+        .preview-image { display:block; object-fit:contain; border-radius:10px; background:var(--nx-bg); padding:6px; }
+        #icon-preview:not(:empty), #logo-preview:not(:empty), #privacy-preview:not(:empty) { margin-top:8px; }
+        .errorlist { margin:0; padding:14px 16px; background:var(--nx-err-bg); color:var(--nx-err-ink); border:1px solid var(--nx-err-border); border-radius:12px; }
+        .errorlist p { margin:0 0 6px; font-weight:700; }
+        .errorlist ul { margin:0; padding-left:20px; }
+        .error { color:var(--nx-err-ink); font-size:13px; font-weight:600; }
+        #loadWarnings { margin:0 0 12px; }
+        .about { font-size:13px; color:var(--nx-muted); }
+        .about summary { cursor:pointer; font-weight:600; color:var(--nx-ink); }
+        .about p { margin:6px 0 0; }
+        @media (max-width:640px) {
+            main { width:calc(100% - 24px); margin-top:14px; }
+            .card { padding:18px 16px; }
+            .fields { grid-template-columns:1fr; }
+            details.advanced > summary { padding:16px; }
+            .adv-body { padding:0 16px 18px; }
+            .key-row { flex-direction:column; }
+            .model-actions button { flex:1 1 calc(50% - 8px); }
         }
-      </style>
+        @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; animation-duration:.01ms !important; transition-duration:.01ms !important; } }
+    </style>
 </head>
 <body>
-    <a class="skip-link" href="#myForm">Pular para as configurações</a>
+    <a class="skip-link" href="#myForm">Pular para o formulário</a>
     <header class="nx-header">
         <div class="nx-header-line">
-            <div><h1>Gerador de clientes Nextec</h1><p>Configure o aplicativo e gere o instalador da plataforma escolhida.</p></div>
+            <h1>Gerador de clientes Nextec</h1>
             <span class="nx-version">Gerador {{ product_version }}</span>
         </div>
         <nav class="nx-nav" aria-label="Seções do gerador">
             <a class="active" href="./" aria-current="page">Gerar cliente</a>
             <a href="{{ branding_url }}">Identidade visual</a>
         </nav>
-        <details class="field-help"><summary>Ajuda: o que cada nome e imagem altera?</summary><p>O nome do arquivo identifica o download. O nome do aplicativo aparece no programa instalado e no atalho. Ícone, logo e tela de privacidade são aplicados ao cliente gerado; não mudam o painel. A versão 1.5.0 é a base do RustDesk, enquanto {{ product_version }} é a versão do gerador.</p></details>
-        <p class="field-help">Acesso ao gerador: Cloudflare Access e lista de pessoas autorizadas na implantação.{% if access_email %} Sua conta: {{ access_email }}.{% endif %}</p>
     </header>
     <main id="main-content">
-    <form id="myForm" action="generator" method="post" enctype="multipart/form-data">
+    {% if validation_errors %}
+        <div class="errorlist" role="alert">
+            <p>Revise os campos indicados antes de gerar.</p>
+            <ul>{% for error in validation_errors %}
+                <li><strong>{{ error.label }}:</strong> {{ error.message }}</li>
+            {% endfor %}</ul>
+        </div>
+    {% endif %}
+    <form id="myForm" action="generator" method="post" enctype="multipart/form-data" novalidate>
         {% csrf_token %}
-        <div class="save-load-section-container">
-            <div class="section">
-                <h2>Modelos de configuração</h2>
-                <p class="field-help">Salve um modelo neste servidor para sua conta ou importe um JSON. Senhas, chave pública, imagens e ajustes manuais não entram no modelo salvo.</p>
-                <div class="model-actions">
-                    <select id="savedModels" aria-label="Modelos salvos"><option value="">Selecione um modelo salvo</option></select>
-                    <button type="button" id="saveServerModel">Salvar no servidor</button>
-                    <button type="button" id="loadServerModel" class="secondary-action">Carregar</button>
-                    <button type="button" id="deleteServerModel" class="secondary-action">Excluir</button>
-                    <button type="button" onclick="saveFormData()" class="secondary-action">Exportar JSON</button>
-                    <input type="file" id="fileInput" style="display:none;" accept=".json,application/json">
-                    <button type="button" onclick="loadFormData()" class="secondary-action">Importar JSON</button>
-                </div>
-                <p id="modelStatus" class="field-help" role="status"></p>
-            </div>
-        </div>
-        {% if validation_errors %}
-            <div class="errorlist" role="alert">
-                <p>Revise os campos indicados antes de gerar.</p>
-                <ul>{% for error in validation_errors %}
-                    <li><strong>{{ error.label }}:</strong> {{ error.message }}</li>
-                {% endfor %}</ul>
-            </div>
-        {% endif %}
-        <section class="platform" aria-labelledby="platform-heading">
-            <h2 id="platform-heading"><i class="fas fa-desktop" aria-hidden="true"></i> Plataforma e versão-base</h2>
-                <div class="platform-icons" role="group" aria-label="Selecionar plataforma">
-                    <button class="platform-choice active" type="button" data-platform="windows" aria-pressed="true"><i class="fab fa-windows" aria-hidden="true"></i><span>Windows 64 bits</span></button>
-                    <button class="platform-choice" type="button" data-platform="linux" aria-pressed="false"><i class="fab fa-linux" aria-hidden="true"></i><span>Linux</span></button>
-                </div>
+        {{ form.iconbase64.as_hidden }}
+        {{ form.logobase64.as_hidden }}
+        {{ form.privacybase64.as_hidden }}
+
+        <section class="card" aria-labelledby="novo-heading">
+            <h2 id="novo-heading">Novo instalador</h2>
+            <p class="lead">Preencha o essencial. O servidor, a chave e as regras de segurança da Nextec já vão aplicados.</p>
+            <div class="fields">
+                <div class="field full">
+                    <span class="legend" id="platform-legend">Plataforma</span>
+                    <div class="platform-icons" role="group" aria-labelledby="platform-legend">
+                        <button class="platform-choice active" type="button" data-platform="windows" aria-pressed="true"><i class="fab fa-windows" aria-hidden="true"></i><span>Windows 64 bits</span></button>
+                        <button class="platform-choice" type="button" data-platform="linux" aria-pressed="false"><i class="fab fa-linux" aria-hidden="true"></i><span>Linux</span></button>
+                    </div>
                     <select name="platform" id="id_platform" class="visually-hidden" aria-hidden="true" tabindex="-1">
-                    <option value="windows" selected>Windows 64 bits</option>
-                    <option value="linux">Linux</option>
-                </select>
-                <label for="{{ form.version.id_for_label }}">{{ form.version.label }}:</label>
-                {{ form.version }}
-                <label for="{{ form.package_version.id_for_label }}">Versão do pacote Nextec</label>
-                {{ form.package_version }}{{ form.package_version.errors }}
-                <p class="field-help">Ex.: 2.0.7. Identifica esta combinação de imagens e configurações. Para publicar atualizações, use uma versão nova. A base RustDesk continua independente.</p>
-                <label for="{{ form.profile.id_for_label }}">Destinado a</label>{{ form.profile }}
-                <label for="{{ form.client_name.id_for_label }}">Cliente / carteira (opcional)</label>{{ form.client_name }}
-                <p class="field-help">Ex.: Carteira Bruno. Organiza o histórico; o destino da atualização é escolhido em Atualizações do app.</p>
-                <label for="{{ form.notes.id_for_label }}">O que mudou nesta versão?</label>{{ form.notes }}
-                <p class="field-help">1.5.0 é a versão estável escolhida para o cliente. A opção “Escuro” fica em Aparência e funciona com essa versão. “Desenvolvimento” pode mudar ou falhar na compilação.</p>
-                <label for="{{ form.delayFix.id_for_label }}">{{ form.delayFix }} Corrigir atraso ao conectar usando uma API externa</label>
-        </section>
-        <div class="container">   
-            <div class="section">
-                <h2><i class="fas fa-sliders-h"></i> Aplicativo</h2>
-                    <label for="{{ form.exename.id_for_label }}">Nome do arquivo para download</label>
+                        <option value="windows" selected>Windows 64 bits</option>
+                        <option value="linux">Linux</option>
+                    </select>
+                    <p class="hint">Cada geração cria uma plataforma. Para as duas, gere duas vezes.</p>
+                </div>
+
+                <div class="field{% if field_errors.exename %} has-error{% endif %}">
+                    <label for="{{ form.exename.id_for_label }}">Nome do instalador</label>
                     {{ form.exename }}<span id="filenameError" class="error"></span>
-                    <p class="field-help">Base do nome dos instaladores gerados, como <strong>Nextec-Connect.msi</strong> ou <strong>Nextec-Connect.exe</strong>. Não define o nome do aplicativo nem do atalho.</p>
-                    <label for="{{ form.appname.id_for_label }}">Nome interno do aplicativo</label>
+                    {% if field_errors.exename %}<p class="field-error">{{ field_errors.exename }}</p>{% endif %}
+                    <p class="hint">Nome do arquivo baixado, como <strong>Nextec-Connect.msi</strong>.</p>
+                </div>
+                <div class="field{% if field_errors.appname %} has-error{% endif %}">
+                    <label for="{{ form.appname.id_for_label }}">Nome do aplicativo</label>
                     {{ form.appname }}
-                    <p class="field-help">Aparece no aplicativo, na instalação e no atalho. Nesta versão, use letras, números e hífen, sem espaços: <strong>Nextec-Connect</strong>. “Nextec Support” com espaço faz o instalador falhar.</p>
-                    <label for="{{ form.direction.id_for_label }}">Tipo de conexão:</label>
-                    {{ form.direction }}<br><br>
-                    <label for="{{ form.installation.id_for_label }}">Instalação:</label>
-                    {{ form.installation }}<br><br>
-                    <label for="{{ form.settings.id_for_label }}">Configurações:</label>
-                    {{ form.settings }}<br><br>
-                    <details><summary>Configuração de Android</summary><label for="{{ form.androidappid.id_for_label }}">ID do aplicativo Android</label>{{ form.androidappid }}<p class="field-help">Não altera os pacotes Windows ou Linux.</p></details>
+                    {% if field_errors.appname %}<p class="field-error">{{ field_errors.appname }}</p>{% endif %}
+                    <p class="hint">Aparece no atalho. Só letras, números e hífen, sem espaços.</p>
+                </div>
+
+                <div class="field{% if field_errors.client_name %} has-error{% endif %}">
+                    <label for="{{ form.client_name.id_for_label }}">Cliente <span class="opt">(opcional)</span></label>
+                    {{ form.client_name }}
+                    {% if field_errors.client_name %}<p class="field-error">{{ field_errors.client_name }}</p>{% endif %}
+                    <p class="hint">Só organiza o histórico. Ex.: Carteira Bruno.</p>
+                </div>
+                <div class="field{% if field_errors.package_version %} has-error{% endif %}">
+                    <label for="{{ form.package_version.id_for_label }}">Versão do pacote <span class="opt">(ex.: 2.0.7)</span></label>
+                    {{ form.package_version }}
+                    {% if field_errors.package_version %}<p class="field-error">{{ field_errors.package_version }}</p>{% endif %}
+                    <p class="hint">Use uma versão nova para publicar como atualização.</p>
+                </div>
+
+                <div class="field{% if field_errors.profile %} has-error{% endif %}">
+                    <label for="{{ form.profile.id_for_label }}">Destinado a</label>
+                    {{ form.profile }}
+                    {% if field_errors.profile %}<p class="field-error">{{ field_errors.profile }}</p>{% endif %}
+                </div>
+                <div class="field{% if field_errors.iconfile %} has-error{% endif %}">
+                    <label for="{{ form.iconfile.id_for_label }}">Ícone <span class="opt">(PNG quadrado, opcional)</span></label>
+                    {{ form.iconfile }}
+                    <div id="icon-preview"></div>
+                    {% if field_errors.iconfile %}<p class="field-error">{{ field_errors.iconfile }}</p>{% endif %}
+                    <p class="hint">Sem ícone, vale o padrão da Nextec.</p>
+                </div>
+
+                <div class="field full{% if field_errors.notes %} has-error{% endif %}">
+                    <label for="{{ form.notes.id_for_label }}">O que mudou <span class="opt">(opcional)</span></label>
+                    {{ form.notes }}
+                    {% if field_errors.notes %}<p class="field-error">{{ field_errors.notes }}</p>{% endif %}
+                </div>
             </div>
 
-            <div class="section">
-                <h2>Servidor Nextec</h2>
-                    <p class="field-help">Os dados são preenchidos pela implantação. Passe o mouse sobre cada campo para ver se está fixado.</p>
-                    <label for="{{ form.serverIP.id_for_label }}">Servidor de ID</label>
-                    {{ form.serverIP }}<br><br>
-                    <label for="{{ form.serverPort.id_for_label }}">Porta do servidor de ID (vazia usa 21116; 21117 é do relay):</label>
-                    {{ form.serverPort }}<br><br>
-                    <label for="{{ form.key.id_for_label }}">Chave pública</label>
-                    <div class="key-row">{{ form.key }}<button type="button" class="secondary-action" id="toggleKey" aria-label="Mostrar chave pública">Mostrar</button></div>
-                    {% if public_key_loaded %}<p class="field-help">Chave pública carregada do servidor. Você pode conferir com “Mostrar”.</p>{% else %}<p class="field-help error">Chave pública não foi carregada. Confira o arquivo montado em NX_KEY_FILE antes de gerar.</p>{% endif %}
-                    {% if enrollment_warning %}<p class="field-help error">{{ enrollment_warning }}</p>{% endif %}
-                    <label for="{{ form.apiServer.id_for_label }}">API:</label>
-                    {{ form.apiServer }}<br><br>
-                    <label for="{{ form.urlLink.id_for_label }}">Endereço dos links:</label>
-                    {{ form.urlLink }}<br><br>
-                    <label for="{{ form.downloadLink.id_for_label }}">Endereço para baixar atualizações:</label>
-                    {{ form.downloadLink }}<br><br>
-                    <details><summary>Dados administrativos do cliente</summary><label for="{{ form.compname.id_for_label }}">Empresa exibida nos direitos autorais</label>{{ form.compname }}<p class="field-help">Valor definido na implantação. O padrão Nextec deve ser “Nextec LTDA”.</p></details>
+            <div class="applied{% if not public_key_loaded or enrollment_warning %} is-problem{% endif %}" role="note">
+                <strong>Já aplicado pela Nextec</strong>
+                Servidor <strong style="display:inline">{{ form.serverIP.value|default:"não definido" }}</strong>, chave pública, API e inscrição automática
+                {% if form.serverIP.value %}(valores fixos){% endif %}. Para ver ou mudar algo, abra Avançado.
+                {% if not public_key_loaded %}<p class="problem">A chave pública não foi carregada. Confira NX_KEY_FILE antes de gerar.</p>{% endif %}
+                {% if enrollment_warning %}<p class="problem">{{ enrollment_warning }}</p>{% endif %}
             </div>
-        </div>
-        <div class="container">
-            <div class="section">
-                <h2><i class="fas fa-shield-alt"></i> Segurança</h2>
-                    <label for="{{ form.passApproveMode.id_for_label }}">Forma de aceitar conexões:</label>
-                    {{ form.passApproveMode }}<br><br>
-                    <div id="passwordRequirement" class="password-requirement">Para ocultar a janela de conexão, defina uma senha permanente.</div>
-                    <label for="{{ form.permanentPassword.id_for_label }}">Senha permanente:</label>
-                    {{ form.permanentPassword }} A senha será usada como padrão e poderá ser alterada no cliente.<br><br>
-                    
-                    
-                    <label for="{{ form.denyLan.id_for_label }}">{{ form.denyLan }} Desativar descoberta na rede local</label><br>
-                    
-                    <label for="{{ form.enableDirectIP.id_for_label }}">{{ form.enableDirectIP }} Permitir conexão por IP direto</label><br>
-                    
-                    <label for="{{ form.autoClose.id_for_label }}">{{ form.autoClose }} Encerrar sessão após inatividade</label><br>
 
-                    <label for="{{ form.hidecm.id_for_label }}">{{ form.hidecm }} Permitir ocultar a janela de conexão da tela remota</label><br>
+            <div class="submit-row">
+                <button type="submit" id="submitButton">Gerar instalador</button>
+                <p class="status-live" id="submitStatus" role="status" aria-live="polite"></p>
+                <p class="submit-note">A geração leva de 30 a 45 minutos. Você acompanha o andamento na tela seguinte e em Itens gerados.</p>
             </div>
-        
-            <div class="section">
-                <h2><i class="fas fa-paint-brush"></i> Aparência deste cliente</h2>
-                    {{ form.iconbase64.as_hidden }}
-                    {{ form.logobase64.as_hidden }}
-                    {{ form.privacybase64.as_hidden }}
-                    <label for="{{ form.iconfile.id_for_label }}">Ícone personalizado (PNG)</label>
-                    {{ form.iconfile }}<br><br>
-                    <!-- <input type="file" name="iconfile" id="iconfile" accept="image/png"> -->
-                    <div id="icon-preview"></div><br><br>
-                    <label for="{{ form.logofile.id_for_label }}">Logo personalizado (PNG)</label>
-                    {{ form.logofile }}<br><br>
-                    <!-- <input type="file" name="logofile" id="logofile" accept="image/png"> -->
-                    <div id="logo-preview"></div><br><br>
-                    <label for="{{ form.privacyfile.id_for_label }}">Tela de privacidade personalizada (PNG)</label>
-                    {{ form.privacyfile }}<br><br>
-                    <!-- <input type="file" name="iconfile" id="iconfile" accept="image/png"> -->
-                    <div id="privacy-preview"></div><br><br>
-                    <label for="{{ form.theme.id_for_label }}">Tema do aplicativo</label>
-                    {{ form.theme }} {{ form.themeDorO }}<p class="field-help">Escolha Escuro para iniciar escuro mesmo usando a versão-base 1.5.0. “Padrão” permite que o usuário mude depois; “Obrigatório” fixa o tema.</p>
-            </div>
-        </div>
-        <div class="container">
-            <div class="section">
-                <h2><i class="fas fa-lock"></i> Permissões</h2>
-                    As permissões podem ser padrão (editáveis no cliente) ou obrigatórias (não podem ser alteradas).<br>
-                    {{ form.permissionsDorO }}
-                    <label for="{{ form.permissionsType.id_for_label }}">Nível de acesso:</label>
-                    {{ form.permissionsType }}<br><br>
-                    <div class="checkbox-group">
+        </section>
+
+        <details class="card advanced" id="advanced"{% if advanced_open %} open{% endif %}>
+            <summary><span>Avançado<small>Versão-base, servidor, segurança, aparência, permissões e modelos.</small></span></summary>
+            <div class="adv-body">
+                <section class="adv-group">
+                    <h3>Versão-base do RustDesk</h3>
+                    <p class="lead">A versão 1.5.0 é a estável. Desenvolvimento pode mudar ou falhar na compilação.</p>
+                    <div class="field{% if field_errors.version %} has-error{% endif %}">
+                        <label for="{{ form.version.id_for_label }}">Versão-base</label>
+                        {{ form.version }}
+                        {% if field_errors.version %}<p class="field-error">{{ field_errors.version }}</p>{% endif %}
+                    </div>
+                    <div class="checks block" style="margin-top:12px"><label for="{{ form.delayFix.id_for_label }}">{{ form.delayFix }} Corrigir atraso ao conectar usando uma API externa</label></div>
+                </section>
+
+                <section class="adv-group">
+                    <h3>Servidor Nextec</h3>
+                    <p class="lead">Fixados pela implantação. Aparecem só para conferência.</p>
+                    <div class="fields">
+                        <div class="field{% if field_errors.serverIP %} has-error{% endif %}"><label for="{{ form.serverIP.id_for_label }}">Servidor de ID</label>{{ form.serverIP }}{% if field_errors.serverIP %}<p class="field-error">{{ field_errors.serverIP }}</p>{% endif %}</div>
+                        <div class="field{% if field_errors.serverPort %} has-error{% endif %}"><label for="{{ form.serverPort.id_for_label }}">Porta do servidor de ID</label>{{ form.serverPort }}{% if field_errors.serverPort %}<p class="field-error">{{ field_errors.serverPort }}</p>{% endif %}<p class="hint">Vazia usa 21116. A 21117 é do relay.</p></div>
+                        <div class="field full{% if field_errors.key %} has-error{% endif %}"><label for="{{ form.key.id_for_label }}">Chave pública</label>
+                            <div class="key-row">{{ form.key }}<button type="button" class="secondary-action" id="toggleKey" aria-label="Mostrar chave pública">Mostrar</button></div>
+                            {% if field_errors.key %}<p class="field-error">{{ field_errors.key }}</p>{% endif %}</div>
+                        <div class="field{% if field_errors.apiServer %} has-error{% endif %}"><label for="{{ form.apiServer.id_for_label }}">API</label>{{ form.apiServer }}{% if field_errors.apiServer %}<p class="field-error">{{ field_errors.apiServer }}</p>{% endif %}</div>
+                        <div class="field{% if field_errors.compname %} has-error{% endif %}"><label for="{{ form.compname.id_for_label }}">Empresa nos direitos autorais</label>{{ form.compname }}{% if field_errors.compname %}<p class="field-error">{{ field_errors.compname }}</p>{% endif %}</div>
+                        <div class="field{% if field_errors.urlLink %} has-error{% endif %}"><label for="{{ form.urlLink.id_for_label }}">Endereço dos links</label>{{ form.urlLink }}{% if field_errors.urlLink %}<p class="field-error">{{ field_errors.urlLink }}</p>{% endif %}</div>
+                        <div class="field{% if field_errors.downloadLink %} has-error{% endif %}"><label for="{{ form.downloadLink.id_for_label }}">Endereço das atualizações</label>{{ form.downloadLink }}{% if field_errors.downloadLink %}<p class="field-error">{{ field_errors.downloadLink }}</p>{% endif %}</div>
+                    </div>
+                </section>
+
+                <section class="adv-group">
+                    <h3>Comportamento do aplicativo</h3>
+                    <div class="fields">
+                        <div class="field full"><span class="legend">Tipo de conexão</span>{{ form.direction }}</div>
+                        <div class="field"><label for="{{ form.installation.id_for_label }}">Instalação</label>{{ form.installation }}</div>
+                        <div class="field"><label for="{{ form.settings.id_for_label }}">Configurações</label>{{ form.settings }}</div>
+                        <div class="field full"><label for="{{ form.androidappid.id_for_label }}">ID do aplicativo Android <span class="opt">(não altera Windows nem Linux)</span></label>{{ form.androidappid }}{% if field_errors.androidappid %}<p class="field-error">{{ field_errors.androidappid }}</p>{% endif %}</div>
+                    </div>
+                </section>
+
+                <section class="adv-group">
+                    <h3>Segurança</h3>
+                    <div class="fields">
+                        <div class="field"><label for="{{ form.passApproveMode.id_for_label }}">Forma de aceitar conexões</label>{{ form.passApproveMode }}</div>
+                        <div class="field{% if field_errors.permanentPassword %} has-error{% endif %}"><label for="{{ form.permanentPassword.id_for_label }}">Senha permanente</label>{{ form.permanentPassword }}<p class="hint">Vale como padrão e pode ser trocada no cliente.</p></div>
+                        <div class="field full"><div id="passwordRequirement" class="password-requirement">Para ocultar a janela de conexão, defina uma senha permanente.</div></div>
+                    </div>
+                    <div class="checks" style="margin-top:12px">
+                        <label for="{{ form.denyLan.id_for_label }}">{{ form.denyLan }} Desativar descoberta na rede local</label>
+                        <label for="{{ form.enableDirectIP.id_for_label }}">{{ form.enableDirectIP }} Permitir conexão por IP direto</label>
+                        <label for="{{ form.autoClose.id_for_label }}">{{ form.autoClose }} Encerrar sessão após inatividade</label>
+                        <label for="{{ form.hidecm.id_for_label }}">{{ form.hidecm }} Permitir ocultar a janela de conexão</label>
+                    </div>
+                </section>
+
+                <section class="adv-group">
+                    <h3>Aparência</h3>
+                    <p class="lead">Imagens em PNG. O ícone fica no bloco principal.</p>
+                    <div class="fields">
+                        <div class="field"><label for="{{ form.logofile.id_for_label }}">Logo</label>{{ form.logofile }}<div id="logo-preview"></div>{% if field_errors.logofile %}<p class="field-error">{{ field_errors.logofile }}</p>{% endif %}</div>
+                        <div class="field"><label for="{{ form.privacyfile.id_for_label }}">Tela de privacidade</label>{{ form.privacyfile }}<div id="privacy-preview"></div>{% if field_errors.privacyfile %}<p class="field-error">{{ field_errors.privacyfile }}</p>{% endif %}</div>
+                        <div class="field"><label for="{{ form.theme.id_for_label }}">Tema do aplicativo</label>{{ form.theme }}</div>
+                        <div class="field"><label for="{{ form.themeDorO.id_for_label }}">Mudança de tema</label>{{ form.themeDorO }}<p class="hint">Padrão deixa o usuário mudar. Obrigatório fixa.</p></div>
+                    </div>
+                </section>
+
+                <section class="adv-group">
+                    <h3>Permissões</h3>
+                    <p class="lead">Padrão pode ser editado no cliente. Obrigatório não pode.</p>
+                    <div class="fields">
+                        <div class="field"><label for="{{ form.permissionsDorO.id_for_label }}">Regra</label>{{ form.permissionsDorO }}</div>
+                        <div class="field"><label for="{{ form.permissionsType.id_for_label }}">Nível de acesso</label>{{ form.permissionsType }}</div>
+                    </div>
+                    <div class="checks" style="margin-top:12px">
                         <label for="{{ form.enableKeyboard.id_for_label }}">{{ form.enableKeyboard }} Teclado e mouse</label>
                         <label for="{{ form.enableClipboard.id_for_label }}">{{ form.enableClipboard }} Área de transferência</label>
                         <label for="{{ form.enableFileTransfer.id_for_label }}">{{ form.enableFileTransfer }} Transferência de arquivos</label>
@@ -509,31 +308,43 @@
                         <label for="{{ form.enablePrinter.id_for_label }}">{{ form.enablePrinter }} Impressora remota</label>
                         <label for="{{ form.enableCamera.id_for_label }}">{{ form.enableCamera }} Câmera remota</label>
                         <label for="{{ form.enableTerminal.id_for_label }}">{{ form.enableTerminal }} Terminal remoto</label>
-                    </div><br>
-                <h2><i class="fas fa-code"></i> Opções adicionais</h2>
-                    <label for="{{ form.removeWallpaper.id_for_label }}">{{ form.removeWallpaper }} Ocultar papel de parede durante a sessão</label><br>
-                    <label for="{{ form.xOffline.id_for_label }}">{{ form.xOffline }} Marcar dispositivos offline no catálogo</label><br>
-                    <label for="{{ form.removeNewVersionNotif.id_for_label }}">{{ form.removeNewVersionNotif }} Ocultar aviso de nova versão</label><br>
-            </div>
+                    </div>
+                </section>
 
-            <div class="section">
-                <details><summary>Ajustes avançados</summary>
-                    <a href="https://rustdesk.com/docs/en/self-host/client-configuration/advanced-settings/" target="_blank" rel="noopener">Consultar documentação dos ajustes</a>
-                    <label for="{{ form.defaultManual.id_for_label }}">Ajustes padrão</label><br>
-                    {{ form.defaultManual }}<br><br>
-                    <label for="{{ form.overrideManual.id_for_label }}">Ajustes obrigatórios</label><br>
-                    {{ form.overrideManual }}<br><br>
-                </details>
+                <section class="adv-group">
+                    <h3>Outras opções</h3>
+                    <div class="checks">
+                        <label for="{{ form.removeWallpaper.id_for_label }}">{{ form.removeWallpaper }} Ocultar papel de parede durante a sessão</label>
+                        <label for="{{ form.xOffline.id_for_label }}">{{ form.xOffline }} Marcar dispositivos offline no catálogo</label>
+                        <label for="{{ form.removeNewVersionNotif.id_for_label }}">{{ form.removeNewVersionNotif }} Ocultar aviso de nova versão</label>
+                    </div>
+                    <div class="fields" style="margin-top:12px">
+                        <div class="field full"><label for="{{ form.defaultManual.id_for_label }}">Ajustes padrão <span class="opt">(manual)</span></label>{{ form.defaultManual }}</div>
+                        <div class="field full"><label for="{{ form.overrideManual.id_for_label }}">Ajustes obrigatórios <span class="opt">(manual)</span></label>{{ form.overrideManual }}<p class="hint"><a href="https://rustdesk.com/docs/en/self-host/client-configuration/advanced-settings/" target="_blank" rel="noopener">Documentação dos ajustes</a></p></div>
+                    </div>
+                </section>
+
+                <section class="adv-group">
+                    <h3>Modelos de configuração</h3>
+                    <p class="lead">Salve neste servidor para sua conta ou use um JSON. Senhas, chave, imagens e ajustes manuais não entram no modelo.</p>
+                    <div class="model-actions">
+                        <select id="savedModels" aria-label="Modelos salvos"><option value="">Selecione um modelo salvo</option></select>
+                        <button type="button" id="saveServerModel">Salvar no servidor</button>
+                        <button type="button" id="loadServerModel" class="secondary-action">Carregar</button>
+                        <button type="button" id="deleteServerModel" class="secondary-action">Excluir</button>
+                        <button type="button" onclick="saveFormData()" class="secondary-action">Exportar JSON</button>
+                        <input type="file" id="fileInput" style="display:none;" accept=".json,application/json">
+                        <button type="button" onclick="loadFormData()" class="secondary-action">Importar JSON</button>
+                    </div>
+                    <p id="modelStatus" class="hint" role="status"></p>
+                </section>
             </div>
-        </div>
-        <div class="platform">
-            <div class="section">
-                <button type="submit">Gerar para a plataforma escolhida</button>
-                <p class="field-help">O gerador cria uma plataforma por vez. Para obter Windows e Linux, faça duas gerações com o mesmo modelo.</p>
-                <p class="field-help">No Nextec-Connect, instalar pelo MSI ou pela opção Instalar do EXE registra a checagem diária de atualizações assinadas. Executar sem instalar não cria tarefa agendada. A distribuição de novas versões é controlada em Atualizações do app.</p>
-            </div>
-        </div>
+        </details>
     </form>
+    <details class="about"><summary>Sobre nomes, versões e acesso</summary>
+        <p>O nome do instalador identifica o download. O nome do aplicativo aparece no programa e no atalho. Ícone, logo e tela de privacidade valem só para o cliente gerado, não para o painel. A versão do pacote ({{ product_version }} é a do gerador) é independente da base RustDesk.</p>
+        <p>No Nextec-Connect, instalar pelo MSI ou pelo EXE registra a checagem diária de atualizações assinadas. A distribuição é controlada em Atualizações do app. Acesso: Cloudflare Access e lista de pessoas autorizadas.{% if access_email %} Sua conta: {{ access_email }}.{% endif %}</p>
+    </details>
     </main>
     <script>
         const platformSelect = document.getElementById('id_platform');
@@ -954,6 +765,31 @@
             } catch (error) { modelStatus.textContent = error.message; }
         });
         refreshModels();
+    </script>
+    <script>
+        (() => {
+            const form = document.getElementById('myForm');
+            const button = document.getElementById('submitButton');
+            const status = document.getElementById('submitStatus');
+            const name = document.getElementById('{{ form.exename.id_for_label }}');
+            const adv = document.getElementById('advanced');
+            form.addEventListener('submit', event => {
+                if (!name.value.trim()) {
+                    event.preventDefault();
+                    document.getElementById('filenameError').textContent = 'Informe o nome do instalador.';
+                    name.focus();
+                    return;
+                }
+                document.getElementById('filenameError').textContent = '';
+                button.disabled = true;
+                button.textContent = 'Enviando para geração...';
+                status.textContent = 'Enviando os dados. Não feche esta página.';
+            });
+            // mostra o campo com erro: abre o Avançado quando o primeiro erro estiver lá
+            const first = document.querySelector('.field.has-error');
+            if (first && adv.contains(first)) adv.open = true;
+            if (first) first.scrollIntoView({block: 'center'});
+        })();
     </script>
 {% include 'embed.html' %}
 </body>

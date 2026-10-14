@@ -1,8 +1,17 @@
 # Gerador Nextec
 
-## 2.2.1
+## 2.3.1
 
 - Trava de CI: `.github/scripts/verificar-integridade.mjs` barra CRLF em `.sh`, `.service`, `.timer`, Dockerfile e workflows e `.ps1` com acento sem BOM UTF-8; `.gitattributes` com LF para esses tipos. BOM adicionado a 5 `.ps1` que tinham acento sem ele. Sem mudança de comportamento do gerador.
+
+## 2.3.0
+
+- Nome do app livre: o agente (Coordenar/Provisionar/Agente-Senha, atualizador, registro) entra pelo flag `nx_agent` do build (ligado por padrão, desligado só no suporte avulso), não mais pelo sufixo do nome. Substitui a regra por sufixo do #40 em MSI, EXE e DEB.
+- Marcador `nextec-marker.json` `{v,app,upgrade_code}` e registro `HKLM\SOFTWARE\Nextec\Agente` `{InstallDir,AppName}`.
+- Linux: atualizador e coordenador descobrem o cliente sem nome fixo: marcador `nextec-marker.json`, serviço systemd (nome ou ExecStart) e varredura limitada; falha explícita com o que foi procurado, nunca ID vazio.
+- Painel configurável: sem domínio fixo no MSI nem nos scripts Linux; vem do build (`enroll_panel`/`inscricao.json`), só https.
+- A chave de inscrição automática (2.2.0) continua alimentando o `inscricao.json` e o marcador.
+
 
 ## 2.2.0
 

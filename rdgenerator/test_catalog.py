@@ -137,3 +137,167 @@ class GenerationCatalogTests(TestCase):
         run = GithubRun.objects.latest('id')
         self.assertEqual(run.status, 'submission_unknown')
         self.assertIn('pode ter aceitado', run.submission_error)
+
+
+class GenerationDeleteTests(TestCase):
+    EMAIL = 'HTTP_CF_ACCESS_AUTHENTICATED_USER_EMAIL'
+    U1 = 'aaaaaaaa-1111-1111-1111-111111111111'
+    U2 = 'bbbbbbbb-2222-2222-2222-222222222222'
+    U3 = 'cccccccc-3333-3333-3333-333333333333'
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.old_cwd = os.getcwd()
+        os.chdir(self.temp.name)
+        self.addCleanup(self.temp.cleanup)
+        self.addCleanup(os.chdir, self.old_cwd)
+        self.client = Client()
+        self.headers = {self.EMAIL: 'operador@nex.tec.br', 'HTTP_X_NEXTEC_ACAO': 'excluir'}
+
+    def _run(self, uuid, status, **kwargs):
+        run = GithubRun.objects.create(uuid=uuid, status=status, filename='Cliente', platform='windows', **kwargs)
+        for base in ('exe', 'png'):
+            Path(base, uuid).mkdir(parents=True)
+            if base == 'exe':
+                # Instalador completo no Windows: EXE e MSI (senão o item é "incompleto" e conta como falha).
+                Path(base, uuid, 'Cliente.msi').write_bytes(b'x')
+                Path(base, uuid, 'Cliente.exe').write_bytes(b'x')
+            else:
+                Path(base, uuid, 'icon.png').write_bytes(b'x')
+        Path('temp_zips').mkdir(exist_ok=True)
+        Path('temp_zips', f'secrets_{uuid}.zip').write_bytes(b'z')
+        return run
+
+    def test_failed_item_is_removed_with_its_files(self):
+        self._run(self.U1, 'failure')
+        response = self.client.delete(f'/nextec/geracoes/{self.U1}/excluir/', **self.headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(GithubRun.objects.filter(uuid=self.U1).exists())
+        self.assertFalse(Path('exe', self.U1).exists())
+        self.assertFalse(Path('png', self.U1).exists())
+        self.assertFalse(Path('temp_zips', f'secrets_{self.U1}.zip').exists())
+
+    def test_delete_requires_identity_and_action_header(self):
+        self._run(self.U1, 'failure')
+        self.assertEqual(self.client.delete(f'/nextec/geracoes/{self.U1}/excluir/',
+                                            HTTP_X_NEXTEC_ACAO='excluir').status_code, 403)
+        self.assertEqual(self.client.delete(f'/nextec/geracoes/{self.U1}/excluir/',
+                                            **{self.EMAIL: 'operador@nex.tec.br'}).status_code, 400)
+        self.assertTrue(GithubRun.objects.filter(uuid=self.U1).exists())
+
+    def test_bulk_removes_selected_and_clears_failures_only(self):
+        self._run(self.U1, 'failure')
+        self._run(self.U2, 'in_progress', github_run_id=1)
+        self._run(self.U3, 'success')
+        response = self.client.post('/nextec/geracoes/excluir/', data=json.dumps({'scope': 'failed'}),
+                                    content_type='application/json', **self.headers)
+        self.assertEqual(response.json()['deleted'], [self.U1])
+        self.assertTrue(GithubRun.objects.filter(uuid=self.U2).exists())
+        self.assertTrue(GithubRun.objects.filter(uuid=self.U3).exists())
+        response = self.client.post('/nextec/geracoes/excluir/', data=json.dumps({'uuids': [self.U3, self.U2]}),
+                                    content_type='application/json', **self.headers)
+        body = response.json()
+        self.assertEqual(body['deleted'], [self.U3])
+        self.assertEqual([item['code'] for item in body['blocked']], ['in_progress'])
+        self.assertTrue(Path('exe', self.U2).exists())
+
+    def test_submission_error_item_can_be_deleted(self):
+        self._run(self.U1, 'Starting generator...please wait', submission_error='falha ao enviar')
+        self.assertEqual(self.client.delete(f'/nextec/geracoes/{self.U1}/excluir/', **self.headers).status_code, 200)
+
+    def test_in_progress_item_is_refused(self):
+        self._run(self.U1, 'in_progress', github_run_id=7)
+        response = self.client.delete(f'/nextec/geracoes/{self.U1}/excluir/', **self.headers)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()['code'], 'in_progress')
+        self.assertTrue(GithubRun.objects.filter(uuid=self.U1).exists())
+        self.assertTrue(Path('exe', self.U1).exists())
+
+    def test_item_sent_to_updates_requires_explicit_confirmation(self):
+        from django.utils import timezone
+        self._run(self.U1, 'success', imported_at=timezone.now())
+        response = self.client.delete(f'/nextec/geracoes/{self.U1}/excluir/', **self.headers)
+        self.assertEqual((response.status_code, response.json()['code']), (409, 'imported'))
+        self.assertTrue(GithubRun.objects.filter(uuid=self.U1).exists())
+        response = self.client.delete(f'/nextec/geracoes/{self.U1}/excluir/?confirmar=1', **self.headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Path('exe', self.U1).exists())
+
+    def test_path_traversal_identifier_is_refused(self):
+        outside = Path('segredo.txt')
+        outside.write_text('nao apagar')
+        for bad in ('..', '../x', '..%2F..%2Fsegredo.txt', 'aaaaaaaa-1111-1111-1111-11111111111/'):
+            response = self.client.delete(f'/nextec/geracoes/{bad}/excluir/', **self.headers)
+            self.assertIn(response.status_code, (400, 404))
+        response = self.client.post('/nextec/geracoes/excluir/', data=json.dumps({'uuids': ['../../etc']}),
+                                    content_type='application/json', **self.headers)
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(outside.exists())
+
+    def test_symlinked_directory_is_unlinked_without_touching_target(self):
+        target = Path('fora'); target.mkdir(); (target / 'keep.txt').write_text('ok')
+        run = GithubRun.objects.create(uuid=self.U1, status='failure')
+        Path('exe').mkdir()
+        try:
+            os.symlink(target.resolve(), Path('exe', self.U1), target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest('symlinks indisponíveis neste sistema')
+        self.assertEqual(self.client.delete(f'/nextec/geracoes/{self.U1}/excluir/', **self.headers).status_code, 200)
+        self.assertTrue((target / 'keep.txt').exists())
+        self.assertFalse(GithubRun.objects.filter(pk=run.pk).exists())
+
+    def test_catalog_flags_deletable_items(self):
+        self._run(self.U1, 'failure')
+        self._run(self.U2, 'in_progress', github_run_id=1)
+        items = {item['uuid']: item for item in self.client.get('/nextec/geracoes/', **self.headers).json()['results']}
+        self.assertTrue(items[self.U1]['deletable'])
+        self.assertFalse(items[self.U2]['deletable'])
+
+    def test_imported_item_stays_deletable_and_asks_confirmation(self):
+        from django.utils import timezone
+        self._run(self.U1, 'success', imported_at=timezone.now())
+        item = self.client.get(f'/nextec/geracoes/{self.U1}/', **self.headers).json()
+        self.assertTrue(item['deletable'])
+        self.assertTrue(item['delete_requires_confirmation'])
+        self.assertEqual(item['delete_confirmation'], 'imported')
+        self.assertIn('Atualizações', item['delete_confirmation_message'])
+        self.assertEqual(item['delete_blocked_reason'], '')
+
+    def test_in_progress_item_is_not_deletable_with_reason(self):
+        self._run(self.U1, 'in_progress', github_run_id=1)
+        item = self.client.get(f'/nextec/geracoes/{self.U1}/', **self.headers).json()
+        self.assertFalse(item['deletable'])
+        self.assertFalse(item['delete_requires_confirmation'])
+        self.assertIn('andamento', item['delete_blocked_reason'])
+
+    def test_in_progress_and_imported_is_blocked_even_with_confirmation(self):
+        from django.utils import timezone
+        self._run(self.U1, 'in_progress', github_run_id=1, imported_at=timezone.now())
+        response = self.client.delete(f'/nextec/geracoes/{self.U1}/excluir/?confirmar=1', **self.headers)
+        self.assertEqual((response.status_code, response.json()['code']), (409, 'in_progress'))
+
+    def test_bulk_imported_needs_confirm_imported(self):
+        from django.utils import timezone
+        self._run(self.U1, 'success', imported_at=timezone.now())
+        post = lambda data: self.client.post('/nextec/geracoes/excluir/', data=json.dumps(data),
+                                             content_type='application/json', **self.headers).json()
+        body = post({'uuids': [self.U1]})
+        self.assertEqual((body['deleted'], [b['code'] for b in body['blocked']]), ([], ['imported']))
+        self.assertEqual(post({'uuids': [self.U1], 'confirm_imported': True})['deleted'], [self.U1])
+
+    def test_contract_fixture_for_panel(self):
+        """Gera o JSON de contrato consumido pelo teste do painel (NEXTEC_CONTRACT_OUT=caminho)."""
+        from django.utils import timezone
+        self._run(self.U1, 'success', imported_at=timezone.now())
+        self._run(self.U2, 'in_progress', github_run_id=1)
+        self._run(self.U3, 'failure')
+        listing = self.client.get('/nextec/geracoes/', **self.headers).json()
+        refused = self.client.delete(f'/nextec/geracoes/{self.U1}/excluir/', **self.headers)
+        self.assertEqual(refused.status_code, 409)
+        contract = {'listing': listing, 'imported_uuid': self.U1, 'in_progress_uuid': self.U2,
+                    'failed_uuid': self.U3, 'delete_imported_without_confirm': refused.json()}
+        for item in listing['results']:
+            self.assertIn('delete_requires_confirmation', item)
+        out = os.environ.get('NEXTEC_CONTRACT_OUT')
+        if out:
+            Path(out).write_text(json.dumps(contract, ensure_ascii=False, indent=2, sort_keys=True), encoding='utf-8')

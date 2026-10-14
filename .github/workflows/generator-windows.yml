@@ -739,10 +739,11 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         shell: pwsh
         run: |
-          & (Join-Path $env:RUNNER_TEMP 'build-msi.ps1') -AppName $env:appname -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
+          & (Join-Path $env:RUNNER_TEMP 'build-msi.ps1') -AppName $env:appname -IncludeAgent $env:nx_agent -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
 
       - name: Make EXE an installer for the same MSI
-        if: env.UPLOAD_ARTIFACT == 'true' && endsWith(env.appname, 'Nextec-Connect')
+        # nx_agent vem do build (ligado por padrao; so o app de suporte avulso o desliga). Nunca depende do nome do app.
+        if: env.UPLOAD_ARTIFACT == 'true' && env.nx_agent != 'false'
         shell: pwsh
         run: |
           Copy-Item './SignOutput/rustdesk.exe' './SignOutput/rustdesk-portable.exe'

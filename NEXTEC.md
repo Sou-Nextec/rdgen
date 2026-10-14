@@ -61,7 +61,7 @@ Exige o patch `0033-gen-enroll-key.patch` na API do painel (painel 2.11.8 ou mai
 O workflow (mascarados no Actions) grava `{"v":1,"painel":"<URL>","chave":"<chave>"}` e o instala assim:
 
 - MSI e EXE (que embute o MSI): `inscricao.json` ao lado dos scripts, componente `Nextec.Enrollment`, sem alterar os hashes dos scripts.
-- DEB (somente `Nextec-Connect`, que leva o coordenador): `/usr/lib/nextec-connect/inscricao.json`, `root:root` 0600, ao lado de
+- DEB (somente pacote com agente, `nx_agent` ligado, que leva o coordenador): `/usr/lib/nextec-connect/inscricao.json`, `root:root` 0600, ao lado de
   `coordenador-agente-nextec-linux.py`, que é a fonte que o coordenador lê (e depois copia para `/var/lib/nextec-connect`).
   Instalado por `nextec/atualizacao/inscricao-linux.sh`.
 
@@ -86,9 +86,42 @@ Testes da inscrição empacotada: `rdgenerator/test_enrollment.py` (gerador), `.
 self-enroll contra um painel falso local: 200 pendente, 404 retry, 401/409 manual, 403 parada) e
 `nextec/atualizacao/test_inscricao_deb_linux.py` (caminho e consumo no DEB).
 
+## Nome do app livre e agente por flag
+
+O nome do app pode ser qualquer um (`XPTO`, `Client-Nextec-Connect`, `Nextec-Connect`...). Nada decide por comparação de nome.
+
+- **Flag `nx_agent`** (`true`/`false`), campo do formulário/API que viaja no `secrets_<uuid>.zip` e vira `env.nx_agent` nos workflows.
+  Ligado por padrão (cliente de acesso). Fica desligado só para o app de suporte avulso: `nx_agent=false` explícito, ou
+  `installation=installationN` (app que não instala) quando o flag não vem. Regra única em `rdgenerator/nextec.py::agent_enabled`.
+- Com o flag ligado o pacote leva Coordenar, Provisionar, Agente-Senha, atualizador e as ações de registro (MSI: `build-msi.ps1
+  -IncludeAgent`; EXE: embrulho do MSI, só gerado com o agente; DEB: `empacotar-deb-atualizador.sh`). Desligado, sai só o cliente
+  (sem agente, sem atualizador, sem `inscricao.json`).
+- **Marcador de instalação** independente de nome, gravado junto dos scripts: `nextec-marker.json` com `{"v":1,"app","upgrade_code"}`.
+  No MSI também `HKLM\SOFTWARE\Nextec\Agente` com `InstallDir` e `AppName` (componentes `Nextec.AgentMarker`/`Nextec.AgentRegistry`).
+  No DEB o marcador fica em `/usr/lib/nextec-connect/nextec-marker.json` e `upgrade_code` é o nome do pacote.
+  Qualquer script novo deve localizar a instalação por esse marcador/registro, nunca pelo nome do executável.
+- Os componentes Windows empacotados que o painel versiona (`*.ps1`) seguem sincronizados do painel; o marcador é o ponto de apoio
+  para que eles deixem de depender do nome.
+
+## Painel configurável (sem domínio fixo)
+
+O MSI e os scripts Linux não trazem host embutido. O painel vem do build:
+
+- MSI: o atualizador recebe `-UrlBase <painel>/api/nextec/update`, montado no build a partir de `enroll_panel` (ou `apiServer`).
+- Linux: `atualizador-linux.py`, `coordenador-agente-nextec-linux.py` e `agente-senha-linux.py` leem `painel` do `inscricao.json`
+  instalado (`/usr/lib/nextec-connect`, depois `/var/lib/nextec-connect`), só se o arquivo for regular, do root (ou do usuário que roda)
+  e sem escrita para grupo/outros.
+- Trava de segurança mantida: somente `https` (porta 443 ou omitida), sem usuário, caminho, query ou fragmento; o host de qualquer
+  redirecionamento ou resposta precisa ser o do painel configurado. Valor vindo da rede ou de variável de ambiente nunca é aceito.
+  Sem painel configurado os componentes não agem (`panel_not_configured` / mensagem do atualizador).
+
+Testes: `python manage.py test rdgenerator` (`test_agent_flag.py`), `.github/scripts/test-msi-build.ps1` (casos `XPTO`,
+`Client-Nextec-Connect`, `Nextec-Connect` com agente e suporte sem agente), `.github/scripts/test-setup-exe.ps1` e
+`nextec/atualizacao/test_painel_configuravel_linux.py` (Linux e CI do DEB).
+
 ## Versão e imagens
 
-`rdgenerator/VERSION` guarda a versão da experiência do gerador, atualmente `2.2.0`. Ao alterar layout ou recursos próprios,
+`rdgenerator/VERSION` guarda a versão da experiência do gerador, atualmente `2.3.0`. Ao alterar layout ou recursos próprios,
 atualize esse arquivo e acrescente uma entrada em `nextec/CHANGELOG.md`. Essa versão é separada da versão-base RustDesk usada
 no build e da versão do produto publicada na tela de atualizações do painel.
 
@@ -204,3 +237,10 @@ desligado; pode ser removido.
 sem dependências). Falha listando os arquivos se `.sh`, `.service`, `.timer`, Dockerfile ou workflow estiver com CRLF no
 repositório, ou se um `.ps1` com caractere não ASCII não começar com BOM UTF-8 (o Windows PowerShell 5.1 quebra o parse).
 `.gitattributes` força LF nesses tipos; os `.ps1` não são normalizados (o git preserva o BOM).
+
+
+## Gerador simplificado e exclusão de itens (13/10/2026)
+
+- `generator.html`: modo simples por padrão (plataforma, nome do instalador e do app, cliente, versão do pacote, ícone, notas); servidor, segurança, aparência, permissões e modelos ficam em "Avançado", recolhido. Erro em campo avançado abre a seção e aparece no campo. Nenhum campo exigido pelo build foi removido.
+- Exclusão: `DELETE /nextec/geracoes/<uuid>/excluir/` e `POST /nextec/geracoes/excluir/` (`{"uuids": [...]}` ou `{"scope": "failed"}`). Exige identidade do Access e o cabeçalho `X-Nextec-Acao: excluir`. Recusa item em andamento (409 `in_progress`) e item já baixado para Atualizações sem `?confirmar=1` / `confirm_imported` (409 `imported`). Apaga só `exe/<uuid>`, `png/<uuid>` e `temp_zips/secrets_<uuid>.zip`; registra no logger `rdgenerator.audit`.
+- Migração 0006 (`imported_at`): rode `python manage.py migrate` ao atualizar.

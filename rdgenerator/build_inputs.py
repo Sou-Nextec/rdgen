@@ -8,7 +8,7 @@ FIELDS = set('server serverPort key apiServer custom uuid token iconlink_url ico
              'logodarklink_url logodarklink_uuid logodarklink_file '
              'privacylink_url privacylink_uuid privacylink_file appname genurl urlLink downloadLink '
              'delayFix rdgen xOffline removeNewVersionNotif compname androidappid filename package_version '
-             'enroll_key enroll_panel'.split())
+             'enroll_key enroll_panel nx_agent'.split())
 UNSAFE = re.compile(r'[&\\|\'"$`\r\n\x00]')
 APP_NAME = re.compile(r'[A-Za-z0-9-]+')
 ANDROID_ID = re.compile(r'[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+')
@@ -54,6 +54,6 @@ def validate_build_inputs(payload):
                     raise ValueError(f'{key}: invalid UUID')
         if key.endswith('_file') and value not in ('false', 'icon.png', 'logo.png', 'logo_light.png', 'logo_dark.png', 'privacy.png'):
             raise ValueError(f'{key}: invalid image filename')
-        if key in ('delayFix', 'rdgen', 'xOffline', 'removeNewVersionNotif') and value not in ('true', 'false'):
+        if key in ('delayFix', 'rdgen', 'xOffline', 'removeNewVersionNotif', 'nx_agent') and value not in ('true', 'false'):
             raise ValueError(f'{key}: invalid boolean')
     return payload

@@ -6,10 +6,17 @@ param(
     [string]$PackageVersion = $env:package_version,
     # Chave de inscricao global e URL do painel (secrets do build, ja mascarados no Actions). Nunca sao impressos.
     [string]$EnrollmentKey = $env:enroll_key,
-    [string]$EnrollmentPanel = $env:enroll_panel
+    [string]$EnrollmentPanel = $env:enroll_panel,
+    # Flag explicito do build: 'false' = app de suporte avulso (sem agente/atualizador). Qualquer outro valor
+    # (inclusive vazio) inclui o agente. A decisao NUNCA depende do nome do app, que pode ser qualquer um.
+    [string]$IncludeAgent = $env:nx_agent,
+    # Painel do build para o atualizador (somente https). Sem valor, usa enroll_panel e depois o apiServer.
+    [string]$PanelUrl = '',
+    [string]$ApiServer = $env:apiServer
 )
 $ErrorActionPreference = 'Stop'
 if ($AppName -notmatch '^[A-Za-z0-9 _-]+$') { throw 'Invalid application name' }
+if ($IncludeAgent -and $IncludeAgent -notin @('true','false')) { throw 'Invalid agent flag' }
 if ($PackageVersion -and $PackageVersion -notmatch '^\d{1,3}\.\d{1,3}\.\d{1,3}$') { throw 'Invalid package version' }
 if (!$BinaryDirectory) { $BinaryDirectory = Join-Path $SourceRoot 'rustdesk' }
 if (!(Test-Path -LiteralPath (Join-Path $BinaryDirectory "$AppName.exe"))) {
@@ -27,7 +34,14 @@ try {
     if ($PackageVersion) { $preprocessArgs += @('--version', $PackageVersion, '--revision-version', '0') }
     python @preprocessArgs
     if ($LASTEXITCODE -ne 0) { throw 'MSI preprocessing failed' }
-    if ($AppName -imatch '(^|-)Nextec-Connect$') {
+    $withAgent = $IncludeAgent -ne 'false'
+    if (!$PanelUrl) { $PanelUrl = if ($EnrollmentPanel) { $EnrollmentPanel } else { $ApiServer } }
+    # Trava de seguranca: o atualizador so fala com um painel https definido no build, nunca com valor vindo da rede.
+    $updateUrlBase = ''
+    if ($PanelUrl -match '^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?/?$') { $updateUrlBase = $PanelUrl.TrimEnd('/') + '/api/nextec/update' }
+    $markerFile = Join-Path $SourceRoot 'res/msi/Package/Resources/nextec-marker.json'
+    if (!$withAgent) { Remove-Item -LiteralPath $markerFile -Force -ErrorAction SilentlyContinue }
+    if ($withAgent) {
         if (!$UpdaterSource) { $UpdaterSource = Join-Path $PSScriptRoot 'nextec-update' }
         $updater = Join-Path $UpdaterSource 'Instalar-Nextec.ps1'
         $agent = Join-Path $UpdaterSource 'Agente-Senha-Nextec.ps1'
@@ -76,8 +90,9 @@ try {
                 <File Id="Nextec.UpdaterScript" Source="Resources\Instalar-Nextec.ps1" KeyPath="yes" />
             </Component>
         </DirectoryRef>
-        <CustomAction Id="Nextec.RegisterUpdater" Directory="System64Folder" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER_INNER]Instalar-Nextec.ps1&quot; -UrlBase &quot;https://painel-remoto.nex.tec.br/api/nextec/update&quot; -Registrar" Execute="deferred" Impersonate="no" Return="check" />
+        <CustomAction Id="Nextec.RegisterUpdater" Directory="System64Folder" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER_INNER]Instalar-Nextec.ps1&quot; -Registrar" Execute="deferred" Impersonate="no" Return="check" />
 '@
+            if ($updateUrlBase) { $component = $component.Replace(' -Registrar', " -UrlBase &quot;$updateUrlBase&quot; -Registrar") }
             if ($PackageVersion) { $component = $component.Replace(' -Registrar', " -PacoteVersao $PackageVersion -Registrar") }
             if (!$xml.Contains('</Feature>') -or !$xml.Contains('</Package>') -or !$xml.Contains('</InstallExecuteSequence>')) {
                 throw 'Unexpected WiX Package.wxs layout; refusing to patch MSI'
@@ -97,11 +112,42 @@ try {
             $xml = $xml.Replace('</InstallExecuteSequence>', '            <Custom Action="Nextec.RegisterCoordinator" After="Nextec.RegisterUpdater" Condition="NOT REMOVE~=&quot;ALL&quot;" />' + "`r`n" + '            <Custom Action="Nextec.RemoveCoordinator" Before="Nextec.RemoveUpdater" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />' + "`r`n" + '            <Custom Action="Nextec.RemoveUpdater" Before="RemoveFiles" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />' + "`r`n`t`t</InstallExecuteSequence>")
             $packageChanged = $true
         }
+        # Marcador de instalacao independente de nome: arquivo junto dos scripts + registro HKLM\SOFTWARE\Nextec\Agente.
+        $upgradeCode = ''
+        foreach ($wxFile in @(Get-ChildItem -LiteralPath (Join-Path $SourceRoot 'res/msi/Package') -Include '*.wxs','*.wxi' -Recurse -File -ErrorAction SilentlyContinue)) {
+            $found = [regex]::Match([IO.File]::ReadAllText($wxFile.FullName), 'UpgradeCode\W{1,6}\{?([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})')
+            if ($found.Success) { $upgradeCode = $found.Groups[1].Value.ToLowerInvariant(); break }
+        }
+        $markerJson = [ordered]@{ v = 1; app = $AppName; upgrade_code = $upgradeCode } | ConvertTo-Json -Compress
+        [IO.File]::WriteAllText($markerFile, $markerJson, [Text.UTF8Encoding]::new($false))
+        if (!$xml.Contains('Nextec.AgentMarker')) {
+            if (!$xml.Contains('</Feature>') -or !$xml.Contains('</Package>')) { throw 'Unexpected WiX Package.wxs layout; refusing to add installation marker' }
+            $markerComponent = @'
+        <DirectoryRef Id="INSTALLFOLDER_INNER">
+            <Component Id="Nextec.AgentMarker" Guid="*">
+                <File Id="Nextec.AgentMarkerFile" Source="Resources\nextec-marker.json" KeyPath="yes" />
+            </Component>
+            <Component Id="Nextec.AgentRegistry" Guid="*">
+                <RegistryKey Root="HKLM" Key="SOFTWARE\Nextec\Agente">
+                    <RegistryValue Name="InstallDir" Type="string" Value="[INSTALLFOLDER_INNER]" KeyPath="yes" />
+                    <RegistryValue Name="AppName" Type="string" Value="__NX_APP__" />
+                </RegistryKey>
+            </Component>
+        </DirectoryRef>
+'@
+            $markerComponent = $markerComponent.Replace('__NX_APP__', $AppName)
+            $xml = $xml.Replace('</Feature>', "            <ComponentRef Id=`"Nextec.AgentMarker`" />`r`n            <ComponentRef Id=`"Nextec.AgentRegistry`" />`r`n`t`t</Feature>")
+            $xml = $xml.Replace('</Package>', "$markerComponent`r`n`t</Package>")
+            $packageChanged = $true
+        } else {
+            $refreshed = [regex]::Replace($xml, '(Name="AppName" Type="string" Value=")[^"]*(")', { param($m) $m.Groups[1].Value + $AppName + $m.Groups[2].Value })
+            if ($refreshed -ne $xml) { $xml = $refreshed; $packageChanged = $true }
+        }
         if ($packageChanged) { [IO.File]::WriteAllText($packageWxs, $xml, [Text.UTF8Encoding]::new($false)) }
     }
     # Inscricao global: Resources\inscricao.json vai em componente proprio, fora dos scripts assinados (hash intacto).
     $enrollmentFile = Join-Path $SourceRoot 'res/msi/Package/Resources/inscricao.json'
-    if ($EnrollmentKey -or $EnrollmentPanel) {
+    if (($EnrollmentKey -or $EnrollmentPanel) -and $withAgent) {
         if ($EnrollmentKey -notmatch '^nx1\.[0-9]{1,12}\.[A-Za-z0-9_-]{16,128}$') { throw 'Invalid enrollment key format' }
         if ($EnrollmentPanel -notmatch '^https?://[A-Za-z0-9._:\[\]-]+(/[A-Za-z0-9._~%/-]*)?$') { throw 'Invalid enrollment panel URL' }
         $resourceDir = Split-Path -Parent $enrollmentFile
@@ -126,7 +172,7 @@ try {
         Write-Output 'Inscricao global incorporada ao instalador (Resources\inscricao.json).'
     } else {
         Remove-Item -LiteralPath $enrollmentFile -Force -ErrorAction SilentlyContinue
-        Write-Output '::warning title=Instalador sem inscricao automatica::A chave de inscricao global (NX_ENROLL_KEY) nao foi fornecida; o instalador sera gerado SEM inscricao.json.'
+        if ($withAgent) { Write-Output '::warning title=Instalador sem inscricao automatica::A chave de inscricao global (NX_ENROLL_KEY) nao foi fornecida; o instalador sera gerado SEM inscricao.json.' }
     }
     # Restore native WiX packages explicitly, at the directory referenced by the vcxproj.
     nuget restore CustomActions/packages.config -PackagesDirectory packages -NonInteractive

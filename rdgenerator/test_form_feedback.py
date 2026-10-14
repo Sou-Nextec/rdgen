@@ -36,3 +36,23 @@ class GeneratorFormFeedbackTests(SimpleTestCase):
         self.assertIn("Escolha uma das opções disponíveis.", response.content.decode())
         self.assertNotIn(data["passApproveMode"], response.content.decode())
         generate.assert_not_called()
+
+
+class GeneratorSimpleModeTests(SimpleTestCase):
+    @patch("rdgenerator.views.nextec.config_problems", return_value=[])
+    def test_simple_mode_by_default_with_advanced_collapsed(self, config):
+        html = generator_view(RequestFactory().get("/generator")).content.decode()
+        self.assertIn("Gerar instalador", html)
+        self.assertIn('id="advanced"', html)
+        self.assertNotIn('id="advanced" open', html)
+        self.assertIn("Já aplicado pela Nextec", html)
+
+    @patch("rdgenerator.views.nextec.config_problems", return_value=[])
+    @patch("rdgenerator.views.generate_custom_client")
+    def test_error_in_advanced_field_opens_advanced_and_shows_message_on_field(self, generate, config):
+        data = GeneratorFormFeedbackTests.data(self)
+        data["serverPort"] = "21117"
+        html = generator_view(RequestFactory().post("/generator", data)).content.decode()
+        self.assertIn('id="advanced" open', html)
+        self.assertIn('class="field-error"', html)
+        generate.assert_not_called()

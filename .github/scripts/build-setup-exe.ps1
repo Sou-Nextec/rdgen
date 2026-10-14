@@ -2,11 +2,16 @@
     [Parameter(Mandatory)][string]$MsiPath,
     [Parameter(Mandatory)][string]$PortablePath,
     [Parameter(Mandatory)][string]$OutputPath,
-    [Parameter(Mandatory)][string]$DisplayName
+    [Parameter(Mandatory)][string]$DisplayName,
+    # Nome do EXE portatil extraido; vazio = o nome do app (DisplayName). Qualquer nome vale, nada e fixo.
+    [string]$PortableName = ''
 )
 $ErrorActionPreference = 'Stop'
 if (!(Test-Path -LiteralPath $MsiPath)) { throw 'MSI payload missing' }
 if (!(Test-Path -LiteralPath $PortablePath)) { throw 'Portable payload missing' }
+if (!$PortableName) { $PortableName = $DisplayName }
+$PortableName = ($PortableName -replace '[^A-Za-z0-9_-]', '')
+if (!$PortableName) { $PortableName = 'App' }
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (!(Test-Path -LiteralPath $compiler)) { throw '.NET Framework C# compiler unavailable' }
 $hash = (Get-FileHash -LiteralPath $MsiPath -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -54,7 +59,7 @@ internal static class NextecSetup {
                     choice.MaximizeBox = false; choice.MinimizeBox = false;
                     choice.StartPosition = FormStartPosition.CenterScreen;
                     var label = new Label { Left = 22, Top = 20, Width = 385, Height = 65,
-                        Text = "Como deseja usar o Nextec Connect?\nExecute agora para suporte avulso ou instale para manter o aplicativo atualizado nesta máquina." };
+                        Text = "Como deseja usar o __DISPLAY__?\nExecute agora para suporte avulso ou instale para manter o aplicativo atualizado nesta máquina." };
                     var portable = new Button { Text = "Executar sem instalar", Left = 22, Top = 98, Width = 180, Height = 42, DialogResult = DialogResult.No };
                     var setup = new Button { Text = "Instalar nesta máquina", Left = 216, Top = 98, Width = 185, Height = 42, DialogResult = DialogResult.Yes };
                     var cancel = new Button { Text = "Cancelar", Left = 300, Top = 153, Width = 100, DialogResult = DialogResult.Cancel };
@@ -87,7 +92,7 @@ internal static class NextecSetup {
                 InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
             Directory.SetAccessControl(folder, acl);
             if (!install) {
-                string portable = Path.Combine(folder, "Nextec-Connect.exe");
+                string portable = Path.Combine(folder, "__EXE__.exe");
                 Extract("Nextec.Client.portable.exe", portable, PortableHash);
                 var client = Process.Start(new ProcessStartInfo(portable) { UseShellExecute = false, WorkingDirectory = folder });
                 client.WaitForExit();
@@ -112,7 +117,7 @@ internal static class NextecSetup {
         }
     }
 }
-'@.Replace('__HASH__', $hash).Replace('__PORTABLE_HASH__', $portableHash).Replace('__DISPLAY__', ($DisplayName -replace '[^A-Za-z0-9 _-]', '')) | Set-Content -LiteralPath $source -Encoding UTF8
+'@.Replace('__HASH__', $hash).Replace('__PORTABLE_HASH__', $portableHash).Replace('__DISPLAY__', ($DisplayName -replace '[^A-Za-z0-9 _-]', '')).Replace('__EXE__', $PortableName) | Set-Content -LiteralPath $source -Encoding UTF8
 @'
 <?xml version="1.0" encoding="utf-8"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">

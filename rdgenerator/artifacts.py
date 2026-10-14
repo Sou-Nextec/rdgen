@@ -29,6 +29,8 @@ def artifact(request):
     if path.is_symlink() or path.parent.is_symlink():
         return JsonResponse({'error': 'Arquivo inválido.'}, status=409)
     if request.GET.get('file') == '1':
+        from django.utils import timezone
+        GithubRun.objects.filter(pk=run.pk).update(imported_at=timezone.now())
         return FileResponse(path.open('rb'), as_attachment=True, filename=expected, content_type='application/octet-stream')
     digest = hashlib.sha256()
     with path.open('rb') as stream:

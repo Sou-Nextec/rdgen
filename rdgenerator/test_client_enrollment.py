@@ -85,6 +85,32 @@ class ClientEnrollmentTests(TestCase):
         self.assertEqual(result['status_code'], 503)
         self.assertFalse(list(Path('temp_zips').glob('*.zip')) if Path('temp_zips').exists() else [])
 
+    def test_sem_url_do_painel_nao_gera_instalador_por_cliente(self):
+        # revisao do #46: a credencial veio, mas sem URL do painel o instalador sairia sem inscricao.json
+        payload = {'enroll_key': CLIENT_KEY, 'client_id': 7, 'client_name': 'Cliente A'}
+        with patch.dict(os.environ, {'NX_API_SERVER': ''}), self.panel(payload):
+            result = self.generate({'client_id': '7', 'apiServer': 'remoto.nex.tec.br:21114'})
+        self.assertFalse(result['success'], result)
+        self.assertEqual(result['status_code'], 503)
+        self.assertIn('sem inscrição automática', result['error'])
+        self.assertFalse(list(Path('temp_zips').glob('*.zip')) if Path('temp_zips').exists() else [])
+        from .models import GithubRun
+        self.assertFalse(GithubRun.objects.exists())
+
+    def test_sem_url_do_painel_o_instalador_geral_continua_com_aviso(self):
+        with patch.dict(os.environ, {'NX_API_SERVER': ''}), self.panel(None):
+            result = self.generate({'apiServer': 'remoto.nex.tec.br:21114'})
+        self.assertTrue(result['success'], result)
+        self.assertTrue(result['avisos'])
+        self.assertNotIn('enroll_key', self.secrets(result))
+
+    def test_instalador_por_cliente_sem_agente_e_recusado(self):
+        payload = {'enroll_key': CLIENT_KEY, 'client_id': 7, 'client_name': 'Cliente A'}
+        with self.panel(payload):
+            result = self.generate({'client_id': '7', 'nx_agent': 'false'})
+        self.assertFalse(result['success'], result)
+        self.assertEqual(result['status_code'], 400)
+
     def test_credencial_de_outro_cliente_ou_formato_errado_e_recusada(self):
         for payload in ({'enroll_key': 'nx2.8.3.' + 'ab12' * 16, 'client_name': 'x'},
                         {'enroll_key': GLOBAL_KEY, 'client_name': 'x'},

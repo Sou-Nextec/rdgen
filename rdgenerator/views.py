@@ -344,6 +344,14 @@ def generate_custom_client(params, full_url, created_by='', profile=''):
     # Chave de inscricao global: vem so do ambiente, entra apenas no pacote cifrado do build (nunca em banco/log/resposta).
     enroll_key = client_enroll_key or nextec.resolve_enroll_key()
     enrollment_problem = nextec.enrollment_warning(apiServer, key=enroll_key)
+    # Instalador por cliente sem inscricao automatica nao existe: sem a URL do painel (ou sem o agente) a maquina nunca
+    # entraria no cliente. Recusa antes de gastar 30 a 45 min de build, em vez de so avisar.
+    if client_id and not nx_agent:
+        return {'success': False, 'status_code': 400,
+                'error': 'Instalador por cliente precisa do agente Nextec (o app de suporte avulso não se inscreve).'}
+    if client_id and enrollment_problem:
+        return {'success': False, 'status_code': 503,
+                'error': 'Instalador por cliente sem inscrição automática: ' + enrollment_problem}
     if not enrollment_problem:
         inputs_raw['enroll_key'] = enroll_key
         inputs_raw['enroll_panel'] = nextec.enroll_panel(apiServer)

@@ -1,5 +1,13 @@
 <style>
   html[data-embedded] body { height:auto; min-height:0; }
+  /* Dentro do painel, titulo, abas e fundo vem do painel: sem cabecalho proprio, sem card dentro de card. */
+  html[data-embedded] :is(.nx-header,.top) { display:none; }
+  html[data-embedded] body { background:var(--nx-surface,var(--surface,#fff)); padding-bottom:20px; }
+  html[data-embedded] main { margin-top:12px; }
+  html[data-embedded] .card { box-shadow:none; }
+  html[data-embedded] :is(#novo-heading,.intro h2) { display:none; }
+  html[data-embedded] #novo-heading + .lead { margin-top:0; }
+  html.dark { --surface:#1c1c20; --page:#131315; --field:#27272b; --line:#414148; --ink:#e8e8ee; --muted:#c8c5ce; --navy:#e8e8ee; --tint:#393044; }
   html.dark { color-scheme:dark; --nx-bg:#131315; --nx-surface:#1c1c20; --nx-field:#27272b; --nx-border:#414148; --nx-divider:#35353b; --nx-ink:#e8e8ee; --nx-muted:#c8c5ce; --nx-navy:#e8e8ee; --nx-tint:#393044; }
   html.dark body { background:var(--nx-bg); color:var(--nx-ink); }
   html.dark :is(.section,.error-container) { background:var(--nx-surface); }

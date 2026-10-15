@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Gerador de clientes: não foi possível gerar</title>
+    <style>
+      body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background: #f6f6f7; color: #222; margin: 0; }
+      main { max-width: 680px; margin: 6vh auto; padding: 0 20px; }
+      .card { background: #fff; border: 1px solid #e3e3e6; border-radius: 12px; padding: 24px 28px; }
+      h1 { font-size: 1.25rem; margin: 0 0 8px; color: #8a1c1c; }
+      h2 { font-size: .95rem; margin: 18px 0 4px; }
+      p { line-height: 1.5; margin: 6px 0; color: #444; }
+      code { background: #f0f0f2; padding: 1px 5px; border-radius: 4px; word-break: break-word; }
+      a.back.secondary { background: #e9ddff; color: #3b2a73; margin-left: 8px; }
+      a.back { display: inline-block; margin-top: 18px; padding: 10px 16px; border-radius: 10px; background: #613CB3; color: #fff; text-decoration: none; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="card" role="alert">
+        <h1>{{ title }}</h1>
+        <p>{{ message }}</p>
+        {% if action %}<h2>O que fazer</h2><p>{{ action }}</p>{% endif %}
+        {% if detail or code %}
+        <h2>Detalhe técnico</h2>
+        <p>{% if code %}Código: <code>{{ code }}</code>{% endif %}{% if detail %} · GitHub disse: <code>{{ detail }}</code>{% endif %}</p>
+        {% endif %}
+        <a class="back" href="./{% if retry_query %}?{{ retry_query }}{% endif %}">Tentar de novo</a>
+        <a class="back secondary" href="./">Começar do zero</a>
+      </div>
+    </main>
+  {% include 'embed.html' %}
+</body>
+</html>

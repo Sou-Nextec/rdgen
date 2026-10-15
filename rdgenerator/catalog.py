@@ -211,6 +211,7 @@ def _item(run, refresh=False):
         'package_version': run.package_version,
         'generator_version': run.generator_version,
         'notes': run.notes,
+        'app_name': run.app_name,
         'created_by': run.created_by,
         'created_at': run.created_at.isoformat() if run.created_at else None,
         'status': status,

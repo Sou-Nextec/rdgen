@@ -83,3 +83,23 @@ class GeneratorErrorPageTests(TestCase):
         self.assertIn('exename=Meu-App', body)
         self.assertIn('github_actions_desativado', body)
         self.assertNotIn('segredo', body)
+
+
+class AppNameCatalogTests(TestCase):
+    def test_app_name_is_persisted_and_exposed_for_retry(self):
+        from . import catalog, nextec, views
+        from .models import GithubRun
+        response = Mock(status_code=422, text='{"message":"Actions has been disabled for this repository."}')
+        with patch.object(nextec, 'config_problems', return_value=[]), \
+                patch.object(nextec, 'is_configured', return_value=False), \
+                patch.object(views, 'save_png', return_value=('false', 'false', 'false')), \
+                patch.object(views, 'validate_build_inputs'), \
+                patch.object(views.requests, 'post', return_value=response), \
+                override_settings(GHBEARER='t', GHUSER='o', ZIP_PASSWORD='p'):
+            result = views.generate_custom_client(
+                {'exename': 'Cliente-Bruno', 'appname': 'Nextec-Connect'}, 'https://generator.example')
+        self.assertFalse(result['success'])
+        self.assertEqual(result['error_code'], 'github_actions_desativado')
+        run = GithubRun.objects.latest('id')
+        self.assertEqual(run.app_name, 'Nextec-Connect')
+        self.assertIn('Actions', run.submission_error)

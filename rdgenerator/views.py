@@ -394,6 +394,7 @@ def generate_custom_client(params, full_url, created_by='', profile=''):
         package_version=package_version.strip(),
         generator_version=nextec.product_version(),
         notes=notes.strip(),
+        app_name=str(appname or '')[:64],
     )
     # Register before dispatch so rejected/failed submissions remain visible in history.
     new_github_run.save(force_insert=True)

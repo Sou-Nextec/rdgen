@@ -21,6 +21,8 @@ class GithubRun(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, db_index=True, null=True)
     submission_error = models.TextField(blank=True, default='')
     notes = models.CharField(max_length=1000, blank=True, default='')
+    # Nome do aplicativo (nao secreto). Vazio em itens anteriores a este campo; 'Tentar de novo' usa para nao trocar o protocolo.
+    app_name = models.CharField(max_length=64, blank=True, default='')
 
 
 class SavedModel(models.Model):

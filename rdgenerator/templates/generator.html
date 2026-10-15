@@ -92,6 +92,11 @@
         .checks.block { grid-template-columns:1fr; }
         .key-row { display:flex; gap:8px; align-items:stretch; }
         .key-row input { flex:1; }
+        .model-bar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 4px; padding:10px 12px; background:var(--nx-bg); border:1px solid var(--nx-divider); border-radius:12px; }
+        .model-bar-label { margin:0; font-weight:600; font-size:14px; color:var(--nx-ink); }
+        .model-bar select { flex:1 1 220px; }
+        .model-status { margin:0 0 14px; min-height:0; }
+        .model-status:empty { display:none; }
         .model-actions { display:flex; flex-wrap:wrap; gap:8px; }
         .model-actions select { flex:1 1 220px; }
         .password-requirement { display:none; margin:8px 0 0; padding:10px 12px; border-radius:10px; background:var(--nx-warn-bg); color:var(--nx-warn-ink); font-size:13px; }
@@ -113,6 +118,7 @@
             .adv-body { padding:0 16px 18px; }
             .key-row { flex-direction:column; }
             .model-actions button { flex:1 1 calc(50% - 8px); }
+            .model-bar button { flex:1 1 calc(33% - 8px); }
         }
         @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; animation-duration:.01ms !important; transition-duration:.01ms !important; } }
     </style>
@@ -147,6 +153,14 @@
         <section class="card" aria-labelledby="novo-heading">
             <h2 id="novo-heading">Novo instalador</h2>
             <p class="lead">Preencha o essencial. O servidor, a chave e as regras de segurança da Nextec já vão aplicados.</p>
+            <div class="model-bar" role="group" aria-label="Modelos salvos">
+                <label for="savedModels" class="model-bar-label">Modelo salvo</label>
+                <select id="savedModels" aria-label="Modelos salvos"><option value="">Selecione um modelo salvo</option></select>
+                <button type="button" id="loadServerModel" class="secondary-action">Carregar</button>
+                <button type="button" id="saveServerModel">Salvar</button>
+                <button type="button" id="deleteServerModel" class="secondary-action">Excluir</button>
+            </div>
+            <p id="modelStatus" class="hint model-status" role="status"></p>
             <div class="fields">
                 <div class="field full">
                     <span class="legend" id="platform-legend">Plataforma</span>
@@ -324,18 +338,13 @@
                 </section>
 
                 <section class="adv-group">
-                    <h3>Modelos de configuração</h3>
-                    <p class="lead">Salve neste servidor para sua conta ou use um JSON. Senhas, chave, imagens e ajustes manuais não entram no modelo.</p>
+                    <h3>Modelos em arquivo JSON</h3>
+                    <p class="lead">Exporte ou importe a configuração como arquivo. Os modelos salvos na sua conta ficam no topo do formulário.</p>
                     <div class="model-actions">
-                        <select id="savedModels" aria-label="Modelos salvos"><option value="">Selecione um modelo salvo</option></select>
-                        <button type="button" id="saveServerModel">Salvar no servidor</button>
-                        <button type="button" id="loadServerModel" class="secondary-action">Carregar</button>
-                        <button type="button" id="deleteServerModel" class="secondary-action">Excluir</button>
                         <button type="button" onclick="saveFormData()" class="secondary-action">Exportar JSON</button>
                         <input type="file" id="fileInput" style="display:none;" accept=".json,application/json">
                         <button type="button" onclick="loadFormData()" class="secondary-action">Importar JSON</button>
                     </div>
-                    <p id="modelStatus" class="hint" role="status"></p>
                 </section>
             </div>
         </details>

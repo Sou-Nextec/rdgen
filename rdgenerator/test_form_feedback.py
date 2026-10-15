@@ -56,3 +56,61 @@ class GeneratorSimpleModeTests(SimpleTestCase):
         self.assertIn('id="advanced" open', html)
         self.assertIn('class="field-error"', html)
         generate.assert_not_called()
+
+
+class GeneratorP1RefinementTests(SimpleTestCase):
+    def page(self, query="", **env):
+        patches = [patch("rdgenerator.views.nextec.config_problems", return_value=[])]
+        if "enrollment" in env:
+            patches += [patch("rdgenerator.views.nextec.is_configured", return_value=True),
+                        patch("rdgenerator.views.nextec.enrollment_warning", return_value=env["enrollment"])]
+        for p in patches:
+            p.start()
+        try:
+            return generator_view(RequestFactory().get("/generator" + query)).content.decode()
+        finally:
+            for p in patches:
+                p.stop()
+
+    def test_enrollment_warning_is_an_alert_and_blocks_generate_until_confirmed(self):
+        html = self.page(enrollment="Inscrição automática desativada: teste.")
+        self.assertIn('role="alert" id="appliedAlert"', html)
+        self.assertIn("Atenção: confira antes de gerar", html)
+        self.assertNotIn("Já aplicado pela Nextec", html)
+        self.assertIn('id="ackNoEnroll"', html)
+        self.assertIn('id="submitButton" disabled', html)
+        # a confirmacao nao tem name: nao entra no POST nem em modelos salvos
+        self.assertNotIn('name="ackNoEnroll"', html)
+
+    def test_no_warning_keeps_the_note_and_enabled_button(self):
+        html = self.page()
+        self.assertIn("Já aplicado pela Nextec", html)
+        self.assertNotIn('id="ackNoEnroll"', html)
+        self.assertNotIn('id="submitButton" disabled', html)
+
+    def test_installer_name_is_prefilled_and_placeholders_read_as_examples(self):
+        html = self.page()
+        self.assertIn('value="Nextec-Connect"', html)
+        self.assertIn('placeholder="Ex.: Nextec-Connect"', html)
+
+    def test_retry_without_app_name_leaves_it_blank_to_be_checked(self):
+        html = self.page("?exename=Suporte-Nextec")
+        self.assertIn('value="Suporte-Nextec"', html)
+        self.assertNotIn('name="appname" value="Nextec-Connect"', html)
+
+    def test_names_are_validated_while_typing(self):
+        html = self.page()
+        self.assertIn('id="appnameError"', html)
+        self.assertIn("appProblem", html)
+        self.assertIn("aria-describedby=\"appname-hint appnameError\"", html)
+
+    def test_header_stays_readable_with_system_dark_scheme(self):
+        html = self.page()
+        self.assertIn("prefers-color-scheme:dark) { html:not([data-embedded]):not(.light) .nx-header {", html)
+
+    def test_link_addresses_have_their_own_honest_group(self):
+        html = self.page()
+        server = html.split("<h3>Servidor Nextec</h3>")[1].split("<h3>Endereços do aplicativo</h3>")[0]
+        self.assertNotIn("urlLink", server)
+        self.assertNotIn("downloadLink", server)
+        self.assertIn("Opcionais. Vazios usam os endereços padrão do RustDesk.", html)

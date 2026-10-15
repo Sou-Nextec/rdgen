@@ -108,11 +108,16 @@ class GenerateForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for name, hint in (('exename', 'Nextec-Connect'), ('appname', 'Nextec-Connect'),
+        # placeholder com "Ex.:" para nao parecer um valor ja preenchido
+        for name, hint in (('exename', 'Ex.: Nextec-Connect'), ('appname', 'Ex.: Nextec-Connect'),
                            ('client_name', 'Ex.: Carteira Bruno')):
             self.fields[name].widget.attrs.setdefault('placeholder', hint)
         self.fields['exename'].widget.attrs.setdefault('autocomplete', 'off')
         self.fields['exename'].widget.attrs.setdefault('required', 'required')
+        self.fields['exename'].widget.attrs.setdefault('aria-describedby', 'exename-hint filenameError')
+        self.fields['appname'].widget.attrs.setdefault('autocomplete', 'off')
+        self.fields['appname'].widget.attrs.setdefault('spellcheck', 'false')
+        self.fields['appname'].widget.attrs.setdefault('aria-describedby', 'appname-hint appnameError')
         # Padroes Nextec: com a trava ligada, o servidor/chave/API ficam fixos (o servidor tambem reforca ao gerar)
         from . import nextec
         if nextec.is_locked():

@@ -1,5 +1,15 @@
 # Gerador Nextec
 
+## 2.3.7
+
+Refino da tela Gerar cliente (itens P1 da análise de UX/UI). Só interface e validação; nenhum script do agente mudou.
+
+- **Inscrição desativada deixa de parecer sucesso:** quando o gerador não consegue a credencial de inscrição, a caixa vira alerta ("Atenção: confira antes de gerar"), o botão Gerar fica desligado e só libera depois de marcar a confirmação de gerar mesmo assim. Sem aviso, nada muda. Chave pública ausente com servidor configurado também vira alerta.
+- **Cabeçalho legível no modo escuro do sistema:** fora do painel ("Abrir em outra aba"), o título branco ficava sobre fundo claro; agora usa a superfície escura, como o tema escuro do painel.
+- **Nomes sem pegadinha:** Nome do instalador e do aplicativo vêm preenchidos com `Nextec-Connect` (valor real, não placeholder; os exemplos agora dizem "Ex.:"). Em Tentar de novo de item antigo sem o nome do aplicativo, o campo fica vazio para conferir. O nome do aplicativo é validado enquanto digita (espaço, acento e símbolos), com a mesma regra do servidor, e o envio é barrado com foco no campo.
+- **Servidor só com o que é do servidor:** Endereço dos links e Endereço das atualizações saem do bloco "Servidor Nextec" para "Endereços do aplicativo", com texto que diz se estão fixados ou opcionais.
+- **Modelos salvos:** a confirmação de inscrição não entra no modelo (checkbox sem nome é ignorado).
+
 ## 2.3.6
 
 A versão do instalador gerado passa a ser a versão do gerador (`rdgenerator/VERSION`), para saber exatamente qual gerador e qual conjunto de scripts do agente estão dentro do pacote.

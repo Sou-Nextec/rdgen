@@ -8,6 +8,8 @@ import os
 import secrets
 import re
 import requests
+from urllib.parse import urlencode
+from .github_errors import explain_exception, explain_response
 import base64
 import binascii
 import hashlib
@@ -418,27 +420,31 @@ def generate_custom_client(params, full_url, created_by='', profile=''):
                 "avisos": avisos,
             }
         else:
-            uncertain = response.status_code >= 500
-            new_github_run.status = 'submission_unknown' if uncertain else 'failure'
-            new_github_run.submission_error = (
-                'O GitHub pode ter aceitado a geração, mas retornou erro. Verifique o histórico antes de tentar novamente.'
-                if uncertain else f'GitHub recusou o início da execução (HTTP {response.status_code}).'
-            )
+            info = explain_response(response)
+            new_github_run.status = 'submission_unknown' if info['uncertain'] else 'failure'
+            new_github_run.submission_error = f"{info['title']}. {info['message']}"
             new_github_run.save(update_fields=['status', 'submission_error'])
-            return {
-                "success": False,
-                "error": "GitHub rejected the start request",
-                "status_code": 500
-            }
-    except Exception:
+            return _start_failure(info, 502 if info['uncertain'] else 424)
+    except Exception as exc:
+        info = explain_exception(exc)
         new_github_run.status = 'submission_unknown'
-        new_github_run.submission_error = 'A conexão foi interrompida durante o envio. O GitHub pode ter aceitado a geração; verifique o histórico antes de tentar novamente.'
+        new_github_run.submission_error = f"{info['title']}. {info['message']}"
         new_github_run.save(update_fields=['status', 'submission_error'])
-        return {
-            "success": False,
-            "error": "Connection error while starting the build.",
-            "status_code": 500
-        }
+        return _start_failure(info, 502)
+
+
+def _start_failure(info, status_code):
+    """Falha ao iniciar a geracao, no mesmo formato para a pagina e para a API."""
+    return {
+        'success': False,
+        'error': f"{info['title']}. {info['message']}",
+        'error_code': info['code'],
+        'title': info['title'],
+        'message': info['message'],
+        'action': info['action'],
+        'detail': info['detail'],
+        'status_code': status_code,
+    }
 
 
 def _get_run_status(uuid_val, filename='', platform='', include_progress=False):
@@ -536,6 +542,19 @@ SIMPLE_FIELDS = {'exename', 'appname', 'client_name', 'package_version', 'profil
 SAFE_MESSAGE_FIELDS = {'exename', 'appname', 'serverPort', 'key', 'iconfile', 'compname'}
 
 
+RETRY_FIELDS = ('exename', 'appname', 'client_name', 'profile', 'platform', 'notes')
+
+
+def _retry_initial(source):
+    """Campos simples que 'Tentar de novo' devolve ao formulario. Arquivos e segredos nunca voltam."""
+    values = {}
+    for name in RETRY_FIELDS:
+        value = str(source.get(name, '') or '').strip()[:1000]
+        if value:
+            values[name] = value
+    return values
+
+
 def generator_view(request):
     validation_errors = []
     field_errors = {}
@@ -559,9 +578,16 @@ def generator_view(request):
                     'avisos': result.get('avisos', []),
                 })
             else:
-                return JsonResponse({"error": result['error']}, status=result.get('status_code', 500))
+                return render(request, 'start_error.html', {
+                    'retry_query': urlencode(_retry_initial(request.POST)),
+                    'title': result.get('title') or 'Não foi possível gerar o instalador',
+                    'message': result.get('message') or result['error'],
+                    'action': result.get('action', ''),
+                    'detail': result.get('detail', ''),
+                    'code': result.get('error_code', ''),
+                }, status=result.get('status_code', 500))
     else:
-        form = GenerateForm(initial=nextec.initial())
+        form = GenerateForm(initial={**nextec.initial(), **_retry_initial(request.GET)})
     if form.is_bound:
         for name, errors in form.errors.as_data().items():
             field = form.fields.get(name)

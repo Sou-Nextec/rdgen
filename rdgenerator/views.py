@@ -555,6 +555,23 @@ def _retry_initial(source):
     return values
 
 
+DEFAULT_APP_NAME = 'Nextec-Connect'
+
+
+def _form_initial(source):
+    """Valores iniciais do formulario: o padrao Nextec de verdade (nao so placeholder), depois o ambiente e o retry.
+
+    Em 'Tentar de novo' de um item antigo sem o nome do aplicativo guardado, o campo fica vazio para a pessoa conferir.
+    """
+    retry = _retry_initial(source)
+    values = {'exename': DEFAULT_APP_NAME}
+    if not retry.get('exename') or retry.get('appname'):
+        values['appname'] = DEFAULT_APP_NAME
+    values.update(nextec.initial())
+    values.update(retry)
+    return values
+
+
 def generator_view(request):
     validation_errors = []
     field_errors = {}
@@ -587,7 +604,7 @@ def generator_view(request):
                     'code': result.get('error_code', ''),
                 }, status=result.get('status_code', 500))
     else:
-        form = GenerateForm(initial={**nextec.initial(), **_retry_initial(request.GET)})
+        form = GenerateForm(initial=_form_initial(request.GET))
     if form.is_bound:
         for name, errors in form.errors.as_data().items():
             field = form.fields.get(name)
@@ -605,6 +622,10 @@ def generator_view(request):
         'product_version': nextec.product_version(),
         'branding_url': 'nextec/imagens/',
         'public_key_loaded': bool(nextec.server_defaults().get('key')),
+        # chave ausente so e problema quando o servidor Nextec esta configurado (senao o campo e preenchido na mao)
+        'key_problem': nextec.is_configured() and not nextec.server_defaults().get('key'),
+        'locked_fields': nextec.locked_fields() if nextec.is_locked() else [],
+        'server_locked': nextec.is_locked(),
         'saved_models_url': 'nextec/modelos/',
         'access_email': nextec.access_user(request),
         'enrollment_warning': nextec.enrollment_warning(nextec.server_defaults().get('apiServer', '')) if nextec.is_configured() else '',

@@ -24,6 +24,7 @@
         .nx-header { background:var(--nx-navy); color:#fff; padding:18px max(16px,calc((100vw - 880px)/2)) 0; }
         html.dark .nx-header, html[data-embedded] .nx-header { background:var(--nx-surface); color:var(--nx-ink); border-bottom:1px solid var(--nx-divider); }
         html.dark .nx-header h1 { color:var(--nx-ink); }
+        @media (prefers-color-scheme:dark) { html:not([data-embedded]):not(.light) .nx-header { background:var(--nx-surface); color:var(--nx-ink); border-bottom:1px solid var(--nx-divider); } html:not([data-embedded]):not(.light) .nx-header h1 { color:var(--nx-ink); } }
         .nx-header h1 { color:#fff; font-size:22px; }
         .nx-header-line { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
         html[data-embedded] .nx-header { padding-top:10px; }
@@ -45,6 +46,8 @@
         .field > label .opt { font-weight:400; color:var(--nx-muted); }
         .hint { margin:6px 0 0; color:var(--nx-muted); font-size:13px; line-height:1.5; }
         .field-error { margin:6px 0 0; color:var(--nx-err-ink); font-size:13px; font-weight:600; }
+        .field-error:empty { display:none; }
+        .field input[aria-invalid="true"] { border-color:var(--nx-err-ink); }
         .field.has-error input, .field.has-error select, .field.has-error textarea { border-color:var(--nx-err-ink); }
         input[type="text"], input[type="password"], input[type="number"], input[type="url"], input[type="file"], select, textarea {
             display:block; width:100%; max-width:100%; min-width:0; min-height:44px; margin:0; padding:10px 12px; font:inherit; color:var(--nx-ink);
@@ -58,7 +61,8 @@
 
         button { font:inherit; font-weight:600; min-height:44px; padding:0 18px; border:0; border-radius:12px; cursor:pointer; color:#fff; background:var(--nx-blue); }
         button:hover { background:var(--nx-blue-hover); }
-        button:disabled { opacity:.65; cursor:progress; }
+        button:disabled { opacity:.65; cursor:not-allowed; }
+        button.is-sending:disabled { cursor:progress; }
         button.secondary-action { color:var(--nx-ink); background:var(--nx-tint); }
         button.secondary-action:hover { filter:brightness(.96); }
         .platform-icons { display:flex; flex-wrap:wrap; gap:10px; }
@@ -70,7 +74,8 @@
         .applied { margin-top:20px; padding:14px 16px; border-radius:12px; background:var(--nx-ok-bg); color:var(--nx-ok-ink); font-size:14px; }
         .applied strong { display:block; margin-bottom:2px; }
         .applied ul { margin:6px 0 0; padding-left:18px; }
-        .applied.is-problem { background:var(--nx-warn-bg); color:var(--nx-warn-ink); }
+        .applied.is-problem { background:var(--nx-warn-bg); color:var(--nx-warn-ink); border:1px solid currentColor; }
+        .applied .ack { display:flex; align-items:flex-start; gap:8px; margin:12px 0 0; font-weight:600; cursor:pointer; }
         .applied .problem { margin:8px 0 0; font-weight:600; }
         .submit-row { margin-top:22px; display:grid; gap:8px; }
         .submit-row button[type="submit"] { width:100%; min-height:52px; font-size:16px; }
@@ -177,15 +182,16 @@
 
                 <div class="field{% if field_errors.exename %} has-error{% endif %}">
                     <label for="{{ form.exename.id_for_label }}">Nome do instalador</label>
-                    {{ form.exename }}<span id="filenameError" class="error"></span>
+                    {{ form.exename }}<span id="filenameError" class="error" aria-live="polite"></span>
                     {% if field_errors.exename %}<p class="field-error">{{ field_errors.exename }}</p>{% endif %}
-                    <p class="hint">Nome do arquivo baixado, como <strong>Nextec-Connect.msi</strong>.</p>
+                    <p class="hint" id="exename-hint">Nome do arquivo baixado, como <strong>Nextec-Connect.msi</strong>.</p>
                 </div>
                 <div class="field{% if field_errors.appname %} has-error{% endif %}">
                     <label for="{{ form.appname.id_for_label }}">Nome do aplicativo</label>
                     {{ form.appname }}
+                    <p class="field-error" id="appnameError" aria-live="polite"></p>
                     {% if field_errors.appname %}<p class="field-error">{{ field_errors.appname }}</p>{% endif %}
-                    <p class="hint">Aparece no atalho. Só letras, números e hífen, sem espaços.</p>
+                    <p class="hint" id="appname-hint">Aparece no atalho. Só letras sem acento, números e hífen, sem espaços.</p>
                 </div>
 
                 <div class="field{% if field_errors.client_name %} has-error{% endif %}">
@@ -220,17 +226,25 @@
                 </div>
             </div>
 
-            <div class="applied{% if not public_key_loaded or enrollment_warning %} is-problem{% endif %}" role="note">
+            {% if enrollment_warning or key_problem %}
+            <div class="applied is-problem" role="alert" id="appliedAlert">
+                <strong>Atenção: confira antes de gerar</strong>
+                Servidor <strong style="display:inline">{{ form.serverIP.value|default:"não definido" }}</strong>.
+                {% if key_problem %}<p class="problem">A chave pública não foi carregada. Confira NX_KEY_FILE antes de gerar.</p>{% endif %}
+                {% if enrollment_warning %}<p class="problem">{{ enrollment_warning }}</p>
+                <label class="ack" for="ackNoEnroll"><input type="checkbox" id="ackNoEnroll"> Entendo que a máquina não se inscreverá sozinha no painel e quero gerar mesmo assim.</label>{% endif %}
+            </div>
+            {% else %}
+            <div class="applied" role="note">
                 <strong>Já aplicado pela Nextec</strong>
                 Servidor <strong style="display:inline">{{ form.serverIP.value|default:"não definido" }}</strong>, chave pública, API e inscrição automática
                 {% if form.serverIP.value %}(valores fixos){% endif %}. Para ver ou mudar algo, abra Avançado.
-                {% if not public_key_loaded %}<p class="problem">A chave pública não foi carregada. Confira NX_KEY_FILE antes de gerar.</p>{% endif %}
-                {% if enrollment_warning %}<p class="problem">{{ enrollment_warning }}</p>{% endif %}
             </div>
+            {% endif %}
 
             <div class="submit-row">
-                <button type="submit" id="submitButton">Gerar instalador</button>
-                <p class="status-live" id="submitStatus" role="status" aria-live="polite"></p>
+                <button type="submit" id="submitButton"{% if enrollment_warning %} disabled{% endif %}>Gerar instalador</button>
+                <p class="status-live" id="submitStatus" role="status" aria-live="polite">{% if enrollment_warning %}Marque a confirmação acima para liberar o botão.{% endif %}</p>
                 <p class="submit-note">A geração leva de 30 a 45 minutos. Você acompanha o andamento na tela seguinte e em Itens gerados.</p>
             </div>
         </section>
@@ -251,7 +265,7 @@
 
                 <section class="adv-group">
                     <h3>Servidor Nextec</h3>
-                    <p class="lead">Fixados pela implantação. Aparecem só para conferência.</p>
+                    <p class="lead">{% if server_locked %}Fixados pela implantação. Aparecem só para conferência.{% else %}Informe o servidor, a chave pública e a API do seu ambiente.{% endif %}</p>
                     <div class="fields">
                         <div class="field{% if field_errors.serverIP %} has-error{% endif %}"><label for="{{ form.serverIP.id_for_label }}">Servidor de ID</label>{{ form.serverIP }}{% if field_errors.serverIP %}<p class="field-error">{{ field_errors.serverIP }}</p>{% endif %}</div>
                         <div class="field{% if field_errors.serverPort %} has-error{% endif %}"><label for="{{ form.serverPort.id_for_label }}">Porta do servidor de ID</label>{{ form.serverPort }}{% if field_errors.serverPort %}<p class="field-error">{{ field_errors.serverPort }}</p>{% endif %}<p class="hint">Vazia usa 21116. A 21117 é do relay.</p></div>
@@ -260,6 +274,13 @@
                             {% if field_errors.key %}<p class="field-error">{{ field_errors.key }}</p>{% endif %}</div>
                         <div class="field{% if field_errors.apiServer %} has-error{% endif %}"><label for="{{ form.apiServer.id_for_label }}">API</label>{{ form.apiServer }}{% if field_errors.apiServer %}<p class="field-error">{{ field_errors.apiServer }}</p>{% endif %}</div>
                         <div class="field{% if field_errors.compname %} has-error{% endif %}"><label for="{{ form.compname.id_for_label }}">Empresa nos direitos autorais</label>{{ form.compname }}{% if field_errors.compname %}<p class="field-error">{{ field_errors.compname }}</p>{% endif %}</div>
+                    </div>
+                </section>
+
+                <section class="adv-group">
+                    <h3>Endereços do aplicativo</h3>
+                    <p class="lead">{% if 'urlLink' in locked_fields or 'downloadLink' in locked_fields %}Fixados pela implantação. Aparecem só para conferência.{% else %}Opcionais. Vazios usam os endereços padrão do RustDesk.{% endif %}</p>
+                    <div class="fields">
                         <div class="field{% if field_errors.urlLink %} has-error{% endif %}"><label for="{{ form.urlLink.id_for_label }}">Endereço dos links</label>{{ form.urlLink }}{% if field_errors.urlLink %}<p class="field-error">{{ field_errors.urlLink }}</p>{% endif %}</div>
                         <div class="field{% if field_errors.downloadLink %} has-error{% endif %}"><label for="{{ form.downloadLink.id_for_label }}">Endereço das atualizações</label>{{ form.downloadLink }}{% if field_errors.downloadLink %}<p class="field-error">{{ field_errors.downloadLink }}</p>{% endif %}</div>
                     </div>
@@ -735,7 +756,7 @@
                 if (value instanceof File || ['csrfmiddlewaretoken','key','permanentPassword','sh_secret_field','iconbase64','logobase64','privacybase64','defaultManual','overrideManual'].includes(key)) return;
                 settings[key] = value;
             });
-            form.querySelectorAll('input[type=checkbox]').forEach(input => { settings[input.name] = input.checked; });
+            form.querySelectorAll('input[type=checkbox][name]').forEach(input => { settings[input.name] = input.checked; });
             try {
                 const response = await fetch(savedModelsUrl, {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken}, body:JSON.stringify({name,settings})});
                 const data = await response.json();
@@ -781,15 +802,53 @@
             const status = document.getElementById('submitStatus');
             const name = document.getElementById('{{ form.exename.id_for_label }}');
             const adv = document.getElementById('advanced');
+            const app = document.getElementById('{{ form.appname.id_for_label }}');
+            const appError = document.getElementById('appnameError');
+            const nameError = document.getElementById('filenameError');
+            const ack = document.getElementById('ackNoEnroll');
+            const ackHint = status.textContent;
+            const UNSAFE = /[&\\|'"$`\r\n]/;
+            const APP_OK = /^[A-Za-z0-9-]*$/;
+            function appProblem(value) {
+                if (!value || APP_OK.test(value)) return '';
+                const fix = value.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().replace(/\s+/g, '-').replace(/[^A-Za-z0-9-]/g, '');
+                const tip = fix ? ' Sugestão: ' + fix + '.' : '';
+                if (/\s/.test(value)) return 'Troque os espaços por hífen e use só letras sem acento.' + tip;
+                return 'Use só letras sem acento, números e hífen. O instalador do RustDesk recusa outros caracteres.' + tip;
+            }
+            function nameProblem(value) {
+                if (!value.trim()) return 'Informe o nome do instalador.';
+                if (UNSAFE.test(value)) return 'Não use os caracteres & \\ | \' " $ ` nem quebra de linha.';
+                return '';
+            }
+            function show(input, box, text) {
+                box.textContent = text;
+                if (text) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid');
+            }
+            app.addEventListener('input', () => show(app, appError, appProblem(app.value)));
+            name.addEventListener('input', () => show(name, nameError, nameProblem(name.value)));
+            if (app.value) show(app, appError, appProblem(app.value));
+            if (ack) {
+                const sync = () => {
+                    button.disabled = !ack.checked;
+                    status.textContent = ack.checked ? '' : ackHint;
+                };
+                ack.addEventListener('change', sync);
+                sync();
+            }
             form.addEventListener('submit', event => {
-                if (!name.value.trim()) {
+                const nameText = nameProblem(name.value);
+                const appText = appProblem(app.value);
+                show(name, nameError, nameText);
+                show(app, appError, appText);
+                if (ack && !ack.checked) { event.preventDefault(); ack.focus(); return; }
+                if (nameText || appText) {
                     event.preventDefault();
-                    document.getElementById('filenameError').textContent = 'Informe o nome do instalador.';
-                    name.focus();
+                    (nameText ? name : app).focus();
                     return;
                 }
-                document.getElementById('filenameError').textContent = '';
                 button.disabled = true;
+                button.classList.add('is-sending');
                 button.textContent = 'Enviando para geração...';
                 status.textContent = 'Enviando os dados. Não feche esta página.';
             });

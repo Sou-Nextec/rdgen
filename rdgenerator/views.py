@@ -318,6 +318,7 @@ def generate_custom_client(params, full_url, created_by='', profile=''):
         "privacylink_uuid":privacylink_uuid,
         "privacylink_file":privacylink_file,
         "appname":appname,
+        "shortcutname": (params.get('shortcutname') or '').strip(),
         "genurl":_settings.GENURL,
         "urlLink":urlLink,
         "downloadLink":downloadLink,
@@ -537,12 +538,12 @@ def _received_files(uuid_val, filename):
 
 
 # Campos do bloco principal; um erro fora deles abre a seção Avançado.
-SIMPLE_FIELDS = {'exename', 'appname', 'client_name', 'package_version', 'profile', 'iconfile', 'notes', 'platform'}
+SIMPLE_FIELDS = {'exename', 'appname', 'shortcutname', 'client_name', 'package_version', 'profile', 'iconfile', 'notes', 'platform'}
 # Mensagens destes campos são fixas em português (nunca ecoam o valor enviado).
-SAFE_MESSAGE_FIELDS = {'exename', 'appname', 'client_name', 'serverPort', 'key', 'iconfile', 'compname'}
+SAFE_MESSAGE_FIELDS = {'exename', 'appname', 'shortcutname', 'client_name', 'serverPort', 'key', 'iconfile', 'compname'}
 
 
-RETRY_FIELDS = ('exename', 'appname', 'client_name', 'profile', 'platform', 'notes')
+RETRY_FIELDS = ('exename', 'appname', 'shortcutname', 'client_name', 'profile', 'platform', 'notes')
 
 
 def _retry_initial(source):

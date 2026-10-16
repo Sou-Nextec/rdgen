@@ -6,11 +6,19 @@ FIELDS = set('server serverPort key apiServer custom uuid token iconlink_url ico
              'iconlink_file logolink_url logolink_uuid logolink_file '
              'logolightlink_url logolightlink_uuid logolightlink_file '
              'logodarklink_url logodarklink_uuid logodarklink_file '
-             'privacylink_url privacylink_uuid privacylink_file appname genurl urlLink downloadLink '
+             'privacylink_url privacylink_uuid privacylink_file appname shortcutname genurl urlLink downloadLink '
              'delayFix rdgen xOffline removeNewVersionNotif compname androidappid filename package_version '
              'enroll_key enroll_panel nx_agent'.split())
 UNSAFE = re.compile(r'[&\\|\'"$`\r\n\x00]')
 APP_NAME = re.compile(r'[A-Za-z0-9-]+')
+# Nome dos atalhos do Windows: aceita espaco e acento, no maximo 40 caracteres, sem terminar em espaco ou ponto.
+SHORTCUT_NAME = re.compile(r'[^\W_][\w .-]{0,39}')
+# Nomes de dispositivo reservados pelo Windows: nao viram arquivo .lnk, com ou sem extensao.
+RESERVED_DEVICE = re.compile(r'(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\..*)?', re.IGNORECASE)
+
+
+def shortcut_name_ok(value):
+    return bool(SHORTCUT_NAME.fullmatch(value)) and value[-1] not in ' .' and not RESERVED_DEVICE.fullmatch(value)
 ANDROID_ID = re.compile(r'[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+')
 
 
@@ -26,6 +34,8 @@ def validate_build_inputs(payload):
             continue
         if key == 'appname' and not APP_NAME.fullmatch(value):
             raise ValueError('appname: use letters, digits and hyphen')
+        if key == 'shortcutname' and not shortcut_name_ok(value):
+            raise ValueError('shortcutname: use letters, digits, space, dot, hyphen or underscore')
         if key == 'package_version' and not re.fullmatch(r'\d{1,3}\.\d{1,3}\.\d{1,3}', value):
             raise ValueError('package_version: invalid package version')
         if key == 'androidappid' and not ANDROID_ID.fullmatch(value):

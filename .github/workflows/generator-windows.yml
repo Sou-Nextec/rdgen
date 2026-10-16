@@ -740,7 +740,7 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         shell: pwsh
         run: |
-          & (Join-Path $env:RUNNER_TEMP 'build-msi.ps1') -AppName $env:appname -IncludeAgent $env:nx_agent -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
+          & (Join-Path $env:RUNNER_TEMP 'build-msi.ps1') -AppName $env:appname -ShortcutName $env:shortcutname -IncludeAgent $env:nx_agent -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
 
       - name: Make EXE an installer for the same MSI
         # nx_agent vem do build (ligado por padrao; so o app de suporte avulso o desliga). Nunca depende do nome do app.

@@ -65,6 +65,50 @@ try {
     if ($noKeyOutput -notmatch 'SEM inscricao\.json') { throw 'Missing-key warning was not printed' }
     if (Test-Path -LiteralPath $enrollmentResource) { throw 'inscricao.json must not exist without a key' }
     if ([IO.File]::ReadAllText($packageWxs).Contains('Nextec.Enrollment')) { throw 'Enrollment component must not exist without a key' }
+
+    # 1b) Nome dos atalhos: troca so as strings SC_* do idioma; o nome tecnico (Product, servico, ARP) continua o do app.
+    $langDir = Join-Path $sourceRoot 'res/msi/Package/Language'
+    New-Item -ItemType Directory -Force $langDir | Out-Null
+    $langFile = Join-Path $langDir 'Package.en-us.wxl'
+    $langBase = '<WixLocalization><String Id="AR_Comment" Value="Nextec-Connect" /><String Id="SC_Uninstall" Value="Uninstall Nextec-Connect" /><String Id="SC_Client" Value="Nextec-Connect" /><String Id="SC_Client_Desc" Value="Start Nextec-Connect." /><String Id="SC_Client_Tray" Value="Nextec-Connect Tray" /><String Id="Service_DisplayName" Value="Nextec-Connect Service" /></WixLocalization>'
+    [IO.File]::WriteAllText($langFile, $langBase)
+    $env:enroll_key = ''; $env:enroll_panel = ''
+    & $buildScript -AppName 'Nextec-Connect' -ShortcutName 'Suporte Nextec' -PackageVersion $generatorVersion -SourceRoot $sourceRoot `
+            -BinaryDirectory $binaryDirectory -UpdaterSource $updaterSource *>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'MSI fixture build with a shortcut name returned a failure code' }
+    $lang = [IO.File]::ReadAllText($langFile)
+    foreach ($expected in @('Id="SC_Client" Value="Suporte Nextec"', 'Value="Start Suporte Nextec."', 'Value="Suporte Nextec Tray"', 'Value="Uninstall Suporte Nextec"')) {
+        if (-not $lang.Contains($expected)) { throw "Shortcut string was not renamed: $expected" }
+    }
+    foreach ($kept in @('Id="AR_Comment" Value="Nextec-Connect"', 'Id="Service_DisplayName" Value="Nextec-Connect Service"')) {
+        if (-not $lang.Contains($kept)) { throw "Technical string must keep the app name: $kept" }
+    }
+    # nome com acento vale; nome invalido e recusado antes de tocar em qualquer arquivo
+    [IO.File]::WriteAllText($langFile, $langBase)
+    & $buildScript -AppName 'Nextec-Connect' -ShortcutName 'Suporte Técnico' -PackageVersion $generatorVersion -SourceRoot $sourceRoot `
+            -BinaryDirectory $binaryDirectory -UpdaterSource $updaterSource *>&1 | Out-Null
+    if (-not ([IO.File]::ReadAllText($langFile)).Contains('Id="SC_Client" Value="Suporte Técnico"')) { throw 'Accented shortcut name was not applied' }
+    foreach ($bad in @('a/b', 'Nome.', 'x*y', '<b>', ('n' * 41), 'CON', 'nul', 'Com1', 'LPT9', 'aux.txt')) {
+        [IO.File]::WriteAllText($langFile, $langBase)
+        $refused = $false
+        try {
+            & $buildScript -AppName 'Nextec-Connect' -ShortcutName $bad -PackageVersion $generatorVersion -SourceRoot $sourceRoot `
+                    -BinaryDirectory $binaryDirectory -UpdaterSource $updaterSource *>&1 | Out-Null
+        } catch { $refused = $true }
+        if (-not $refused) { throw "Invalid shortcut name was accepted: '$bad'" }
+        if ([IO.File]::ReadAllText($langFile) -ne $langBase) { throw "Invalid shortcut name changed the language file: '$bad'" }
+    }
+    # so a caixa muda (NEXTEC -> Nextec): e uma troca de marca valida e precisa ser aplicada
+    [IO.File]::WriteAllText($langFile, $langBase.Replace('Nextec-Connect', 'NEXTEC'))
+    Copy-Item -LiteralPath (Join-Path $binaryDirectory 'Nextec-Connect.exe') -Destination (Join-Path $binaryDirectory 'NEXTEC.exe') -Force
+    & $buildScript -AppName 'NEXTEC' -ShortcutName 'Nextec' -PackageVersion $generatorVersion -SourceRoot $sourceRoot `
+            -BinaryDirectory $binaryDirectory -UpdaterSource $updaterSource *>&1 | Out-Null
+    if (-not ([IO.File]::ReadAllText($langFile)).Contains('Id="SC_Client" Value="Nextec"')) { throw 'A shortcut name that differs only by case was not applied' }
+    # sem nome de atalho, os atalhos ficam com o nome do app
+    [IO.File]::WriteAllText($langFile, $langBase)
+    & $buildScript -AppName 'Nextec-Connect' -PackageVersion $generatorVersion -SourceRoot $sourceRoot `
+            -BinaryDirectory $binaryDirectory -UpdaterSource $updaterSource *>&1 | Out-Null
+    if ([IO.File]::ReadAllText($langFile) -ne $langBase) { throw 'Language file changed without a shortcut name' }
     $hashesBefore = @{}
     foreach ($name in $scriptNames) { $hashesBefore[$name] = (Get-FileHash -LiteralPath (Join-Path $resourceDir $name) -Algorithm SHA256).Hash }
 

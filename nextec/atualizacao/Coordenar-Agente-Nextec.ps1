@@ -7,6 +7,7 @@ param(
   [switch]$Remover,
   [switch]$SubstituirAgenteAntigo,
   [string]$ArquivoAutorizacao,
+  [string]$Origem,
   [string]$PastaDados = (Join-Path $env:ProgramData 'Nextec\Acesso')
 )
 
@@ -26,6 +27,37 @@ function New-NextecCoordinatorAcl {
     $acl.AddAccessRule($rule)
   }
   return $acl
+}
+
+# Convite de instalacao: o MSI baixado do painel leva o codigo no nome (<app>-<CODIGO>.msi). O instalador entrega o caminho
+# do proprio arquivo em -Origem; so o codigo (20 caracteres do alfabeto do painel) sai do nome e fica em convite.json, que o
+# provisionador apresenta ao painel depois da inscricao. Nome sem codigo (ou renomeado) nao grava nada: a maquina entra como Pendente.
+function Get-NextecInviteCode {
+  param([string]$Origem)
+  if (-not $Origem) { return '' }
+  $name = [IO.Path]::GetFileName($Origem.Trim())
+  $m = [regex]::Match($name, '-([A-HJ-NP-Z2-9]{20})(?: \(\d+\))?\.msi$', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+  if (-not $m.Success) { return '' }
+  return $m.Groups[1].Value.ToUpperInvariant()
+}
+
+function Save-NextecInvite {
+  param([Parameter(Mandatory)][string]$Root, [string]$Origem)
+  $code = Get-NextecInviteCode -Origem $Origem
+  $path = Join-Path $Root 'convite.json'
+  Assert-NextecCoordinatorPath -Path $path
+  if (-not $code) { return $false }
+  $temp = Join-Path $Root ('.convite-' + [Guid]::NewGuid().ToString('N') + '.tmp')
+  try {
+    $stream = [IO.File]::Open($temp, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    $stream.Dispose()
+    Set-Acl -LiteralPath $temp -AclObject (New-NextecCoordinatorAcl)
+    $json = [pscustomobject]@{ codigo = $code; criado_utc = [DateTime]::UtcNow.ToString('o', [Globalization.CultureInfo]::InvariantCulture) } | ConvertTo-Json -Compress
+    [IO.File]::WriteAllText($temp, $json, [Text.UTF8Encoding]::new($false))
+    if (Test-Path -LiteralPath $path) { [IO.File]::Replace($temp, $path, [NullString]::Value) } else { [IO.File]::Move($temp, $path) }
+    Set-Acl -LiteralPath $path -AclObject (New-NextecCoordinatorAcl)
+  } finally { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue }
+  return $true
 }
 
 function Assert-NextecCoordinatorPath {
@@ -226,7 +258,7 @@ function Write-NextecCoordinatorLog {
     if ((Test-Path -LiteralPath $log -PathType Leaf) -and (Get-Item -LiteralPath $log -Force).Length -gt 262144) {
       Move-Item -LiteralPath $log -Destination ($log + '.antigo') -Force
     }
-    $line = '{0:yyyy-MM-dd HH:mm:ss} {1}' -f (Get-Date), ([string]$Message -replace '[\r\n]+', ' ')
+    $line = '{0} {1}' -f (Get-Date).ToString('yyyy-MM-dd HH:mm:ss', [Globalization.CultureInfo]::InvariantCulture), ([string]$Message -replace '[\r\n]+', ' ')
     [IO.File]::AppendAllText($log, $line + "`r`n", [Text.UTF8Encoding]::new($false))
   } catch { }
 }
@@ -309,6 +341,7 @@ if ($Registrar) {
   $script:NextecReplacedFiles = @()
   try {
     Register-NextecCoordinatorTask -Root $PastaDados -SourceRoot $PSScriptRoot
+    if ($Origem -and (Save-NextecInvite -Root $PastaDados -Origem $Origem)) { Write-NextecCoordinatorLog -Root $PastaDados -Message 'registrar: convite de instalacao registrado' }
     if ($script:NextecReplacedFiles.Count) { Write-NextecCoordinatorLog -Root $PastaDados -Message ('registrar: arquivos antigos substituidos: ' + ($script:NextecReplacedFiles -join ', ')) }
     foreach ($decision in @($script:NextecDecisions)) { Write-NextecCoordinatorLog -Root $PastaDados -Message ('registrar: ' + $decision) }
     Write-NextecCoordinatorLog -Root $PastaDados -Message 'registrar: ok'

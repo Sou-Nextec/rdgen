@@ -1,5 +1,12 @@
 # Gerador Nextec
 
+## 2.3.11
+
+Convites de instalação: o MSI passa o próprio caminho ao agente.
+
+- **`Nextec.RegisterCoordinator`** agora envia `-Origem "[OriginalDatabase]"` ao coordenador. Quando o MSI foi baixado de um link `/i/<código>` do painel (nome `<app>-<CÓDIGO>.msi`), o agente lê o código do nome do arquivo e, depois de inscrito, a máquina entra direto no cliente do convite. MSI sem código no nome (ou renomeado) segue como antes: a máquina entra como Pendente.
+- Scripts do agente sincronizados com o painel (`rustdesk-api-web#115`, painel 2.11.44).
+
 ## 2.3.10
 
 - **Sem barra de rolagem dentro do painel:** o gerador embutido informava a altura só pelo `body`, e a margem de 12 px do topo do formulário escapa do `body` para o `html`. O iframe ficava 12 px menor que o conteúdo e mostrava uma rolagem interna ao lado da rolagem da página. A altura informada passa a ser a do `html`.

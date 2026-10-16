@@ -184,7 +184,7 @@ function ProtegerPastaAtualizador {
 }
 
 function Escrever([string]$msg) {
-  $linha = '{0:yyyy-MM-dd HH:mm:ss}  {1}' -f (Get-Date), $msg
+  $linha = '{0}  {1}' -f (Get-Date).ToString('yyyy-MM-dd HH:mm:ss', [Globalization.CultureInfo]::InvariantCulture), $msg
   if ($script:PastaSegura) { Add-Content -LiteralPath $Log -Value $linha -Encoding UTF8 }
   if (-not $Silencioso) { Write-Host $linha }
 }

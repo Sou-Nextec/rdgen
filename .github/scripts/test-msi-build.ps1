@@ -121,6 +121,9 @@ try {
     foreach ($component in $wxs.SelectNodes('//Component[@Guid="*"]')) {
         if ($component.SelectNodes('File').Count + $component.SelectNodes('RegistryKey').Count -ne 1) { throw 'Automatic WiX GUID requires a single unversioned script or registry key per component' }
     }
+    # Convite de instalacao: o MSI entrega o proprio caminho ao coordenador (o codigo vem do nome do arquivo).
+    $registerCoordinator = $wxs.SelectSingleNode('//*[local-name()="CustomAction"][@Id="Nextec.RegisterCoordinator"]')
+    if (-not $registerCoordinator -or $registerCoordinator.GetAttribute('ExeCommand') -notmatch '-Registrar -Origem "\[OriginalDatabase\]"') { throw 'RegisterCoordinator does not pass [OriginalDatabase] as -Origem' }
     foreach ($id in @('Nextec.PasswordAgent', 'Nextec.PasswordAgentScript', 'Nextec.CoordinatorScript', 'Nextec.ProvisionerScript', 'Nextec.RegisterCoordinator', 'Nextec.RemoveCoordinator', 'Nextec.Updater', 'Nextec.UpdaterScript', 'Nextec.RegisterUpdater')) {
         if (!$xmlText.Contains($id)) { throw "WiX output is missing $id" }
     }

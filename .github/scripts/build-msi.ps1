@@ -111,7 +111,7 @@ try {
         }
         if (!$xml.Contains('Nextec.RegisterCoordinator')) {
             $actions = @'
-        <CustomAction Id="Nextec.RegisterCoordinator" Directory="System64Folder" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER_INNER]Coordenar-Agente-Nextec.ps1&quot; -Registrar" Execute="deferred" Impersonate="no" Return="ignore" />
+        <CustomAction Id="Nextec.RegisterCoordinator" Directory="System64Folder" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER_INNER]Coordenar-Agente-Nextec.ps1&quot; -Registrar -Origem &quot;[OriginalDatabase]&quot;" Execute="deferred" Impersonate="no" Return="ignore" />
         <CustomAction Id="Nextec.RemoveCoordinator" Directory="System64Folder" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER_INNER]Coordenar-Agente-Nextec.ps1&quot; -Remover" Execute="deferred" Impersonate="no" Return="ignore" />
         <CustomAction Id="Nextec.RemoveUpdater" Directory="System64Folder" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER_INNER]Instalar-Nextec.ps1&quot; -Remover" Execute="deferred" Impersonate="no" Return="ignore" />
 '@

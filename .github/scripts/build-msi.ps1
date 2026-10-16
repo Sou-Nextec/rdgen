@@ -12,11 +12,19 @@ param(
     [string]$IncludeAgent = $env:nx_agent,
     # Painel do build para o atualizador (somente https). Sem valor, usa enroll_panel e depois o apiServer.
     [string]$PanelUrl = '',
-    [string]$ApiServer = $env:apiServer
+    [string]$ApiServer = $env:apiServer,
+    # Nome dos atalhos (menu Iniciar, pesquisa do Windows e area de trabalho). Vazio = o nome do app. Aceita espaco e acento;
+    # o nome tecnico (exe, pasta, protocolo, ARP) continua o AppName.
+    [string]$ShortcutName = $env:shortcutname
 )
 $ErrorActionPreference = 'Stop'
 if ($AppName -notmatch '^[A-Za-z0-9 _-]+$') { throw 'Invalid application name' }
 if ($IncludeAgent -and $IncludeAgent -notin @('true','false')) { throw 'Invalid agent flag' }
+if ($ShortcutName) {
+    $ShortcutName = $ShortcutName.Trim()
+    # letras e numeros (com acento), espaco, ponto, hifen e sublinhado; sem caractere proibido em nome de arquivo do Windows
+    if ($ShortcutName -notmatch '^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,39}$' -or $ShortcutName -match '[ .]$') { throw 'Invalid shortcut name' }
+}
 if ($PackageVersion -and $PackageVersion -notmatch '^\d{1,3}\.\d{1,3}\.\d{1,3}$') { throw 'Invalid package version' }
 # ProductVersion do MSI: X.Y.Z.0 com limites 255.255.65535 (a versao do pacote e a do gerador, rdgenerator/VERSION).
 if ($PackageVersion) {
@@ -39,6 +47,22 @@ try {
     if ($PackageVersion) { $preprocessArgs += @('--version', $PackageVersion, '--revision-version', '0') }
     python @preprocessArgs
     if ($LASTEXITCODE -ne 0) { throw 'MSI preprocessing failed' }
+    if ($ShortcutName -and $ShortcutName -ne $packageName) {
+        # Os atalhos do MSI do RustDesk vem das strings SC_* do arquivo de idioma (o preprocess ja trocou "RustDesk" pelo app).
+        $langFile = Join-Path $SourceRoot 'res/msi/Package/Language/Package.en-us.wxl'
+        if (!(Test-Path -LiteralPath $langFile -PathType Leaf)) { throw 'MSI language file is missing; cannot set the shortcut name' }
+        $lang = [IO.File]::ReadAllText($langFile)
+        $safeName = [Security.SecurityElement]::Escape($ShortcutName)
+        $script:shortcutStrings = 0
+        $lang = [regex]::Replace($lang, '(<String Id="(?:SC_Client|SC_Client_Desc|SC_Client_Tray|SC_Client_Tray_Desc|SC_Uninstall|SC_Uninstall_Desc)" Value=")([^"]*)(")', {
+            param($m)
+            $script:shortcutStrings++
+            $m.Groups[1].Value + $m.Groups[2].Value.Replace($packageName, $safeName) + $m.Groups[3].Value
+        })
+        if ($lang -notmatch ('<String Id="SC_Client" Value="' + [regex]::Escape($safeName))) { throw 'Shortcut name was not applied to the MSI language file' }
+        [IO.File]::WriteAllText($langFile, $lang, [Text.UTF8Encoding]::new($true))
+        Write-Host "Shortcut name applied to $($script:shortcutStrings) MSI strings."
+    }
     $withAgent = $IncludeAgent -ne 'false'
     if (!$PanelUrl) { $PanelUrl = if ($EnrollmentPanel) { $EnrollmentPanel } else { $ApiServer } }
     # Trava de seguranca: o atualizador so fala com um painel https definido no build, nunca com valor vindo da rede.

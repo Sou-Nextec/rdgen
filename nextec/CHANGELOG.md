@@ -1,5 +1,12 @@
 # Gerador Nextec
 
+## 2.4.0
+
+- **Nome nos atalhos:** novo campo opcional "Nome nos atalhos" na área principal. Define como o app aparece no menu Iniciar, na pesquisa do Windows e na área de trabalho (ex.: `Suporte Nextec` ou `Nextec Connect`, com espaço e acento), separado do nome do aplicativo, que continua com hífen para o executável, a pasta, o protocolo e o instalador do RustDesk. Vazio mantém o comportamento anterior (atalho com o nome do aplicativo).
+- **Como funciona:** o `build-msi.ps1` troca só as strings `SC_*` do arquivo de idioma do MSI (atalho do app, descrição, bandeja e "Desinstalar"); o nome técnico (`Product`, serviço, Adicionar ou remover programas) não muda. O EXE instalador embute o mesmo MSI. Aceita letras e números (com acento), espaço, ponto, hífen e sublinhado, até 40 caracteres, sem terminar em espaço ou ponto; a regra é a mesma no formulário (ao digitar), no servidor e no build.
+- **Provas:** `test-msi-build.ps1` cobre troca, acento, nomes inválidos recusados sem tocar em arquivo e ausência do campo. O CI com o MSI real lê a tabela `Shortcut` do MSI gerado e exige "Suporte Nextec" nos atalhos do menu Iniciar e da área de trabalho.
+- **Atualizar por cima:** o MSI mantém o mesmo UpgradeCode (derivado do nome técnico), então a instalação por cima troca os atalhos. Máquinas que nunca reportaram atualização precisam de uma instalação manual desta versão uma vez.
+
 ## 2.3.11
 
 Convites de instalação: o MSI passa o próprio caminho ao agente.

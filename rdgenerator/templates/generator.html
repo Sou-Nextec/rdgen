@@ -199,6 +199,13 @@
                     <p class="hint" id="appname-hint">Aparece no atalho. Acompanha o nome do instalador até você mudar. Só letras sem acento, números e hífen, sem espaços.</p>
                 </div>
 
+                <div class="field full{% if field_errors.shortcutname %} has-error{% endif %}">
+                    <label for="{{ form.shortcutname.id_for_label }}">Nome nos atalhos <span class="opt">(opcional)</span></label>
+                    {{ form.shortcutname }}
+                    <p class="field-error" id="shortcutError" aria-live="polite"></p>
+                    {% if field_errors.shortcutname %}<p class="field-error">{{ field_errors.shortcutname }}</p>{% endif %}
+                    <p class="hint" id="shortcut-hint">Como aparece no menu Iniciar, na pesquisa do Windows e na área de trabalho. Aceita espaço e acento (ex.: <strong>Suporte Nextec</strong>). Vazio usa o nome do aplicativo. Vale para o instalador Windows.</p>
+                </div>
                 <div class="field{% if field_errors.profile %} has-error{% endif %}">
                     <label for="{{ form.profile.id_for_label }}">Destinado a</label>
                     {{ form.profile }}
@@ -916,6 +923,17 @@
                 box.textContent = text;
                 if (text) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid');
             }
+            const shortcut = document.getElementById('{{ form.shortcutname.id_for_label }}');
+            const shortcutError = document.getElementById('shortcutError');
+            const SHORTCUT_OK = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,39}$/u;
+            function shortcutProblem(value) {
+                const v = value.trim();
+                if (!v) return '';
+                if (!SHORTCUT_OK.test(v) || /[ .]$/.test(v)) return 'Use letras, números, espaço, ponto, hífen ou sublinhado (até 40), sem terminar em espaço ou ponto.';
+                return '';
+            }
+            shortcut.addEventListener('input', () => show(shortcut, shortcutError, shortcutProblem(shortcut.value)));
+            if (shortcut.value) show(shortcut, shortcutError, shortcutProblem(shortcut.value));
             // o nome do app acompanha o do instalador ate a pessoa editar o dele (e volta a acompanhar se ficarem iguais)
             let follow = !app.value || app.value === name.value;
             app.addEventListener('input', () => {
@@ -950,6 +968,7 @@
                 follow = !app.value || app.value === name.value;
                 show(name, nameError, name.value ? nameProblem(name.value) : '');
                 show(app, appError, appProblem(app.value));
+                show(shortcut, shortcutError, shortcutProblem(shortcut.value));
                 syncClient();
             };
             if (ack) {
@@ -964,13 +983,15 @@
                 const nameText = nameProblem(name.value);
                 const appText = appProblem(app.value);
                 const clientText = clientProblem();
+                const shortcutText = shortcutProblem(shortcut.value);
                 show(name, nameError, nameText);
                 show(app, appError, appText);
+                show(shortcut, shortcutError, shortcutText);
                 show(client, clientError, clientText);
                 if (ack && !ack.checked) { event.preventDefault(); ack.focus(); return; }
-                if (nameText || appText || clientText) {
+                if (nameText || appText || shortcutText || clientText) {
                     event.preventDefault();
-                    (nameText ? name : appText ? app : client).focus();
+                    (nameText ? name : appText ? app : shortcutText ? shortcut : client).focus();
                     return;
                 }
                 button.disabled = true;

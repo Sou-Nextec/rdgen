@@ -94,8 +94,24 @@ jobs:
           enroll_key: nx1.1790000000.TesteSomenteCiAbCdEf0123456789
           enroll_panel: https://painel-remoto.nex.tec.br
         run: |
-          & ./.github/scripts/build-msi.ps1 -AppName RustDesk -PackageVersion (Get-Content rdgenerator/VERSION -Raw).Trim() -SourceRoot "$PWD/source" -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
+          & ./.github/scripts/build-msi.ps1 -AppName RustDesk -ShortcutName 'Suporte Nextec' -PackageVersion (Get-Content rdgenerator/VERSION -Raw).Trim() -SourceRoot "$PWD/source" -UpdaterSource (Join-Path $env:RUNNER_TEMP 'nextec-update')
           $file = 'source/SignOutput/rustdesk.msi'
+          # Os atalhos (menu Iniciar e area de trabalho) saem com o nome pedido, sem mexer no nome tecnico do app.
+          $installer = New-Object -ComObject WindowsInstaller.Installer
+          $db = $installer.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $installer, @((Resolve-Path $file).Path, 0))
+          $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @('SELECT `Shortcut`, `Name` FROM `Shortcut`'))
+          $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null) | Out-Null
+          $shortcuts = @{}
+          while ($true) {
+            $record = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
+            if ($null -eq $record) { break }
+            $shortcuts[$record.GetType().InvokeMember('StringData', 'GetProperty', $null, $record, @(1))] = ($record.GetType().InvokeMember('StringData', 'GetProperty', $null, $record, @(2)) -split '\|')[-1]
+          }
+          $view.GetType().InvokeMember('Close', 'InvokeMethod', $null, $view, $null) | Out-Null
+          $shortcuts.GetEnumerator() | ForEach-Object { Write-Host "atalho $($_.Key) = $($_.Value)" }
+          foreach ($id in @('App.StartMenu.Shortcut', 'App.Desktop.Shortcut')) {
+            if ($shortcuts[$id] -ne 'Suporte Nextec') { throw "Atalho $id deveria se chamar 'Suporte Nextec', mas e '$($shortcuts[$id])'" }
+          }
           $signature = [BitConverter]::ToString([IO.File]::ReadAllBytes((Resolve-Path $file))[0..7])
           if ($signature -ne 'D0-CF-11-E0-A1-B1-1A-E1') { throw 'Invalid MSI file signature' }
           $extract = Join-Path $env:RUNNER_TEMP 'nextec-updater-msi-check'

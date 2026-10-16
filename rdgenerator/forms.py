@@ -29,6 +29,7 @@ class GenerateForm(forms.Form):
     #General
     exename = forms.CharField(label="Nome do arquivo de instalação", required=True)
     appname = forms.CharField(label="Nome exibido no aplicativo", required=False)
+    shortcutname = forms.CharField(label="Nome nos atalhos", required=False, max_length=40)
     direction = forms.ChoiceField(widget=forms.RadioSelect, choices=[
         ('incoming', 'Receber conexões'),
         ('outgoing', 'Iniciar conexões'),
@@ -118,6 +119,9 @@ class GenerateForm(forms.Form):
         self.fields['appname'].widget.attrs.setdefault('autocomplete', 'off')
         self.fields['appname'].widget.attrs.setdefault('spellcheck', 'false')
         self.fields['appname'].widget.attrs.setdefault('aria-describedby', 'appname-hint appnameError')
+        self.fields['shortcutname'].widget.attrs.setdefault('autocomplete', 'off')
+        self.fields['shortcutname'].widget.attrs.setdefault('placeholder', 'Ex.: Suporte Nextec')
+        self.fields['shortcutname'].widget.attrs.setdefault('aria-describedby', 'shortcut-hint')
         # Padroes Nextec: com a trava ligada, o servidor/chave/API ficam fixos (o servidor tambem reforca ao gerar)
         from . import nextec
         if nextec.is_locked():
@@ -173,6 +177,16 @@ class GenerateForm(forms.Form):
             raise forms.ValidationError(
                 "Use apenas letras sem acento, números e hífen, sem espaços. "
                 "Exemplo: Nextec-Connect. O instalador do RustDesk recusa outros nomes."
+            )
+        return value
+
+    def clean_shortcutname(self):
+        from .build_inputs import SHORTCUT_NAME
+        value = (self.cleaned_data.get('shortcutname') or '').strip()
+        if value and (not SHORTCUT_NAME.fullmatch(value) or value[-1] in ' .'):
+            raise forms.ValidationError(
+                "Use letras, números, espaço, ponto, hífen ou sublinhado, até 40 caracteres, sem terminar em espaço ou ponto. "
+                "Exemplo: Suporte Nextec."
             )
         return value
 

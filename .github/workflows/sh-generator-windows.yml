@@ -599,7 +599,7 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         shell: pwsh
         run: |
-          & (Join-Path $env:RUNNER_TEMP 'build-msi.ps1') -AppName $env:appname
+          & (Join-Path $env:RUNNER_TEMP 'build-msi.ps1') -AppName $env:appname -ShortcutName $env:shortcutname
 
       - name: zip exe and msi
         continue-on-error: true

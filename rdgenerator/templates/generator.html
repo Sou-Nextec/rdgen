@@ -827,6 +827,7 @@
             } catch (error) { setModelStatus(error.message, true); }
         });
         let modelLoaded = false;
+        let loadSeq = 0;  // so a resposta do ultimo modelo escolhido pode preencher o formulario
         // "Nenhum, preencher do zero" depois de carregar um modelo: volta ao estado inicial da pagina
         function resetToDefaults() {
             const form = document.getElementById('myForm');
@@ -841,6 +842,7 @@
             deleteButton.hidden = true;
         }
         async function loadModel() {
+            const seq = ++loadSeq;
             if (!modelSelect.value) {
                 if (modelLoaded) { resetToDefaults(); setModelStatus('Formulário de volta ao padrão.', false); }
                 else setModelStatus('', false);
@@ -849,6 +851,7 @@
             try {
                 const response = await fetch(savedModelsUrl + '?name=' + encodeURIComponent(modelSelect.value), {credentials:'same-origin'});
                 const data = await response.json();
+                if (seq !== loadSeq) return;  // escolha mudou enquanto carregava: descarta esta resposta
                 if (!response.ok) throw new Error(data.error || 'Não foi possível carregar.');
                 Object.entries(data.settings).forEach(([key,value]) => {
                     document.getElementsByName(key).forEach(input => {
@@ -861,7 +864,7 @@
                 modelLoaded = true;
                 if (window.nxNamesChanged) window.nxNamesChanged();
                 setModelStatus('Modelo carregado. Confira os campos antes de gerar.', false);
-            } catch (error) { setModelStatus(error.message, true); }
+            } catch (error) { if (seq === loadSeq) setModelStatus(error.message, true); }
         }
         modelSelect.addEventListener('change', () => {
             deleteButton.hidden = !modelSelect.value;

@@ -171,3 +171,8 @@ class GeneratorP2RefinementTests(SimpleTestCase):
         self.assertIn("function resetToDefaults()", html)
         self.assertIn("if (modelLoaded) { resetToDefaults();", html)
         self.assertIn("if (!app.value || app.value === name.value) follow = true;", html)
+
+    def test_quick_model_switch_discards_stale_responses(self):
+        html = self.html()
+        self.assertIn("const seq = ++loadSeq;", html)
+        self.assertIn("if (seq !== loadSeq) return;", html)

@@ -114,3 +114,54 @@ class GeneratorP1RefinementTests(SimpleTestCase):
         self.assertNotIn("urlLink", server)
         self.assertNotIn("downloadLink", server)
         self.assertIn("Opcionais. Vazios usam os endereços padrão do RustDesk.", html)
+
+
+class GeneratorP2RefinementTests(SimpleTestCase):
+    def html(self, query=""):
+        with patch("rdgenerator.views.nextec.config_problems", return_value=[]):
+            return generator_view(RequestFactory().get("/generator" + query)).content.decode()
+
+    def test_model_bar_is_just_a_selector_that_loads_on_choice(self):
+        html = self.html()
+        self.assertIn("Começar de um modelo", html)
+        self.assertNotIn('id="loadServerModel"', html)
+        self.assertIn("modelSelect.addEventListener('change'", html)
+
+    def test_save_and_delete_model_sit_next_to_generate_not_on_top(self):
+        html = self.html()
+        save = html.index('id="saveServerModel"')
+        self.assertGreater(save, html.index('<div class="applied'))
+        self.assertLess(save, html.index('id="submitButton"'))
+        self.assertIn('id="deleteServerModel" class="secondary-action" hidden', html)
+
+    def test_no_native_dialogs_remain(self):
+        html = self.html()
+        for call in ("prompt(", "confirm(", "alert("):
+            self.assertNotIn(call, html.replace("askBox", ""), call)
+
+    def test_app_name_follows_installer_name_until_edited(self):
+        html = self.html()
+        self.assertIn("let follow = !app.value || app.value === name.value;", html)
+        self.assertIn("Acompanha o nome do instalador", html)
+
+    def test_package_version_is_a_readonly_chip_not_a_field(self):
+        html = self.html()
+        self.assertNotIn("Versão do pacote</label>", html)
+        self.assertIn('class="pkg-chip"', html)
+        self.assertIn('name="package_version"', html)
+
+    def test_profile_and_client_sit_together_and_about_block_is_gone(self):
+        html = self.html()
+        self.assertLess(html.index("Destinado a"), html.index('id="clientRequired"'))
+        self.assertNotIn("Sobre nomes, versões e acesso", html)
+
+    def test_specific_client_profile_requires_a_client_name(self):
+        data = GeneratorFormFeedbackTests.data(self)
+        data.update(profile="client", client_name="")
+        form = GenerateForm(data)
+        self.assertFalse(form.is_valid())
+        self.assertIn("client_name", form.errors)
+        data["client_name"] = "Carteira Bruno"
+        self.assertNotIn("client_name", GenerateForm(data).errors)
+        data.update(profile="default", client_name="")
+        self.assertNotIn("client_name", GenerateForm(data).errors)

@@ -57,6 +57,7 @@
         input[type="checkbox"], input[type="radio"] { width:auto; min-height:0; margin:3px 8px 0 0; accent-color:var(--nx-blue); flex:none; }
         input[type="file"]::file-selector-button { margin-right:10px; padding:7px 12px; color:var(--nx-ink); background:var(--nx-tint); border:0; border-radius:8px; font:inherit; font-weight:600; cursor:pointer; }
         select { appearance:auto; }
+        [hidden] { display:none !important; }
         .visually-hidden { position:absolute !important; width:1px !important; height:1px !important; padding:0 !important; margin:-1px !important; overflow:hidden !important; clip:rect(0,0,0,0) !important; white-space:nowrap !important; border:0 !important; }
 
         button { font:inherit; font-weight:600; min-height:44px; padding:0 18px; border:0; border-radius:12px; cursor:pointer; color:#fff; background:var(--nx-blue); }
@@ -97,9 +98,17 @@
         .checks.block { grid-template-columns:1fr; }
         .key-row { display:flex; gap:8px; align-items:stretch; }
         .key-row input { flex:1; }
-        .model-bar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 4px; padding:10px 12px; background:var(--nx-bg); border:1px solid var(--nx-divider); border-radius:12px; }
+        .model-bar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin:0 0 4px; padding:10px 12px; background:var(--nx-bg); border:1px solid var(--nx-divider); border-radius:12px; }
         .model-bar-label { margin:0; font-weight:600; font-size:14px; color:var(--nx-ink); }
+        .model-bar-label .opt { font-weight:400; color:var(--nx-muted); }
         .model-bar select { flex:1 1 220px; }
+        .model-status.is-bad { color:var(--nx-err-ink); font-weight:600; }
+        .model-save { display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }
+        .ask-box { display:grid; gap:10px; margin-top:12px; padding:14px 16px; background:var(--nx-bg); border:1px solid var(--nx-border); border-radius:12px; }
+        .ask-msg { margin:0; font-weight:600; font-size:14px; }
+        .ask-actions { display:flex; flex-wrap:wrap; gap:8px; }
+        button.danger { background:var(--nx-err-ink); }
+        .pkg-chip { display:inline-block; padding:1px 8px; border:1px solid var(--nx-border); border-radius:8px; font-size:12px; font-weight:600; color:var(--nx-ink); }
         .model-status { margin:0 0 14px; min-height:0; }
         .model-status:empty { display:none; }
         .model-actions { display:flex; flex-wrap:wrap; gap:8px; }
@@ -112,9 +121,6 @@
         .errorlist ul { margin:0; padding-left:20px; }
         .error { color:var(--nx-err-ink); font-size:13px; font-weight:600; }
         #loadWarnings { margin:0 0 12px; }
-        .about { font-size:13px; color:var(--nx-muted); }
-        .about summary { cursor:pointer; font-weight:600; color:var(--nx-ink); }
-        .about p { margin:6px 0 0; }
         @media (max-width:640px) {
             main { width:calc(100% - 24px); margin-top:14px; }
             .card { padding:18px 16px; }
@@ -123,7 +129,7 @@
             .adv-body { padding:0 16px 18px; }
             .key-row { flex-direction:column; }
             .model-actions button { flex:1 1 calc(50% - 8px); }
-            .model-bar button { flex:1 1 calc(33% - 8px); }
+            .model-save button, .ask-actions button { flex:1 1 calc(50% - 8px); }
         }
         @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; animation-duration:.01ms !important; transition-duration:.01ms !important; } }
     </style>
@@ -154,16 +160,14 @@
         {{ form.iconbase64.as_hidden }}
         {{ form.logobase64.as_hidden }}
         {{ form.privacybase64.as_hidden }}
+        {{ form.package_version }}
 
         <section class="card" aria-labelledby="novo-heading">
             <h2 id="novo-heading">Novo instalador</h2>
             <p class="lead">Preencha o essencial. O servidor, a chave e as regras de segurança da Nextec já vão aplicados.</p>
             <div class="model-bar" role="group" aria-label="Modelos salvos">
-                <label for="savedModels" class="model-bar-label">Modelo salvo</label>
-                <select id="savedModels" aria-label="Modelos salvos"><option value="">Selecione um modelo salvo</option></select>
-                <button type="button" id="loadServerModel" class="secondary-action">Carregar</button>
-                <button type="button" id="saveServerModel">Salvar</button>
-                <button type="button" id="deleteServerModel" class="secondary-action">Excluir</button>
+                <label for="savedModels" class="model-bar-label">Começar de um modelo <span class="opt">(opcional)</span></label>
+                <select id="savedModels"><option value="">Nenhum, preencher do zero</option></select>
             </div>
             <p id="modelStatus" class="hint model-status" role="status"></p>
             <div class="fields">
@@ -191,19 +195,7 @@
                     {{ form.appname }}
                     <p class="field-error" id="appnameError" aria-live="polite"></p>
                     {% if field_errors.appname %}<p class="field-error">{{ field_errors.appname }}</p>{% endif %}
-                    <p class="hint" id="appname-hint">Aparece no atalho. Só letras sem acento, números e hífen, sem espaços.</p>
-                </div>
-
-                <div class="field{% if field_errors.client_name %} has-error{% endif %}">
-                    <label for="{{ form.client_name.id_for_label }}">Cliente <span class="opt">(opcional)</span></label>
-                    {{ form.client_name }}
-                    {% if field_errors.client_name %}<p class="field-error">{{ field_errors.client_name }}</p>{% endif %}
-                    <p class="hint">Só organiza o histórico. Ex.: Carteira Bruno.</p>
-                </div>
-                <div class="field">
-                    <label>Versão do pacote</label>
-                    <p class="hint" id="packageVersionInfo"><strong>{{ product_version }}</strong> (a do gerador). Define o ProductVersion do instalador e fica registrada nele.</p>
-                    {{ form.package_version }}
+                    <p class="hint" id="appname-hint">Aparece no atalho. Acompanha o nome do instalador até você mudar. Só letras sem acento, números e hífen, sem espaços.</p>
                 </div>
 
                 <div class="field{% if field_errors.profile %} has-error{% endif %}">
@@ -211,7 +203,14 @@
                     {{ form.profile }}
                     {% if field_errors.profile %}<p class="field-error">{{ field_errors.profile }}</p>{% endif %}
                 </div>
-                <div class="field{% if field_errors.iconfile %} has-error{% endif %}">
+                <div class="field{% if field_errors.client_name %} has-error{% endif %}">
+                    <label for="{{ form.client_name.id_for_label }}">Cliente <span class="opt" id="clientRequired">(opcional)</span></label>
+                    {{ form.client_name }}
+                    <p class="field-error" id="clientError" aria-live="polite"></p>
+                    {% if field_errors.client_name %}<p class="field-error">{{ field_errors.client_name }}</p>{% endif %}
+                    <p class="hint" id="client-hint">Obrigatório em Cliente específico. Nos outros perfis só organiza o histórico. Ex.: Carteira Bruno.</p>
+                </div>
+                <div class="field full{% if field_errors.iconfile %} has-error{% endif %}">
                     <label for="{{ form.iconfile.id_for_label }}">Ícone <span class="opt">(PNG quadrado, opcional)</span></label>
                     {{ form.iconfile }}
                     <div id="icon-preview"></div>
@@ -242,10 +241,23 @@
             </div>
             {% endif %}
 
+            <div class="model-save" role="group" aria-label="Modelos salvos">
+                <button type="button" id="saveServerModel" class="secondary-action">Salvar como modelo</button>
+                <button type="button" id="deleteServerModel" class="secondary-action" hidden>Excluir modelo</button>
+            </div>
+            <div id="askBox" class="ask-box" role="group" aria-labelledby="askMsg" hidden>
+                <p id="askMsg" class="ask-msg"></p>
+                <input type="text" id="askInput" maxlength="80" autocomplete="off" aria-labelledby="askMsg" hidden>
+                <div class="ask-actions">
+                    <button type="button" id="askOk">Confirmar</button>
+                    <button type="button" id="askCancel" class="secondary-action">Cancelar</button>
+                </div>
+            </div>
+
             <div class="submit-row">
                 <button type="submit" id="submitButton"{% if enrollment_warning %} disabled{% endif %}>Gerar instalador</button>
                 <p class="status-live" id="submitStatus" role="status" aria-live="polite">{% if enrollment_warning %}Marque a confirmação acima para liberar o botão.{% endif %}</p>
-                <p class="submit-note">A geração leva de 30 a 45 minutos. Você acompanha o andamento na tela seguinte e em Itens gerados.</p>
+                <p class="submit-note">Pacote <span class="pkg-chip">{{ product_version }}</span> (versão do gerador). A geração leva de 30 a 45 minutos. Você acompanha o andamento na tela seguinte e em Itens gerados.{% if access_email %} Gerando como {{ access_email }}.{% endif %}</p>
             </div>
         </section>
 
@@ -361,6 +373,7 @@
                 <section class="adv-group">
                     <h3>Modelos em arquivo JSON</h3>
                     <p class="lead">Exporte ou importe a configuração como arquivo. Os modelos salvos na sua conta ficam no topo do formulário.</p>
+                    <p id="jsonStatus" class="hint model-status" role="status"></p>
                     <div class="model-actions">
                         <button type="button" onclick="saveFormData()" class="secondary-action">Exportar JSON</button>
                         <input type="file" id="fileInput" style="display:none;" accept=".json,application/json">
@@ -370,10 +383,6 @@
             </div>
         </details>
     </form>
-    <details class="about"><summary>Sobre nomes, versões e acesso</summary>
-        <p>O nome do instalador identifica o download. O nome do aplicativo aparece no programa e no atalho. Ícone, logo e tela de privacidade valem só para o cliente gerado, não para o painel. A versão do pacote ({{ product_version }} é a do gerador) é independente da base RustDesk.</p>
-        <p>No Nextec-Connect, instalar pelo MSI ou pelo EXE registra a checagem diária de atualizações assinadas. A distribuição é controlada em Atualizações do app. Acesso: Cloudflare Access e lista de pessoas autorizadas.{% if access_email %} Sua conta: {{ access_email }}.{% endif %}</p>
-    </details>
     </main>
     <script>
         const platformSelect = document.getElementById('id_platform');
@@ -514,6 +523,12 @@
             this.textContent = keyInput.type === 'text' ? 'Ocultar' : 'Mostrar';
         });
 
+        function jsonStatus(text, bad) {
+            const box = document.getElementById('jsonStatus');
+            box.textContent = text;
+            box.classList.toggle('is-bad', !!bad);
+        }
+
         async function saveFormData() {
             const filename = document.getElementById("{{ form.exename.id_for_label }}").value;
             if (!filename) {
@@ -547,6 +562,7 @@
             // 2. Handle select elements separately (more reliable):
             const selectElements = form.querySelectorAll('select');
             selectElements.forEach(select => {
+                if (!select.name) return;  // seletor de modelos salvos nao e campo do formulario
                 formData[select.name] = select.value;
             });
 
@@ -639,7 +655,7 @@
             if (!banner) {
                 banner = document.createElement('div');
                 banner.id = 'loadWarnings';
-                banner.style.cssText = 'background:#5a1a1a;color:#ffd7d7;padding:8px 12px;margin-bottom:10px;border:1px solid #a33;border-radius:4px;';
+                banner.className = 'errorlist';
                 const form = document.getElementById('myForm');
                 form.parentNode.insertBefore(banner, form);
             }
@@ -648,12 +664,13 @@
 
         function loadFormData() {
             const fileInput = document.getElementById("fileInput");
+            fileInput.value = '';
             fileInput.click();
 
-            fileInput.addEventListener("change", (event) => {
+            fileInput.onchange = (event) => {
                 const file = event.target.files[0];
                 if (file) {
-                    if (file.size > 100000) { alert('O modelo JSON é grande demais.'); return; }
+                    if (file.size > 100000) { jsonStatus('O modelo JSON é grande demais.', true); return; }
                     const reader = new FileReader();
                     reader.onload = (e) => {
                         try {
@@ -718,13 +735,15 @@
                                 }
                             }
                             showLoadWarnings(skippedKeys);
+                            jsonStatus('Modelo importado. Confira os campos antes de gerar.', false);
+                            if (window.nxNamesChanged) window.nxNamesChanged();
                         } catch (error) {
-                            alert("Não foi possível carregar o modelo. O arquivo JSON é inválido.");
+                            jsonStatus('Não foi possível carregar o modelo. O arquivo JSON é inválido.', true);
                         }
                     };
                     reader.readAsText(file);
                 }
-            });
+            };
         }
         function setImportedPreview(id, source) {
             const img = document.createElement('img');
@@ -742,14 +761,56 @@
                 const response = await fetch(savedModelsUrl, {credentials:'same-origin'});
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.error || 'Não foi possível listar os modelos.');
-                modelSelect.replaceChildren(new Option('Selecione um modelo salvo', ''));
+                modelSelect.replaceChildren(new Option('Nenhum, preencher do zero', ''));
                 data.models.forEach(item => modelSelect.add(new Option(item.name, item.name)));
                 modelSelect.value = selected;
-            } catch (error) { modelStatus.textContent = error.message; }
+                document.getElementById('deleteServerModel').hidden = !modelSelect.value;
+            } catch (error) { modelStatus.textContent = error.message; modelStatus.classList.add('is-bad'); }
         }
-        document.getElementById('saveServerModel').addEventListener('click', async () => {
-            const name = prompt('Nome do modelo para salvar neste servidor:', modelSelect.value || '');
-            if (!name) return;
+        function setModelStatus(text, bad) {
+            modelStatus.textContent = text;
+            modelStatus.classList.toggle('is-bad', !!bad);
+        }
+        const saveButton = document.getElementById('saveServerModel');
+        const deleteButton = document.getElementById('deleteServerModel');
+        const askBox = document.getElementById('askBox');
+        const askMsg = document.getElementById('askMsg');
+        const askInput = document.getElementById('askInput');
+        const askOk = document.getElementById('askOk');
+        const askCancel = document.getElementById('askCancel');
+        let askClose = null;
+        // Confirmacao inline (no iframe um dialogo modal ficaria no meio da pagina inteira, fora da tela).
+        function ask({message, input = false, value = '', confirmText = 'Confirmar', danger = false}) {
+            if (askClose) askClose(null);
+            const opener = document.activeElement;
+            askMsg.textContent = message;
+            askInput.hidden = !input;
+            askInput.value = value;
+            askOk.textContent = confirmText;
+            askOk.classList.toggle('danger', danger);
+            askBox.hidden = false;
+            (input ? askInput : askOk).focus();
+            return new Promise(resolve => {
+                const close = result => {
+                    askBox.hidden = true;
+                    askClose = null;
+                    askOk.onclick = askCancel.onclick = askBox.onkeydown = null;
+                    if (opener && opener.focus) opener.focus();
+                    resolve(result);
+                };
+                askClose = close;
+                askOk.onclick = () => close(input ? askInput.value.trim() : true);
+                askCancel.onclick = () => close(null);
+                askBox.onkeydown = event => {
+                    if (event.key === 'Escape') { event.preventDefault(); close(null); }
+                    else if (event.key === 'Enter' && input && event.target === askInput) { event.preventDefault(); close(askInput.value.trim()); }
+                };
+            });
+        }
+        saveButton.addEventListener('click', async () => {
+            const name = await ask({message: 'Nome do modelo (fica salvo neste servidor, só na sua conta):', input: true, value: modelSelect.value, confirmText: 'Salvar modelo'});
+            if (name === null) return;
+            if (!name) { setModelStatus('Informe um nome para o modelo.', true); return; }
             const form = document.getElementById('myForm');
             const settings = {};
             new FormData(form).forEach((value, key) => {
@@ -761,12 +822,12 @@
                 const response = await fetch(savedModelsUrl, {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken}, body:JSON.stringify({name,settings})});
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.error || 'Não foi possível salvar.');
-                modelStatus.textContent = 'Modelo salvo neste servidor para sua conta.';
+                setModelStatus('Modelo salvo neste servidor para sua conta.', false);
                 await refreshModels(name);
-            } catch (error) { modelStatus.textContent = error.message; }
+            } catch (error) { setModelStatus(error.message, true); }
         });
-        document.getElementById('loadServerModel').addEventListener('click', async () => {
-            if (!modelSelect.value) { modelStatus.textContent = 'Selecione um modelo.'; return; }
+        async function loadModel() {
+            if (!modelSelect.value) { setModelStatus('', false); return; }
             try {
                 const response = await fetch(savedModelsUrl + '?name=' + encodeURIComponent(modelSelect.value), {credentials:'same-origin'});
                 const data = await response.json();
@@ -779,19 +840,26 @@
                         else input.value = value;
                     });
                 });
-                modelStatus.textContent = 'Modelo carregado. Confira os campos antes de gerar.';
-            } catch (error) { modelStatus.textContent = error.message; }
+                if (window.nxNamesChanged) window.nxNamesChanged();
+                setModelStatus('Modelo carregado. Confira os campos antes de gerar.', false);
+            } catch (error) { setModelStatus(error.message, true); }
+        }
+        modelSelect.addEventListener('change', () => {
+            deleteButton.hidden = !modelSelect.value;
+            loadModel();
         });
-        document.getElementById('deleteServerModel').addEventListener('click', async () => {
+        deleteButton.addEventListener('click', async () => {
             const name = modelSelect.value;
-            if (!name || !confirm('Excluir o modelo “' + name + '” da sua conta?')) return;
+            if (!name) return;
+            const ok = await ask({message: 'Excluir o modelo “' + name + '” da sua conta?', confirmText: 'Excluir modelo', danger: true});
+            if (!ok) return;
             try {
                 const response = await fetch(savedModelsUrl, {method:'DELETE', credentials:'same-origin', headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken}, body:JSON.stringify({name})});
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.error || 'Não foi possível excluir.');
-                modelStatus.textContent = data.deleted ? 'Modelo excluído.' : 'Modelo não encontrado.';
+                setModelStatus(data.deleted ? 'Modelo excluído.' : 'Modelo não encontrado.', false);
                 await refreshModels();
-            } catch (error) { modelStatus.textContent = error.message; }
+            } catch (error) { setModelStatus(error.message, true); }
         });
         refreshModels();
     </script>
@@ -825,9 +893,40 @@
                 box.textContent = text;
                 if (text) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid');
             }
-            app.addEventListener('input', () => show(app, appError, appProblem(app.value)));
-            name.addEventListener('input', () => show(name, nameError, nameProblem(name.value)));
+            // o nome do app acompanha o do instalador ate a pessoa editar o dele (e volta a acompanhar se ficarem iguais)
+            let follow = !app.value || app.value === name.value;
+            app.addEventListener('input', () => {
+                follow = !app.value || app.value === name.value;
+                show(app, appError, appProblem(app.value));
+            });
+            name.addEventListener('input', () => {
+                show(name, nameError, nameProblem(name.value));
+                if (follow) { app.value = name.value; show(app, appError, appProblem(app.value)); }
+            });
             if (app.value) show(app, appError, appProblem(app.value));
+
+            const profile = document.getElementById('{{ form.profile.id_for_label }}');
+            const client = document.getElementById('{{ form.client_name.id_for_label }}');
+            const clientError = document.getElementById('clientError');
+            const clientTag = document.getElementById('clientRequired');
+            function clientProblem() {
+                return profile.value === 'client' && !client.value.trim() ? 'Informe o cliente para o perfil Cliente específico.' : '';
+            }
+            function syncClient() {
+                const need = profile.value === 'client';
+                clientTag.textContent = need ? '(obrigatório)' : '(opcional)';
+                if (need) client.setAttribute('aria-required', 'true'); else client.removeAttribute('aria-required');
+                if (!need) show(client, clientError, '');
+            }
+            profile.addEventListener('change', () => { syncClient(); if (profile.value === 'client' && !client.value.trim()) client.focus(); });
+            client.addEventListener('input', () => show(client, clientError, clientProblem()));
+            syncClient();
+            window.nxNamesChanged = () => {
+                follow = !app.value || app.value === name.value;
+                show(name, nameError, name.value ? nameProblem(name.value) : '');
+                show(app, appError, appProblem(app.value));
+                syncClient();
+            };
             if (ack) {
                 const sync = () => {
                     button.disabled = !ack.checked;
@@ -839,12 +938,14 @@
             form.addEventListener('submit', event => {
                 const nameText = nameProblem(name.value);
                 const appText = appProblem(app.value);
+                const clientText = clientProblem();
                 show(name, nameError, nameText);
                 show(app, appError, appText);
+                show(client, clientError, clientText);
                 if (ack && !ack.checked) { event.preventDefault(); ack.focus(); return; }
-                if (nameText || appText) {
+                if (nameText || appText || clientText) {
                     event.preventDefault();
-                    (nameText ? name : app).focus();
+                    (nameText ? name : appText ? app : client).focus();
                     return;
                 }
                 button.disabled = true;

@@ -213,6 +213,8 @@ class GenerateForm(forms.Form):
             value = cleaned.get(field, '')
             if value and UNSAFE.search(value):
                 self.add_error(field, 'O valor contém caracteres não aceitos na geração.')
+        if cleaned.get('profile') == 'client' and not (cleaned.get('client_name') or '').strip():
+            self.add_error('client_name', 'Informe o cliente para o perfil Cliente específico.')
         value = cleaned.get('androidappid', '')
         if value and not ANDROID_ID.fullmatch(value):
             self.add_error('androidappid', 'O ID do aplicativo Android é inválido.')

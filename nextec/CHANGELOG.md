@@ -1,5 +1,17 @@
 # Gerador Nextec
 
+## 2.3.8
+
+Refino da tela Gerar cliente, itens P2 (hierarquia e fluxo). Só interface e validação; nenhum script do agente mudou.
+
+- **Modelos sem ruído:** o topo tem só "Começar de um modelo", que carrega ao escolher. "Salvar como modelo" e "Excluir modelo" ficam perto do botão Gerar (Excluir só aparece com um modelo escolhido).
+- **Sem janelas nativas:** nome do modelo, exclusão e erros de importação JSON usam confirmação e mensagens na própria tela (`prompt`, `confirm` e `alert` saíram; no iframe do painel eles ficavam fora de vista ou eram bloqueados). Escape cancela e o foco volta ao botão.
+- **Nome do aplicativo acompanha o instalador** até a pessoa editar o dele (e volta a acompanhar se ficarem iguais).
+- **Cliente específico exige o cliente:** "Destinado a" e "Cliente" ficam lado a lado e o campo vira obrigatório nesse perfil, no formulário e no servidor (API incluída).
+- **Versão do pacote** deixa de ser um campo com rótulo e vira um selo na nota do botão Gerar (o valor segue sendo o do gerador).
+- **Menos repetição:** o bloco "Sobre nomes, versões e acesso" sai; a conta que gera aparece na nota do botão.
+- **Importar JSON:** escolher o mesmo arquivo duas vezes funciona e a importação não se repete (o evento era registrado a cada clique); o seletor de modelos não entra mais no JSON exportado; o aviso de valores incompatíveis usa o estilo de erro do tema.
+
 ## 2.3.7
 
 Refino da tela Gerar cliente (itens P1 da análise de UX/UI). Só interface e validação; nenhum script do agente mudou.

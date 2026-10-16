@@ -1,5 +1,13 @@
 # Gerador Nextec
 
+## 2.3.9
+
+Acabamento da tela Gerar cliente (itens P3). Só interface; nenhum script do agente mudou.
+
+- **Plataforma sem quebra de linha:** o botão diz "Windows" (cabia mal em 390 px) e a dica informa que é de 64 bits. O valor enviado não mudou.
+- **Alterar configurações remotamente** explica por que vem desmarcado.
+- **Desenvolvimento (nightly)** vai para o fim da lista de versões-base, com "pode falhar" no rótulo. O valor `master` e a versão padrão (1.5.0) não mudaram, então modelos salvos seguem válidos.
+
 ## 2.3.8
 
 Refino da tela Gerar cliente, itens P2 (hierarquia e fluxo). Só interface e validação; nenhum script do agente mudou.

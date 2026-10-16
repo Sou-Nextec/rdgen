@@ -176,3 +176,23 @@ class GeneratorP2RefinementTests(SimpleTestCase):
         html = self.html()
         self.assertIn("const seq = ++loadSeq;", html)
         self.assertIn("if (seq !== loadSeq) return;", html)
+
+
+class GeneratorP3RefinementTests(SimpleTestCase):
+    def html(self):
+        with patch("rdgenerator.views.nextec.config_problems", return_value=[]):
+            return generator_view(RequestFactory().get("/generator")).content.decode()
+
+    def test_platform_button_fits_and_hint_carries_the_bits(self):
+        html = self.html()
+        self.assertIn("<span>Windows</span>", html)
+        self.assertIn("Windows é de 64 bits.", html)
+
+    def test_remote_config_permission_explains_its_default(self):
+        self.assertIn("Vem desmarcado de propósito", self.html())
+
+    def test_nightly_is_last_and_warns_in_the_label(self):
+        choices = [value for value, _ in GenerateForm.base_fields["version"].choices]
+        self.assertEqual(choices[-1], "master")
+        self.assertEqual(GenerateForm.base_fields["version"].initial, "1.5.0")
+        self.assertIn("pode falhar", dict(GenerateForm.base_fields["version"].choices)["master"])

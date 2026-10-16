@@ -165,3 +165,9 @@ class GeneratorP2RefinementTests(SimpleTestCase):
         self.assertNotIn("client_name", GenerateForm(data).errors)
         data.update(profile="default", client_name="")
         self.assertNotIn("client_name", GenerateForm(data).errors)
+
+    def test_blank_model_option_resets_the_form_and_names_resume_following(self):
+        html = self.html()
+        self.assertIn("function resetToDefaults()", html)
+        self.assertIn("if (modelLoaded) { resetToDefaults();", html)
+        self.assertIn("if (!app.value || app.value === name.value) follow = true;", html)

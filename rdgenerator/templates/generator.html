@@ -826,8 +826,26 @@
                 await refreshModels(name);
             } catch (error) { setModelStatus(error.message, true); }
         });
+        let modelLoaded = false;
+        // "Nenhum, preencher do zero" depois de carregar um modelo: volta ao estado inicial da pagina
+        function resetToDefaults() {
+            const form = document.getElementById('myForm');
+            form.reset();
+            ['icon-preview', 'logo-preview', 'privacy-preview'].forEach(id => document.getElementById(id).replaceChildren());
+            document.getElementById('passwordRequirement').style.display = 'none';
+            carriedUnknownFields = {};
+            showLoadWarnings([]);
+            syncPlatformChoice();
+            if (window.nxNamesChanged) window.nxNamesChanged();
+            modelLoaded = false;
+            deleteButton.hidden = true;
+        }
         async function loadModel() {
-            if (!modelSelect.value) { setModelStatus('', false); return; }
+            if (!modelSelect.value) {
+                if (modelLoaded) { resetToDefaults(); setModelStatus('Formulário de volta ao padrão.', false); }
+                else setModelStatus('', false);
+                return;
+            }
             try {
                 const response = await fetch(savedModelsUrl + '?name=' + encodeURIComponent(modelSelect.value), {credentials:'same-origin'});
                 const data = await response.json();
@@ -840,6 +858,7 @@
                         else input.value = value;
                     });
                 });
+                modelLoaded = true;
                 if (window.nxNamesChanged) window.nxNamesChanged();
                 setModelStatus('Modelo carregado. Confira os campos antes de gerar.', false);
             } catch (error) { setModelStatus(error.message, true); }
@@ -901,6 +920,8 @@
             });
             name.addEventListener('input', () => {
                 show(name, nameError, nameProblem(name.value));
+                // ficaram iguais: volta a acompanhar, mesmo depois de o nome do app ter sido editado
+                if (!app.value || app.value === name.value) follow = true;
                 if (follow) { app.value = name.value; show(app, appError, appProblem(app.value)); }
             });
             if (app.value) show(app, appError, appProblem(app.value));

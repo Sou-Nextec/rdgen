@@ -20,7 +20,8 @@
   {% if uuid %}
   parent.postMessage({type:'nextec-generation-started', uuid:'{{ uuid|escapejs }}'}, location.origin);
   {% endif %}
-  const report = () => parent.postMessage({type:'nextec-generator-ready', height:Math.ceil(document.body.scrollHeight)}, location.origin);
+  // o <html> inclui a margem de cima do <main> que escapa do <body>; so o body.scrollHeight deixava 12px de rolagem interna no iframe
+  const report = () => parent.postMessage({type:'nextec-generator-ready', height:Math.ceil(Math.max(document.body.scrollHeight, document.documentElement.getBoundingClientRect().height))}, location.origin);
   window.addEventListener('message', event => {
     if (event.origin !== location.origin || event.source !== parent || event.data?.type !== 'nextec-generator-theme') return;
     const dark = event.data.dark === true;

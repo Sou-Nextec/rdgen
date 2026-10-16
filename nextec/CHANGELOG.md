@@ -1,5 +1,9 @@
 # Gerador Nextec
 
+## 2.3.10
+
+- **Sem barra de rolagem dentro do painel:** o gerador embutido informava a altura só pelo `body`, e a margem de 12 px do topo do formulário escapa do `body` para o `html`. O iframe ficava 12 px menor que o conteúdo e mostrava uma rolagem interna ao lado da rolagem da página. A altura informada passa a ser a do `html`.
+
 ## 2.3.9
 
 Acabamento da tela Gerar cliente (itens P3). Só interface; nenhum script do agente mudou.

@@ -196,3 +196,10 @@ class GeneratorP3RefinementTests(SimpleTestCase):
         self.assertEqual(choices[-1], "master")
         self.assertEqual(GenerateForm.base_fields["version"].initial, "1.5.0")
         self.assertIn("pode falhar", dict(GenerateForm.base_fields["version"].choices)["master"])
+
+
+class EmbeddedHeightTests(SimpleTestCase):
+    def test_embed_reports_html_height_so_the_iframe_never_scrolls_inside(self):
+        with patch("rdgenerator.views.nextec.config_problems", return_value=[]):
+            html = generator_view(RequestFactory().get("/generator")).content.decode()
+        self.assertIn("document.documentElement.getBoundingClientRect().height", html)

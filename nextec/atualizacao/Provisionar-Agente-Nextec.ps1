@@ -64,6 +64,7 @@ function Get-NextecProvisionPaths {
     Log = Join-Path $Root 'provisionamento-agente.log'
     Enroll = Join-Path $Root 'inscricao.json'
     SelfState = Join-Path $Root 'inscricao-estado.json'
+    Invite = Join-Path $Root 'convite.json'
   }
 }
 
@@ -194,9 +195,39 @@ function New-NextecProposedToken {
   [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+','-').Replace('/','_')
 }
 
+# Codigos que os scripts do agente podem gravar em provisionamento-agente.log. UNICA fonte: o gravador
+# (Write-NextecProvisionLog) e o teste de guarda (nextec/testes/codigos-log-provisionamento.test.mjs, que tambem confere os
+# codigos lidos pelo Ativar-Nextec-<ID>.cmd) consomem esta lista. Codigo novo entra aqui, em nenhum outro lugar.
+function Get-NextecProvisionLogCodes {
+  @(
+    'pending', 'complete', 'network_retry', 'manual_authorization_required', 'already_configured', 'identity_conflict',
+    'already_enrolled', 'registration_retry', 'invalid_input', 'invalid_panel', 'invalid_identity', 'invalid_bootstrap',
+    'protocol_error', 'unsafe_path', 'component_missing', 'self_enrolled', 'self_backoff', 'self_blocked', 'self_manual',
+    'peer_not_registered', 'rate_limited', 'painel_padrao', 'agent_config_replaced', 'agent_config_unreadable',
+    'identity_changed', 'bootstrap_discarded', 'old_agent_replaced', 'old_agent_kept', 'panel_unreachable',
+    'pending_other_panel', 'pending_expired', 'pending_authorization',
+    'old_agent_replace_formato_antigo', 'old_agent_replace_outro_id', 'old_agent_replace_token_recusado',
+    'old_agent_replace_agente_parado', 'agent_repaired', 'invite_claimed', 'invite_retry', 'invite_discarded', 'unknown_code'
+  )
+}
+
+# Codigo fora da lista nunca derruba o fluxo: vira "unknown_code [texto]". O texto e so diagnostico: caracteres seguros,
+# no maximo 48, e qualquer sequencia longa (parece token ou segredo) e trocada por [redigido]. Entre colchetes para o
+# Ativar-Nextec-<ID>.cmd (que le o codigo no FIM da linha) nunca confundir o texto com um codigo de falha.
+function ConvertTo-NextecProvisionLogLine {
+  param([string]$Code)
+  if ($null -eq $Code) { $Code = '' }
+  $Code = $Code.Trim()
+  if ($Code -cin (Get-NextecProvisionLogCodes)) { return $Code }
+  $text = [regex]::Replace($Code, '[A-Za-z0-9_-]{24,}', 'redigido')
+  $text = [regex]::Replace($text, '[^A-Za-z0-9_. :-]', '?')
+  if ($text.Length -gt 48) { $text = $text.Substring(0, 48) }
+  return ('unknown_code [' + $text + ']')
+}
+
 function Write-NextecProvisionLog {
   param([Parameter(Mandatory)][string]$Code, [string]$Root = (Join-Path $env:ProgramData 'Nextec\Acesso'))
-  if ($Code -notmatch '^(pending|complete|network_retry|manual_authorization_required|already_configured|identity_conflict|already_enrolled|registration_retry|invalid_input|invalid_panel|invalid_identity|invalid_bootstrap|protocol_error|unsafe_path|component_missing|self_enrolled|self_backoff|self_blocked|self_manual|peer_not_registered|rate_limited|painel_padrao|agent_config_replaced|agent_config_unreadable|identity_changed|bootstrap_discarded|old_agent_replaced|old_agent_kept|panel_unreachable|pending_other_panel|pending_expired)$') { $Code = 'protocol_error' }
+  $Code = ConvertTo-NextecProvisionLogLine -Code $Code
   $paths = Get-NextecProvisionPaths -Root $Root
   Assert-NextecProvisionPath -Path $paths.Root
   if (-not (Test-Path -LiteralPath $paths.Root -PathType Container)) { Initialize-NextecProvisionDirectory -Root $paths.Root }
@@ -208,7 +239,7 @@ function Write-NextecProvisionLog {
   Assert-NextecProvisionPath -Path $paths.Log
   if (-not (Test-Path -LiteralPath $paths.Log -PathType Leaf)) { throw 'unsafe_path' }
   Assert-NextecProvisionFileAcl -Path $paths.Log
-  Add-Content -LiteralPath $paths.Log -Value ('{0:yyyy-MM-dd HH:mm:ss} {1}' -f (Get-Date), $Code) -Encoding UTF8
+  Add-Content -LiteralPath $paths.Log -Value ('{0} {1}' -f (Get-Date).ToString('yyyy-MM-dd HH:mm:ss', [Globalization.CultureInfo]::InvariantCulture), $Code) -Encoding UTF8
 }
 
 function Import-NextecIdentityFunctions {
@@ -349,6 +380,16 @@ function Test-NextecAgentTaskReady {
   } catch { return $false }
 }
 
+# Nome de conta (localizado ou nao) para SID. Aceita o proprio SID. Vazio quando nao resolve.
+function ConvertTo-NextecAccountSid {
+  param([string]$Account)
+  $name = ([string]$Account).Trim()
+  if (-not $name) { return '' }
+  if ($name -match '^(?i)S-1-\d+(-\d+)+$') { return $name.ToUpperInvariant() }
+  try { return (New-Object Security.Principal.NTAccount($name)).Translate([Security.Principal.SecurityIdentifier]).Value }
+  catch { return '' }
+}
+
 # Tarefa correta = conta SYSTEM (S-1-5-18) com RunLevel Highest, uma unica acao com o powershell.exe 5.1 do sistema,
 # "-File" apontando para o script do agente em $Root, "-Executar", gatilho periodico de no maximo PasswordMinutes (o valor
 # de Get-NextecAgentIntervals no script do agente em $Root) e habilitada.
@@ -357,8 +398,8 @@ function Test-NextecAgentTaskReady {
 function Test-NextecAgentTaskShape {
   param([Parameter(Mandatory)]$Task, [Parameter(Mandatory)][string]$Root)
   if ([string]$Task.State -eq 'Disabled') { return $false }
-  $user = [string]$Task.Principal.UserId
-  if ($user -notin @('SYSTEM', 'S-1-5-18', 'NT AUTHORITY\SYSTEM')) { return $false }
+  # A conta e identificada pelo SID: o nome e localizado (pt-BR: SISTEMA, AUTORIDADE NT\SISTEMA) e nunca e comparado.
+  if ((ConvertTo-NextecAccountSid -Account ([string]$Task.Principal.UserId)) -cne 'S-1-5-18') { return $false }
   if ([string]$Task.Principal.RunLevel -ine 'Highest') { return $false }
   $actions = @($Task.Actions)
   if ($actions.Count -ne 1) { return $false }
@@ -594,6 +635,71 @@ function Invoke-NextecSelfEnrollment {
   return 'network_retry'
 }
 
+function Invoke-NextecInvitePost {
+  # Retorna o status HTTP (0 em falha de rede); nunca lanca por status. TestOrigin so aceita http://127.0.0.1:porta.
+  param([Parameter(Mandatory)][string]$Panel, [Parameter(Mandatory)]$Body, [string]$TestOrigin)
+  if ($TestOrigin) {
+    if ($TestOrigin -notmatch '^http://127\.0\.0\.1:\d{2,5}$') { throw 'invalid_panel' }
+    $target = $TestOrigin + '/api/nextec/agent/invite'
+  } else {
+    $uri = [Uri]::new($Panel.TrimEnd('/') + '/api/nextec/agent/invite')
+    if ($uri.Scheme -cne 'https' -or $uri.Host -cne ([Uri]$script:NextecPainelFixo).Host -or $uri.UserInfo -or $uri.Query -or $uri.Fragment) { throw 'invalid_panel' }
+    $target = $uri.AbsoluteUri
+  }
+  try {
+    Invoke-RestMethod -Uri $target -Method Post -ContentType 'application/json' -Body ($Body | ConvertTo-Json -Compress) -TimeoutSec 30 -MaximumRedirection 0 -UserAgent 'Nextec-Connect-Agent/1' | Out-Null
+    return 200
+  } catch {
+    if ($_.Exception.Response -and $_.Exception.Response.StatusCode) { return [int]$_.Exception.Response.StatusCode }
+    return 0
+  }
+}
+
+# Convite de instalacao (convite.json, gravado pelo coordenador quando o MSI veio de um link do painel): depois da inscricao
+# a maquina apresenta o codigo com a propria credencial e o painel a atribui ao cliente do convite. Nunca derruba o fluxo:
+# resposta definitiva (aceito, invalido, vencido, conflito) apaga o arquivo; falha temporaria tenta de novo no proximo ciclo,
+# ate 3 dias, depois a maquina fica como Pendente.
+function Invoke-NextecInviteClaim {
+  param(
+    [Parameter(Mandatory)][string]$Root,
+    [Parameter(Mandatory)][scriptblock]$PostInvite,
+    [DateTime]$Now = [DateTime]::UtcNow
+  )
+  $paths = Get-NextecProvisionPaths -Root $Root
+  try {
+    if (-not (Test-Path -LiteralPath $paths.Invite -PathType Leaf)) { return 'none' }
+    $invite = Read-NextecProvisionJson -Path $paths.Invite
+    $code = [string]$invite.codigo
+    $created = [DateTime]::MinValue
+    $valid = $code -cmatch '^[A-HJ-NP-Z2-9]{20}$' -and [DateTime]::TryParse([string]$invite.criado_utc, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind, [ref]$created)
+    $age = ($Now.ToUniversalTime() - $created.ToUniversalTime()).TotalHours
+    if (-not $valid -or $age -ge 72 -or $age -lt -1) {
+      Remove-Item -LiteralPath $paths.Invite -Force -ErrorAction SilentlyContinue
+      Write-NextecProvisionLog 'invite_discarded' -Root $Root
+      return 'discarded'
+    }
+    if (-not (Test-Path -LiteralPath $paths.AgentConfig -PathType Leaf)) { return 'waiting' }
+    $config = Read-NextecAgentTokenConfig -Path $paths.AgentConfig
+    if (-not $config) { return 'waiting' }
+    $status = [int](& $PostInvite $config.painel @{ id=$config.id; token=$config.token; code=$code })
+    if ($status -eq 200) {
+      Remove-Item -LiteralPath $paths.Invite -Force -ErrorAction SilentlyContinue
+      Write-NextecProvisionLog 'invite_claimed' -Root $Root
+      return 'claimed'
+    }
+    if ($status -in @(403, 409)) {
+      Remove-Item -LiteralPath $paths.Invite -Force -ErrorAction SilentlyContinue
+      Write-NextecProvisionLog 'invite_discarded' -Root $Root
+      return 'discarded'
+    }
+    Write-NextecProvisionLog 'invite_retry' -Root $Root
+    return 'retry'
+  } catch {
+    try { Write-NextecProvisionLog 'invite_retry' -Root $Root } catch { }
+    return 'retry'
+  }
+}
+
 function Invoke-NextecProvisioning {
   [CmdletBinding()]
   param(
@@ -605,7 +711,8 @@ function Invoke-NextecProvisioning {
     [scriptblock]$NewToken = { New-NextecProposedToken },
     [scriptblock]$PostSelfEnroll = { param($panel,$body) Invoke-NextecSelfEnrollPost -Panel $panel -Body $body },
     [scriptblock]$GetUuid = { Get-NextecMachineUuid },
-    [scriptblock]$AgentTaskReady = { param($root) Test-NextecAgentTaskReady -Root $root }
+    [scriptblock]$AgentTaskReady = { param($root) Test-NextecAgentTaskReady -Root $root },
+    [scriptblock]$PostInvite = { param($panel,$body) Invoke-NextecInvitePost -Panel $panel -Body $body }
   )
   $paths = Get-NextecProvisionPaths -Root $Root
   Initialize-NextecProvisionDirectory -Root $Root
@@ -703,10 +810,13 @@ function Invoke-NextecProvisioning {
         }
       }
       Write-NextecProvisionLog 'already_configured' -Root $Root
+      Invoke-NextecInviteClaim -Root $Root -PostInvite $PostInvite -Now $Now | Out-Null
       return 'already_configured'
     }
     # Sem bootstrap.json e sem agente-senha.json: inscricao global (inscricao.json do MSI).
-    return (Invoke-NextecSelfEnrollment -Root $Root -LocalId $localId -Now $Now -PostSelfEnroll $PostSelfEnroll -NewToken $NewToken -RegisterAgent $RegisterAgent -GetUuid $GetUuid)
+    $enrollResult = Invoke-NextecSelfEnrollment -Root $Root -LocalId $localId -Now $Now -PostSelfEnroll $PostSelfEnroll -NewToken $NewToken -RegisterAgent $RegisterAgent -GetUuid $GetUuid
+    if ($enrollResult -eq 'complete') { Invoke-NextecInviteClaim -Root $Root -PostInvite $PostInvite -Now $Now | Out-Null }
+    return $enrollResult
   }
 
   if ($journal.painel -cne $script:NextecPainelFixo -or $journal.id -cne $localId) { Write-NextecProvisionLog 'identity_conflict' -Root $Root; throw 'identity_conflict' }
@@ -863,7 +973,7 @@ function Resolve-NextecOldAgent {
   }
   # Pendencia antiga (journal) sairia na frente da autorizacao nova: vai para backup protegido. A credencial fica.
   if (Test-Path -LiteralPath $paths.Journal -PathType Leaf) {
-    [void](Move-NextecProvisionFileAside -Path $paths.Journal -Stamp ($Now.ToUniversalTime().ToString('yyyyMMdd-HHmmss')))
+    [void](Move-NextecProvisionFileAside -Path $paths.Journal -Stamp ($Now.ToUniversalTime().ToString('yyyyMMdd-HHmmss', [Globalization.CultureInfo]::InvariantCulture)))
   }
   Write-NextecProvisionLog ('old_agent_replace_' + $reason) -Root $Root
   return $reason

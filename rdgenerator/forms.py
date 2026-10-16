@@ -22,7 +22,7 @@ class GenerateForm(forms.Form):
     sh_secret_field = forms.CharField(required=False)
     #Platform
     platform = forms.ChoiceField(choices=[('windows','Windows 64 bits'),('linux','Linux')], initial='windows')
-    version = forms.ChoiceField(choices=[('master','Desenvolvimento (nightly)'),('1.5.0','1.5.0'),('1.4.9','1.4.9'),('1.4.8','1.4.8'),('1.4.7','1.4.7'),('1.4.6','1.4.6'),('1.4.5','1.4.5'),('1.4.4','1.4.4'),('1.4.3','1.4.3'),('1.4.2','1.4.2'),('1.4.1','1.4.1'),('1.4.0','1.4.0')], initial='1.5.0', label='Versão-base do RustDesk')
+    version = forms.ChoiceField(choices=[('1.5.0','1.5.0'),('1.4.9','1.4.9'),('1.4.8','1.4.8'),('1.4.7','1.4.7'),('1.4.6','1.4.6'),('1.4.5','1.4.5'),('1.4.4','1.4.4'),('1.4.3','1.4.3'),('1.4.2','1.4.2'),('1.4.1','1.4.1'),('1.4.0','1.4.0'),('master','Desenvolvimento (nightly, pode falhar)')], initial='1.5.0', label='Versão-base do RustDesk')
     help_text="A versão de desenvolvimento traz os recursos mais novos e pode ser menos estável."
     delayFix = forms.BooleanField(initial=True, required=False)
 

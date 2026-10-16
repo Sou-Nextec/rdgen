@@ -96,6 +96,7 @@
         .checks { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:8px; }
         .checks label { display:flex; align-items:flex-start; margin:0; padding:10px 12px; background:var(--nx-bg); border:1px solid var(--nx-divider); border-radius:12px; font-weight:400; font-size:14px; line-height:1.4; cursor:pointer; }
         .checks.block { grid-template-columns:1fr; }
+        .check-hint { display:block; margin-top:2px; font-size:12px; color:var(--nx-muted); }
         .key-row { display:flex; gap:8px; align-items:stretch; }
         .key-row input { flex:1; }
         .model-bar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin:0 0 4px; padding:10px 12px; background:var(--nx-bg); border:1px solid var(--nx-divider); border-radius:12px; }
@@ -174,14 +175,14 @@
                 <div class="field full">
                     <span class="legend" id="platform-legend">Plataforma</span>
                     <div class="platform-icons" role="group" aria-labelledby="platform-legend">
-                        <button class="platform-choice active" type="button" data-platform="windows" aria-pressed="true"><i class="fab fa-windows" aria-hidden="true"></i><span>Windows 64 bits</span></button>
+                        <button class="platform-choice active" type="button" data-platform="windows" aria-pressed="true"><i class="fab fa-windows" aria-hidden="true"></i><span>Windows</span></button>
                         <button class="platform-choice" type="button" data-platform="linux" aria-pressed="false"><i class="fab fa-linux" aria-hidden="true"></i><span>Linux</span></button>
                     </div>
                     <select name="platform" id="id_platform" class="visually-hidden" aria-hidden="true" tabindex="-1">
                         <option value="windows" selected>Windows 64 bits</option>
                         <option value="linux">Linux</option>
                     </select>
-                    <p class="hint">Cada geração cria uma plataforma. Para as duas, gere duas vezes.</p>
+                    <p class="hint">Windows é de 64 bits. Cada geração cria uma plataforma; para as duas, gere duas vezes.</p>
                 </div>
 
                 <div class="field{% if field_errors.exename %} has-error{% endif %}">
@@ -266,7 +267,7 @@
             <div class="adv-body">
                 <section class="adv-group">
                     <h3>Versão-base do RustDesk</h3>
-                    <p class="lead">A versão 1.5.0 é a estável. Desenvolvimento pode mudar ou falhar na compilação.</p>
+                    <p class="lead">A versão 1.5.0 é a estável. Desenvolvimento (nightly) fica no fim da lista, pode mudar e falhar na compilação.</p>
                     <div class="field{% if field_errors.version %} has-error{% endif %}">
                         <label for="{{ form.version.id_for_label }}">Versão-base</label>
                         {{ form.version }}
@@ -350,7 +351,7 @@
                         <label for="{{ form.enableRemoteRestart.id_for_label }}">{{ form.enableRemoteRestart }} Reinício remoto</label>
                         <label for="{{ form.enableRecording.id_for_label }}">{{ form.enableRecording }} Gravação de sessão</label>
                         <label for="{{ form.enableBlockingInput.id_for_label }}">{{ form.enableBlockingInput }} Bloquear entrada do usuário</label>
-                        <label for="{{ form.enableRemoteModi.id_for_label }}">{{ form.enableRemoteModi }} Alterar configurações remotamente</label>
+                        <label for="{{ form.enableRemoteModi.id_for_label }}">{{ form.enableRemoteModi }} <span>Alterar configurações remotamente<small class="check-hint">Vem desmarcado de propósito: permite que quem conecta mude as configurações do dispositivo.</small></span></label>
                         <label for="{{ form.enablePrinter.id_for_label }}">{{ form.enablePrinter }} Impressora remota</label>
                         <label for="{{ form.enableCamera.id_for_label }}">{{ form.enableCamera }} Câmera remota</label>
                         <label for="{{ form.enableTerminal.id_for_label }}">{{ form.enableTerminal }} Terminal remoto</label>

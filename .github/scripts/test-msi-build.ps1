@@ -88,7 +88,7 @@ try {
     & $buildScript -AppName 'Nextec-Connect' -ShortcutName 'Suporte Técnico' -PackageVersion $generatorVersion -SourceRoot $sourceRoot `
             -BinaryDirectory $binaryDirectory -UpdaterSource $updaterSource *>&1 | Out-Null
     if (-not ([IO.File]::ReadAllText($langFile)).Contains('Id="SC_Client" Value="Suporte Técnico"')) { throw 'Accented shortcut name was not applied' }
-    foreach ($bad in @('a/b', 'Nome.', 'x*y', '<b>', ('n' * 41))) {
+    foreach ($bad in @('a/b', 'Nome.', 'x*y', '<b>', ('n' * 41), 'CON', 'nul', 'Com1', 'LPT9', 'aux.txt')) {
         [IO.File]::WriteAllText($langFile, $langBase)
         $refused = $false
         try {
@@ -98,6 +98,12 @@ try {
         if (-not $refused) { throw "Invalid shortcut name was accepted: '$bad'" }
         if ([IO.File]::ReadAllText($langFile) -ne $langBase) { throw "Invalid shortcut name changed the language file: '$bad'" }
     }
+    # so a caixa muda (NEXTEC -> Nextec): e uma troca de marca valida e precisa ser aplicada
+    [IO.File]::WriteAllText($langFile, $langBase.Replace('Nextec-Connect', 'NEXTEC'))
+    Copy-Item -LiteralPath (Join-Path $binaryDirectory 'Nextec-Connect.exe') -Destination (Join-Path $binaryDirectory 'NEXTEC.exe') -Force
+    & $buildScript -AppName 'NEXTEC' -ShortcutName 'Nextec' -PackageVersion $generatorVersion -SourceRoot $sourceRoot `
+            -BinaryDirectory $binaryDirectory -UpdaterSource $updaterSource *>&1 | Out-Null
+    if (-not ([IO.File]::ReadAllText($langFile)).Contains('Id="SC_Client" Value="Nextec"')) { throw 'A shortcut name that differs only by case was not applied' }
     # sem nome de atalho, os atalhos ficam com o nome do app
     [IO.File]::WriteAllText($langFile, $langBase)
     & $buildScript -AppName 'Nextec-Connect' -PackageVersion $generatorVersion -SourceRoot $sourceRoot `

@@ -929,6 +929,7 @@
             function shortcutProblem(value) {
                 const v = value.trim();
                 if (!v) return '';
+                if (/^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i.test(v)) return 'Esse nome é reservado pelo Windows (CON, PRN, AUX, NUL, COM1, LPT1). Escolha outro.';
                 if (!SHORTCUT_OK.test(v) || /[ .]$/.test(v)) return 'Use letras, números, espaço, ponto, hífen ou sublinhado (até 40), sem terminar em espaço ou ponto.';
                 return '';
             }

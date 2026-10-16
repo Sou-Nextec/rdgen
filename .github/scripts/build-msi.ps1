@@ -24,6 +24,8 @@ if ($ShortcutName) {
     $ShortcutName = $ShortcutName.Trim()
     # letras e numeros (com acento), espaco, ponto, hifen e sublinhado; sem caractere proibido em nome de arquivo do Windows
     if ($ShortcutName -notmatch '^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,39}$' -or $ShortcutName -match '[ .]$') { throw 'Invalid shortcut name' }
+    # nomes de dispositivo reservados pelo Windows (CON, PRN, AUX, NUL, COM0-9, LPT0-9), com ou sem extensao, nao viram arquivo .lnk
+    if ($ShortcutName -match '^(?i:con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$') { throw 'Invalid shortcut name: reserved Windows device name' }
 }
 if ($PackageVersion -and $PackageVersion -notmatch '^\d{1,3}\.\d{1,3}\.\d{1,3}$') { throw 'Invalid package version' }
 # ProductVersion do MSI: X.Y.Z.0 com limites 255.255.65535 (a versao do pacote e a do gerador, rdgenerator/VERSION).
@@ -47,7 +49,7 @@ try {
     if ($PackageVersion) { $preprocessArgs += @('--version', $PackageVersion, '--revision-version', '0') }
     python @preprocessArgs
     if ($LASTEXITCODE -ne 0) { throw 'MSI preprocessing failed' }
-    if ($ShortcutName -and $ShortcutName -ne $packageName) {
+    if ($ShortcutName -and $ShortcutName -cne $packageName) {
         # Os atalhos do MSI do RustDesk vem das strings SC_* do arquivo de idioma (o preprocess ja trocou "RustDesk" pelo app).
         $langFile = Join-Path $SourceRoot 'res/msi/Package/Language/Package.en-us.wxl'
         if (!(Test-Path -LiteralPath $langFile -PathType Leaf)) { throw 'MSI language file is missing; cannot set the shortcut name' }

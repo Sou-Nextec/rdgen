@@ -181,11 +181,12 @@ class GenerateForm(forms.Form):
         return value
 
     def clean_shortcutname(self):
-        from .build_inputs import SHORTCUT_NAME
+        from .build_inputs import shortcut_name_ok
         value = (self.cleaned_data.get('shortcutname') or '').strip()
-        if value and (not SHORTCUT_NAME.fullmatch(value) or value[-1] in ' .'):
+        if value and not shortcut_name_ok(value):
             raise forms.ValidationError(
-                "Use letras, números, espaço, ponto, hífen ou sublinhado, até 40 caracteres, sem terminar em espaço ou ponto. "
+                "Use letras, números, espaço, ponto, hífen ou sublinhado, até 40 caracteres, sem terminar em espaço ou ponto, "
+                "e não use nomes reservados do Windows (CON, PRN, AUX, NUL, COM1, LPT1). "
                 "Exemplo: Suporte Nextec."
             )
         return value

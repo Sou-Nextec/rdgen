@@ -41,14 +41,14 @@ class ShortcutNameValidation(SimpleTestCase):
         self.assertNotIn("shortcutname", form.errors)
 
     def test_rejects_characters_windows_does_not_allow_in_file_names(self):
-        for name in ("a/b", "a\\b", "x*y", "a:b", "a?b", "<b>", "a|b", 'a"b', "Nome.", "n" * 41, "_inicio"):
+        for name in ("a/b", "a\\b", "x*y", "a:b", "a?b", "<b>", "a|b", 'a"b', "Nome.", "n" * 41, "_inicio", "CON", "nul", "Com1", "LPT9", "aux.txt"):
             form = GenerateForm(self.data(shortcutname=name))
             self.assertIn("shortcutname", form.errors, repr(name))
 
     def test_build_inputs_validation_matches_the_form(self):
         validate_build_inputs({"shortcutname": "Suporte Nextec"})
         validate_build_inputs({"shortcutname": ""})
-        for bad in ("a/b", "Nome ", "x" * 41, "a&b", "$(x)"):
+        for bad in ("a/b", "Nome ", "x" * 41, "a&b", "$(x)", "CON", "prn", "COM3", "nul.lnk"):
             with self.assertRaises(ValueError, msg=bad):
                 validate_build_inputs({"shortcutname": bad})
 
@@ -91,3 +91,4 @@ class ShortcutNameField(SimpleTestCase):
     def test_name_is_checked_while_typing_like_the_server(self):
         html = self.html()
         self.assertIn("function shortcutProblem(", html)
+        self.assertIn("reservado pelo Windows", html)

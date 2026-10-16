@@ -1,7 +1,7 @@
 {
   "agente_hash": "44817ff5e9f92ac11c7e4352773a7bcb01a053fe0b42c732ea284e4f497caf4b",
   "arquivos": {
-    ".github/scripts/build-msi.ps1": "6e60d174ca99a508da242b33da506a613f1e79333e981628d0a6495ac3c194d7",
+    ".github/scripts/build-msi.ps1": "64420916ce6a45c3f42dca216b97492df72d6a33964c5a675f76d3cbc8598dcf",
     ".github/scripts/build-setup-exe.ps1": "9df1eaaefdb8c108cafdd9386c50cf3c49962d080196037c62b7b40e1a51f2f6",
     ".github/scripts/install-msi-artwork.ps1": "1593e770cd0c30608fa9a4b92649a4ce963bddde18bb0adb5bc016a2e580e4af",
     "nextec/atualizacao/Agente-Senha-Nextec.ps1": "76c94d54b2f5cc8070864b85ffb514bc86add6f2a30657898a860d6ac358466b",
@@ -24,6 +24,6 @@
     "nextec/branding/WixUIBannerBmp.bmp": "01aad0479aec1a553273718b7851ee5bacb02628343a2508a0ffb0fa0a4f729c",
     "nextec/branding/WixUIDialogBmp.bmp": "6c8dbaa702832f2590bd35b44bb21bf0c708c79aae20ce26a2f9e13884198771"
   },
-  "hash": "736b9b4b8940f4b55a25e242e5b2ac50b23b535860f1a7f2fdb719dba151234a",
+  "hash": "34da0eac9c6809991a685e8bd4ca485432a323f6f4e40a4a986f492c4f22aafa",
   "versao": "2.4.0"
 }

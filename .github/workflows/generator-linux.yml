@@ -840,6 +840,19 @@ jobs:
           repository: rustdesk/rustdesk
           submodules: recursive
 
+      # DRM_SUPPORTED gates libdrmtap, the build and the uploads below but was never set,
+      # so libdrmtap was never built and the drm deb never published. Detect it from the
+      # checked-out build.py, the same marker the libdrmtap step calls.
+      - name: Detect drm support
+        run: |
+          if grep -q '^def build_libdrmtap_so' build.py; then
+            echo "DRM_SUPPORTED=true" >> $GITHUB_ENV
+          else
+            echo "::notice::rustdesk ${{ env.VERSION }} has no drm support; skipping the drm build"
+            echo "DRM_SUPPORTED=false" >> $GITHUB_ENV
+          fi
+        shell: bash
+
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@master
         with:
@@ -1112,6 +1125,7 @@ jobs:
       - uses: rustdesk-org/run-on-arch-action@d3fcfbb632b84cf7f6bc772bfaaa2c2f4f8789a8 # no release tag; commit 2026-05-26
         name: Build rustdesk
         id: vcpkg
+        if: env.DRM_SUPPORTED == 'true'
         with:
           arch: x86_64
           distro: ubuntu18.04
@@ -1134,6 +1148,7 @@ jobs:
                gcc \
                git \
                g++ \
+               imagemagick \
                libayatana-appindicator3-dev \
                libasound2-dev \
                libclang-10-dev \
@@ -1546,11 +1561,19 @@ jobs:
               # The manifest's other source is the metainfo file. Those same seds rewrote
               # the REFERENCE to it without renaming the file on disk, so only the name
               # is left to fix; its contents are already rewritten.
-              FLAT="$(echo "${{ env.appname }}" | tr -d ' ')"
-              BUNDLE_ID="com.${FLAT}.${FLAT}"
+              # flatpak only accepts [A-Za-z0-9_] in the middle segments ("-" is allowed
+              # in the last one only) and no segment may start with a digit, so a name
+              # like Cliente-Nextec-Connect failed with "Only last name segment can contain -".
+              FLAT="$(printf '%s' "${{ env.appname }}" | tr -cd 'A-Za-z0-9_-')"
+              SEG="$(printf '%s' "$FLAT" | tr -- '-' '_')"
+              case "$FLAT" in ''|[0-9]*) FLAT="_${FLAT}"; SEG="_${SEG}" ;; esac
+              BUNDLE_ID="com.${SEG}.${FLAT}"
               sed -ie "s|\"id\": \"com[^\"]*\"|\"id\": \"${BUNDLE_ID}\"|" flatpak/rustdesk.json
               sed -ie "s|\"path\": \"com[^\"]*\.metainfo\.xml\"|\"path\": \"${BUNDLE_ID}.metainfo.xml\"|" flatpak/rustdesk.json
               sed -ie "s|<id>com[^<]*</id>|<id>${BUNDLE_ID}</id>|" flatpak/*.metainfo.xml
+              # rename-desktop-file installs the launcher as <app-id>.desktop.
+              sed -ie "s|<developer id=\"com[^\"]*\">|<developer id=\"com.${SEG}\">|" flatpak/*.metainfo.xml
+              sed -ie "s|<launchable type=\"desktop-id\">com[^<]*</launchable>|<launchable type=\"desktop-id\">${BUNDLE_ID}.desktop</launchable>|" flatpak/*.metainfo.xml
               mv flatpak/com.rustdesk.RustDesk.metainfo.xml \
                  "flatpak/${BUNDLE_ID}.metainfo.xml"
             fi

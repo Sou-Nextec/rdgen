@@ -1,0 +1,37 @@
+# Padrão Nextec (docs/standards/07-QUALIDADE-E-TESTES.md): todo bug corrigido leva teste de regressão na mesma mudança.
+# PR de correção ("fix" no título ou na branch) sem nenhum arquivo de teste alterado é recusado. Exceção: rótulo
+# sem-teste-regressao, com a justificativa no corpo do PR.
+name: Teste de regressão obrigatório
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  regressao:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Correção traz teste de regressão
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          TITULO: ${{ github.event.pull_request.title }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          ROTULOS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s\n%s\n' "$TITULO" "$BRANCH" | grep -qiE '(^|[^a-z])(fix|hotfix|bugfix)([^a-z]|$)'; then
+            echo "Não é PR de correção: nada a exigir."; exit 0
+          fi
+          if printf '%s' "$ROTULOS" | grep -qE '(^|,)sem-teste-regressao(,|$)'; then
+            echo "::warning::Correção sem teste de regressão, aceita pelo rótulo sem-teste-regressao. A justificativa precisa estar no corpo do PR."; exit 0
+          fi
+          arquivos=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename')
+          testes=$(printf '%s\n' "$arquivos" | grep -iE '(^|/)(tests?|testes)/|(^|/)test[_-][^/]*$|[_.-]test\.[a-z]+$|[_.-]spec\.[a-z]+$|_test\.go$|-test\.ps1$' || true)
+          if [ -z "$(printf '%s' "$testes" | tr -d '[:space:]')" ]; then
+            echo "::error::PR de correção sem teste de regressão. Crie um teste automatizado que falha no código antigo e passa no corrigido (padrão Nextec 07). Exceção só com o rótulo sem-teste-regressao e justificativa no corpo."
+            exit 1
+          fi
+          echo "Testes alterados neste PR:"; printf '%s\n' "$testes" | sed '/^$/d'

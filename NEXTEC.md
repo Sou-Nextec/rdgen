@@ -174,6 +174,12 @@ O Cloudflare Access protege o formulário com login, mas o GitHub Actions não f
 uuid completo, nome exato `secrets_<uuid>.zip`, limite de tamanho). O `updategh` não é usado (o status vem da API do GitHub) e
 fica fora do Bypass. Evite "senha permanente" no formulário: ela vai dentro do pacote cifrado.
 
+## Bug corrigido = teste de regressão (obrigatório)
+
+Todo bug corrigido leva, no mesmo PR, um teste automatizado que roda no CI, **falha no código antigo e passa no corrigido** e cobre a causa raiz. Quando a causa é um contrato entre o painel e o gerador (scripts do agente, nome ou formato de arquivo, rotas), o teste fica nos dois lados. O workflow `Teste de regressão obrigatório` recusa PR com `fix` no título ou na branch sem arquivo de teste alterado; exceção só com o rótulo `sem-teste-regressao` e justificativa no corpo. Padrão completo: `nextec-padroes-projetos-md/docs/standards/07-QUALIDADE-E-TESTES.md`.
+
+Exemplo: convite que não vinculava o cliente (rdgen#61): `rdgen/.github/scripts/test-convite-agente.ps1` e `rustdesk-api-web/nextec/testes/convite-download-contrato.test.mjs`.
+
 ## Desenvolver e testar
 
 ```bash

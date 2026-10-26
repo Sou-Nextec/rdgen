@@ -1,15 +1,15 @@
 {
-  "agente_hash": "79c60fbda288672c7a3345615ce43bc6a637197578ac0b426abb4e98f7a8fa90",
+  "agente_hash": "dac11bf5eed17b10625e4cc9e617aba2815089706cfeac2deb1fedead0be5b45",
   "arquivos": {
     ".github/scripts/build-msi.ps1": "64420916ce6a45c3f42dca216b97492df72d6a33964c5a675f76d3cbc8598dcf",
     ".github/scripts/build-setup-exe.ps1": "9df1eaaefdb8c108cafdd9386c50cf3c49962d080196037c62b7b40e1a51f2f6",
     ".github/scripts/install-msi-artwork.ps1": "1593e770cd0c30608fa9a4b92649a4ce963bddde18bb0adb5bc016a2e580e4af",
     "nextec/atualizacao/Agente-Senha-Nextec.ps1": "76c94d54b2f5cc8070864b85ffb514bc86add6f2a30657898a860d6ac358466b",
     "nextec/atualizacao/Coordenar-Agente-Nextec.ps1": "afe59774f65c1f7a1abfe99feafe390dd1d5606df6ad376c7cca8c99c9151464",
-    "nextec/atualizacao/FONTE-AGENTE.json": "dc4ad3414b4fb198de5380065155b53f9c369d7db48bdbab6916f509954b790b",
+    "nextec/atualizacao/FONTE-AGENTE.json": "475c4f4b888b6b91552a7ed0db860d737fb0ee1a32563996ecd30eab97fbb4b7",
     "nextec/atualizacao/Instalar-Nextec.ps1": "c4bfeaafba04e8515f3d5cb4e7a793e3a89c6ac27c626e0136a3e97de3bb914e",
     "nextec/atualizacao/Manifesto-Connect.ps1": "5b671d03b15f253240fc2f2baf1ad3c32efb0acb9996e97d13b46145f504ad97",
-    "nextec/atualizacao/Provisionar-Agente-Nextec.ps1": "c4e1482596a1d9a8d82bd464992cee3fbf6d3f6999b416e34e965908a6484469",
+    "nextec/atualizacao/Provisionar-Agente-Nextec.ps1": "980b94b3bade61f87a619d66ab54769c4e5ccf4a486157c5ca20fb651de071b9",
     "nextec/atualizacao/agente-senha-linux.py": "87da7b26948de10219c542fb31fdb939dfe4415bd169a2866978ffd29605aca4",
     "nextec/atualizacao/atualizador-linux.py": "1050bce70c6aada9bc632bafb62e7f292a085b33c58fb058ced44dcd04000967",
     "nextec/atualizacao/coordenador-agente-nextec-linux.py": "68023afadce1b8d8089bfb739acdd49b75687e361c5b438b60c6dcfb8d84873d",
@@ -24,6 +24,6 @@
     "nextec/branding/WixUIBannerBmp.bmp": "01aad0479aec1a553273718b7851ee5bacb02628343a2508a0ffb0fa0a4f729c",
     "nextec/branding/WixUIDialogBmp.bmp": "6c8dbaa702832f2590bd35b44bb21bf0c708c79aae20ce26a2f9e13884198771"
   },
-  "hash": "fde86d737da2e6dbf3f86eeff90c72c3d0d29f2f4586d2ece837198296f7ef28",
+  "hash": "86115ab4ffe7fb5b26cf395eff43a83e62f4adac55b01fb7e2110d8fa35a83db",
   "versao": "2.4.1"
 }

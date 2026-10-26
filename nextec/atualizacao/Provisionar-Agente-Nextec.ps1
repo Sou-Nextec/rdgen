@@ -65,6 +65,7 @@ function Get-NextecProvisionPaths {
     Enroll = Join-Path $Root 'inscricao.json'
     SelfState = Join-Path $Root 'inscricao-estado.json'
     Invite = Join-Path $Root 'convite.json'
+    InviteResult = Join-Path $Root 'convite-resultado.json'
   }
 }
 
@@ -207,7 +208,7 @@ function Get-NextecProvisionLogCodes {
     'identity_changed', 'bootstrap_discarded', 'old_agent_replaced', 'old_agent_kept', 'panel_unreachable',
     'pending_other_panel', 'pending_expired', 'pending_authorization',
     'old_agent_replace_formato_antigo', 'old_agent_replace_outro_id', 'old_agent_replace_token_recusado',
-    'old_agent_replace_agente_parado', 'agent_repaired', 'invite_claimed', 'invite_retry', 'invite_discarded', 'unknown_code'
+    'old_agent_replace_agente_parado', 'agent_repaired', 'invite_claimed', 'invite_retry', 'invite_discarded', 'invite_conflict', 'invite_rejected', 'unknown_code'
   )
 }
 
@@ -656,9 +657,30 @@ function Invoke-NextecInvitePost {
 }
 
 # Convite de instalacao (convite.json, gravado pelo coordenador quando o MSI veio de um link do painel): depois da inscricao
-# a maquina apresenta o codigo com a propria credencial e o painel a atribui ao cliente do convite. Nunca derruba o fluxo:
-# resposta definitiva (aceito, invalido, vencido, conflito) apaga o arquivo; falha temporaria tenta de novo no proximo ciclo,
-# ate 3 dias, depois a maquina fica como Pendente.
+# a maquina apresenta o codigo com a propria credencial e o painel a atribui ao cliente do convite. Nunca derruba o fluxo.
+# 200 (aceito) apaga o convite. 409 (a maquina ja pertence a outro cliente) e 403 (convite invalido, vencido, cancelado ou
+# usado) NAO apagam convite.json: o motivo fica em convite-resultado.json (estado, http, quando) e no log, e o convite so e
+# tentado de novo depois de 6 h, ate 3 dias (o admin pode mover a maquina, e o painel mostra o resultado no convite). Falha
+# temporaria tenta no proximo ciclo. Passados 3 dias o convite e descartado e a maquina fica como Pendente.
+function Save-NextecInviteResult {
+  param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$State, [int]$Status = 0, [DateTime]$Now = [DateTime]::UtcNow, [int]$RetryHours = 0)
+  $paths = Get-NextecProvisionPaths -Root $Root
+  $next = 0L
+  if ($RetryHours -gt 0) { $next = $Now.ToUniversalTime().AddHours($RetryHours).Ticks }
+  Write-NextecProtectedJson -Path $paths.InviteResult -Value ([pscustomobject]@{
+    estado = $State
+    http = $Status
+    em_utc = $Now.ToUniversalTime().ToString('o', [Globalization.CultureInfo]::InvariantCulture)
+    proxima_utc_ticks = $next
+  })
+}
+
+function Read-NextecInviteResult {
+  param([Parameter(Mandatory)][string]$Root)
+  $paths = Get-NextecProvisionPaths -Root $Root
+  try { Read-NextecProvisionJson -Path $paths.InviteResult } catch { $null }
+}
+
 function Invoke-NextecInviteClaim {
   param(
     [Parameter(Mandatory)][string]$Root,
@@ -681,16 +703,25 @@ function Invoke-NextecInviteClaim {
     if (-not (Test-Path -LiteralPath $paths.AgentConfig -PathType Leaf)) { return 'waiting' }
     $config = Read-NextecAgentTokenConfig -Path $paths.AgentConfig
     if (-not $config) { return 'waiting' }
+    # Resposta definitiva anterior (conflito ou convite recusado): so repete depois da espera, sem martelar o painel.
+    $last = Read-NextecInviteResult -Root $Root
+    if ($last -and ([string]$last.estado -in @('conflito', 'recusado')) -and [long]$last.proxima_utc_ticks -gt $Now.ToUniversalTime().Ticks) { return 'waiting_retry' }
     $status = [int](& $PostInvite $config.painel @{ id=$config.id; token=$config.token; code=$code })
     if ($status -eq 200) {
       Remove-Item -LiteralPath $paths.Invite -Force -ErrorAction SilentlyContinue
+      Save-NextecInviteResult -Root $Root -State 'vinculado' -Status 200 -Now $Now
       Write-NextecProvisionLog 'invite_claimed' -Root $Root
       return 'claimed'
     }
-    if ($status -in @(403, 409)) {
-      Remove-Item -LiteralPath $paths.Invite -Force -ErrorAction SilentlyContinue
-      Write-NextecProvisionLog 'invite_discarded' -Root $Root
-      return 'discarded'
+    if ($status -eq 409) {
+      Save-NextecInviteResult -Root $Root -State 'conflito' -Status 409 -Now $Now -RetryHours 6
+      Write-NextecProvisionLog 'invite_conflict' -Root $Root
+      return 'conflict'
+    }
+    if ($status -eq 403) {
+      Save-NextecInviteResult -Root $Root -State 'recusado' -Status 403 -Now $Now -RetryHours 6
+      Write-NextecProvisionLog 'invite_rejected' -Root $Root
+      return 'rejected'
     }
     Write-NextecProvisionLog 'invite_retry' -Root $Root
     return 'retry'

@@ -29,16 +29,51 @@ function New-NextecCoordinatorAcl {
   return $acl
 }
 
-# Convite de instalacao: o MSI baixado do painel leva o codigo no nome (<app>-<CODIGO>.msi). O instalador entrega o caminho
-# do proprio arquivo em -Origem; so o codigo (20 caracteres do alfabeto do painel) sai do nome e fica em convite.json, que o
-# provisionador apresenta ao painel depois da inscricao. Nome sem codigo (ou renomeado) nao grava nada: a maquina entra como Pendente.
-function Get-NextecInviteCode {
+# Convite de instalacao. O MSI baixado do painel tem nome fixo (nextec-acesso-<versao>.msi); o codigo (20 caracteres do alfabeto
+# do painel) vem da marca de origem do arquivo (Zone.Identifier: HostUrl e ReferrerUrl guardam /i/<CODIGO>/baixar e /i/<CODIGO>),
+# gravada pelo navegador no download. O instalador entrega o caminho do proprio arquivo em -Origem. Para MSI baixado antes desta
+# versao ainda vale o codigo no nome (<app>-<CODIGO>.msi). Sem codigo (arquivo copiado, anexo, pendrive, marca removida) nada e
+# gravado: a maquina entra como Pendente e o painel sugere o cliente pelo IP do download.
+function Get-NextecInviteCodeFromName {
   param([string]$Origem)
   if (-not $Origem) { return '' }
   $name = [IO.Path]::GetFileName($Origem.Trim())
   $m = [regex]::Match($name, '-([A-HJ-NP-Z2-9]{20})(?: \(\d+\))?\.msi$', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
   if (-not $m.Success) { return '' }
   return $m.Groups[1].Value.ToUpperInvariant()
+}
+
+function Get-NextecInviteCodeFromUrl {
+  param([string]$Url)
+  if (-not $Url -or $Url.Length -gt 2048) { return '' }
+  $m = [regex]::Match($Url, '^https?://[^/?#\s]+/i/([A-HJ-NP-Z2-9]{20})(?:[/?#]|$)', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+  if (-not $m.Success) { return '' }
+  return $m.Groups[1].Value.ToUpperInvariant()
+}
+
+function Get-NextecInviteCodeFromZone {
+  param([string]$Origem)
+  if (-not $Origem) { return '' }
+  try {
+    $lines = @(Get-Content -LiteralPath $Origem.Trim() -Stream 'Zone.Identifier' -TotalCount 40 -ErrorAction Stop)
+  } catch { return '' }
+  foreach ($key in @('HostUrl', 'ReferrerUrl')) {
+    foreach ($line in $lines) {
+      $text = [string]$line
+      if ($text.StartsWith($key + '=', [StringComparison]::OrdinalIgnoreCase)) {
+        $code = Get-NextecInviteCodeFromUrl -Url $text.Substring($key.Length + 1).Trim()
+        if ($code) { return $code }
+      }
+    }
+  }
+  return ''
+}
+
+function Get-NextecInviteCode {
+  param([string]$Origem)
+  $code = Get-NextecInviteCodeFromZone -Origem $Origem
+  if ($code) { return $code }
+  return (Get-NextecInviteCodeFromName -Origem $Origem)
 }
 
 function Save-NextecInvite {

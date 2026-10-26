@@ -1,5 +1,13 @@
 # Gerador Nextec
 
+## 2.4.1
+
+Convites de instalação: a máquina volta a entrar direto no cliente escolhido.
+
+- **Causa:** o painel 2.12 (patch 0048) passou a servir o MSI do convite com nome fixo (`nextec-acesso-<versão>.msi`), sem o código, e o agente do painel passou a ler o código da marca de origem do arquivo (`Zone.Identifier`: `HostUrl` e `ReferrerUrl` com `/i/<código>/baixar`). O gerador continuou com a cópia do agente do painel 2.11.44, que só procura o código no nome do arquivo. Sem código, o `convite.json` não era gravado e toda máquina instalada por convite entrava como Pendente, sem cliente.
+- **Correção:** scripts do agente sincronizados com o painel (`Sou-Nextec/rustdesk-api-web@b0174a2`): o coordenador lê o código da marca de origem (e ainda do nome, para MSIs antigos) e o provisionador guarda o resultado do convite (`convite-resultado.json`) para conflito e recusa.
+- **Depois do merge:** gerar o MSI de novo, publicar em Atualizações e criar convites novos (o convite fica preso à versão publicada quando foi criado).
+
 ## 2.4.0
 
 - **Nome nos atalhos:** novo campo opcional "Nome nos atalhos" na área principal. Define como o app aparece no menu Iniciar, na pesquisa do Windows e na área de trabalho (ex.: `Suporte Nextec` ou `Nextec Connect`, com espaço e acento), separado do nome do aplicativo, que continua com hífen para o executável, a pasta, o protocolo e o instalador do RustDesk. Vazio mantém o comportamento anterior (atalho com o nome do aplicativo).

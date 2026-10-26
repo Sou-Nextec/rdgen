@@ -1,0 +1,30 @@
+# Regressão do gerador Linux: contêiner drm com imagemagick, DRM_SUPPORTED definido e app-id flatpak válido.
+name: Testes do gerador Linux
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - '.github/workflows/generator-linux.yml'
+      - '.github/workflows/generator-linux-testes.yml'
+      - '.github/scripts/test_generator_linux.py'
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/generator-linux.yml'
+      - '.github/workflows/generator-linux-testes.yml'
+      - '.github/scripts/test_generator_linux.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  testes:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: python3 -m pip install --quiet pyyaml
+      - run: python3 .github/scripts/test_generator_linux.py

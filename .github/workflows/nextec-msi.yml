@@ -8,6 +8,7 @@ on:
       - '.github/scripts/build-setup-exe.ps1'
       - '.github/scripts/test-setup-exe.ps1'
       - '.github/scripts/test-msi-install.ps1'
+      - '.github/scripts/test-convite-agente.ps1'
       - '.github/scripts/install-msi-artwork.ps1'
       - '.github/workflows/*generator-windows.yml'
       - '.github/workflows/generator-linux.yml'
@@ -28,6 +29,11 @@ jobs:
       - name: Compilar EXE real e verificar payload sem executar instalação
         shell: pwsh
         run: ./.github/scripts/test-setup-exe.ps1
+      - name: Regressão rdgen#61, convite lido do MSI com nome fixo do painel (PowerShell 5.1 do Windows)
+        shell: pwsh
+        run: |
+          & powershell.exe -NoProfile -File ./.github/scripts/test-convite-agente.ps1
+          if ($LASTEXITCODE -ne 0) { throw "test-convite-agente falhou ($LASTEXITCODE)" }
   package:
     runs-on: windows-2022
     strategy:

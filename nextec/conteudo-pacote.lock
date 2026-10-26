@@ -1,15 +1,15 @@
 {
-  "agente_hash": "44817ff5e9f92ac11c7e4352773a7bcb01a053fe0b42c732ea284e4f497caf4b",
+  "agente_hash": "dac11bf5eed17b10625e4cc9e617aba2815089706cfeac2deb1fedead0be5b45",
   "arquivos": {
     ".github/scripts/build-msi.ps1": "64420916ce6a45c3f42dca216b97492df72d6a33964c5a675f76d3cbc8598dcf",
     ".github/scripts/build-setup-exe.ps1": "9df1eaaefdb8c108cafdd9386c50cf3c49962d080196037c62b7b40e1a51f2f6",
     ".github/scripts/install-msi-artwork.ps1": "1593e770cd0c30608fa9a4b92649a4ce963bddde18bb0adb5bc016a2e580e4af",
     "nextec/atualizacao/Agente-Senha-Nextec.ps1": "76c94d54b2f5cc8070864b85ffb514bc86add6f2a30657898a860d6ac358466b",
-    "nextec/atualizacao/Coordenar-Agente-Nextec.ps1": "37082ea058b0f37b090dbffea54f946781463d70988ea9d85398da0ee141301a",
-    "nextec/atualizacao/FONTE-AGENTE.json": "042b09b16ef4b9089a70e4502942d328af69e088418b3e4f15f1d59e9697c148",
+    "nextec/atualizacao/Coordenar-Agente-Nextec.ps1": "afe59774f65c1f7a1abfe99feafe390dd1d5606df6ad376c7cca8c99c9151464",
+    "nextec/atualizacao/FONTE-AGENTE.json": "475c4f4b888b6b91552a7ed0db860d737fb0ee1a32563996ecd30eab97fbb4b7",
     "nextec/atualizacao/Instalar-Nextec.ps1": "c4bfeaafba04e8515f3d5cb4e7a793e3a89c6ac27c626e0136a3e97de3bb914e",
     "nextec/atualizacao/Manifesto-Connect.ps1": "5b671d03b15f253240fc2f2baf1ad3c32efb0acb9996e97d13b46145f504ad97",
-    "nextec/atualizacao/Provisionar-Agente-Nextec.ps1": "ec76121a477253752aac4a3de2004ca7251bb718f43a25c23071adc1662f69a8",
+    "nextec/atualizacao/Provisionar-Agente-Nextec.ps1": "980b94b3bade61f87a619d66ab54769c4e5ccf4a486157c5ca20fb651de071b9",
     "nextec/atualizacao/agente-senha-linux.py": "87da7b26948de10219c542fb31fdb939dfe4415bd169a2866978ffd29605aca4",
     "nextec/atualizacao/atualizador-linux.py": "1050bce70c6aada9bc632bafb62e7f292a085b33c58fb058ced44dcd04000967",
     "nextec/atualizacao/coordenador-agente-nextec-linux.py": "68023afadce1b8d8089bfb739acdd49b75687e361c5b438b60c6dcfb8d84873d",
@@ -24,6 +24,6 @@
     "nextec/branding/WixUIBannerBmp.bmp": "01aad0479aec1a553273718b7851ee5bacb02628343a2508a0ffb0fa0a4f729c",
     "nextec/branding/WixUIDialogBmp.bmp": "6c8dbaa702832f2590bd35b44bb21bf0c708c79aae20ce26a2f9e13884198771"
   },
-  "hash": "34da0eac9c6809991a685e8bd4ca485432a323f6f4e40a4a986f492c4f22aafa",
-  "versao": "2.4.0"
+  "hash": "86115ab4ffe7fb5b26cf395eff43a83e62f4adac55b01fb7e2110d8fa35a83db",
+  "versao": "2.4.1"
 }

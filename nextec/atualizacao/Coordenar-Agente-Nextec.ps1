@@ -30,7 +30,8 @@ function New-NextecCoordinatorAcl {
 }
 
 # Convite de instalacao. O MSI baixado do painel tem nome fixo (nextec-acesso-<versao>.msi); o codigo (20 caracteres do alfabeto
-# do painel) vem da marca de origem do arquivo (Zone.Identifier: HostUrl e ReferrerUrl guardam /i/<CODIGO>/baixar e /i/<CODIGO>),
+# do painel) vem da marca de origem do arquivo (Zone.Identifier: HostUrl e ReferrerUrl guardam <caminho>/<CODIGO>/baixar e <caminho>/<CODIGO>, com <caminho> = instalador, o
+# endereco publico dos links desde o patch 0042, ou i, o antigo que continua valendo),
 # gravada pelo navegador no download. O instalador entrega o caminho do proprio arquivo em -Origem. Para MSI baixado antes desta
 # versao ainda vale o codigo no nome (<app>-<CODIGO>.msi). Sem codigo (arquivo copiado, anexo, pendrive, marca removida) nada e
 # gravado: a maquina entra como Pendente e o painel sugere o cliente pelo IP do download.
@@ -46,7 +47,7 @@ function Get-NextecInviteCodeFromName {
 function Get-NextecInviteCodeFromUrl {
   param([string]$Url)
   if (-not $Url -or $Url.Length -gt 2048) { return '' }
-  $m = [regex]::Match($Url, '^https?://[^/?#\s]+/i/([A-HJ-NP-Z2-9]{20})(?:[/?#]|$)', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+  $m = [regex]::Match($Url, '^https?://[^/?#\s]+/(?:i|instalador)/([A-HJ-NP-Z2-9]{20})(?:[/?#]|$)', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
   if (-not $m.Success) { return '' }
   return $m.Groups[1].Value.ToUpperInvariant()
 }

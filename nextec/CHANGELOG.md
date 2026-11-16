@@ -1,5 +1,13 @@
 # Gerador Nextec
 
+## 2.4.2
+
+Convites de instalação: o código também é lido do link `/instalador/<código>`.
+
+- **Causa:** o link entregue ao cliente é `/instalador/<código>` (patch 0042 do painel), mas o agente só reconhecia `/i/<código>` na marca de origem do arquivo (`HostUrl` e `ReferrerUrl`). Quem baixava pelo link entrava como Pendente, sem cliente. O comando PowerShell não era afetado (o código vai no nome do arquivo).
+- **Correção:** scripts do agente sincronizados com o painel (`Sou-Nextec/rustdesk-api-web@5ef6dcd`, versão 2.12.7): o coordenador lê o código de `/instalador/<código>` e de `/i/<código>`. `test-convite-agente.ps1` cobre os dois endereços.
+- **Depois do merge:** gerar o MSI de novo, publicar em Atualizações e criar convites novos.
+
 ## 2.4.1
 
 Convites de instalação: a máquina volta a entrar direto no cliente escolhido.

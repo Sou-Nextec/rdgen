@@ -48,6 +48,10 @@ try {
   $p = New-Msi 'nextec-acesso-2.4.1-b.msi' @('[ZoneTransfer]', 'ZoneId=3', "ReferrerUrl=https://painel-remoto.nex.tec.br/i/$code")
   Assert ((Get-NextecInviteCode -Origem $p) -ceq $code) 'so ReferrerUrl'
 
+  # endereco publico atual do painel (/instalador/<codigo>, patch 0042): e o link que o cliente realmente recebe
+  $p = New-Msi 'nextec-acesso-2.4.2.msi' @('[ZoneTransfer]', 'ZoneId=3', "ReferrerUrl=https://painel-remoto.nex.tec.br/instalador/$code", "HostUrl=https://painel-remoto.nex.tec.br/instalador/$code/baixar")
+  Assert ((Get-NextecInviteCode -Origem $p) -ceq $code) 'link /instalador/<codigo>: codigo lido da marca de origem'
+
   # MSI sem marca e sem codigo no nome (copiado de pendrive, por exemplo): nenhum codigo, maquina fica Pendente
   $p = New-Msi 'nextec-acesso-2.4.1-c.msi' $null
   Assert ((Get-NextecInviteCode -Origem $p) -eq '') 'sem marca: vazio'

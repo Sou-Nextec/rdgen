@@ -116,6 +116,8 @@ jobs:
           Copy-Item nextec/atualizacao/Agente-Senha-Nextec.ps1 (Join-Path $env:RUNNER_TEMP 'nextec-update/Agente-Senha-Nextec.ps1')
           Copy-Item nextec/atualizacao/Coordenar-Agente-Nextec.ps1,nextec/atualizacao/Provisionar-Agente-Nextec.ps1 (Join-Path $env:RUNNER_TEMP 'nextec-update')
           Copy-Item nextec/atualizacao/FONTE-AGENTE.json (Join-Path $env:RUNNER_TEMP 'nextec-update')
+          New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'nextec-clipboard') | Out-Null
+          Copy-Item .github/patches/nextec_clipboard_dedup.rs,.github/patches/clipboardDedup.diff,.github/scripts/apply-clipboard-dedup.ps1 (Join-Path $env:RUNNER_TEMP 'nextec-clipboard')
 
       - name: Finalize and Cleanup zip/json
         if: always() # Run even if previous steps fail
@@ -337,6 +339,12 @@ jobs:
             # Remove Setup Server Tip
             Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/removeSetupServerTip.diff -OutFile removeSetupServerTip.diff
             git apply removeSetupServerTip.diff
+
+      - name: Nextec clipboard dedup (eco do host regravando a area de transferencia)
+        shell: pwsh
+        run: |
+          $d = Join-Path $env:RUNNER_TEMP 'nextec-clipboard'
+          & (Join-Path $d 'apply-clipboard-dedup.ps1') -Fonte $d -Versao '${{ env.VERSION }}'
 
       - name: Patch remote printer port to spool file
         shell: python

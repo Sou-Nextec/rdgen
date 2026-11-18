@@ -1,0 +1,43 @@
+# Regressao do patch de deduplicacao da area de transferencia (ver nextec/CHANGELOG.md).
+# Roda os testes do modulo com Rust 1.75 e confere que o diff aplica no RustDesk 1.5.0.
+name: Patch clipboard (dedup)
+
+on:
+  pull_request:
+    paths:
+      - '.github/patches/nextec_clipboard_dedup.rs'
+      - '.github/patches/clipboardDedup.diff'
+      - '.github/scripts/apply-clipboard-dedup.ps1'
+      - '.github/scripts/test-clipboard-dedup.sh'
+      - '.github/workflows/clipboard-dedup.yml'
+  push:
+    branches: [master]
+    paths:
+      - '.github/patches/nextec_clipboard_dedup.rs'
+      - '.github/patches/clipboardDedup.diff'
+      - '.github/scripts/apply-clipboard-dedup.ps1'
+      - '.github/scripts/test-clipboard-dedup.sh'
+      - '.github/workflows/clipboard-dedup.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clipboard-dedup-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dedup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Rust 1.75 (versao do RustDesk 1.5.0)
+        run: |
+          rustup toolchain install 1.75.0 --profile minimal
+          echo "RUSTC=$(rustup which --toolchain 1.75.0 rustc)" >> "$GITHUB_ENV"
+      - name: Testes do modulo e aplicacao do diff no RustDesk 1.5.0
+        run: bash .github/scripts/test-clipboard-dedup.sh

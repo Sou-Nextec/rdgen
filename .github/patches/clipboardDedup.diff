@@ -1,0 +1,69 @@
+diff --git a/src/clipboard.rs b/src/clipboard.rs
+index 9a1bd60..7b7faad 100644
+--- a/src/clipboard.rs
++++ b/src/clipboard.rs
+@@ -106,6 +106,12 @@ fn read_clipboard_message(
+             if !content.is_empty() {
+                 let mut msg = Message::new();
+                 let clipboards = proto::create_multi_clipboards(content);
++                // Nextec: lembra o que foi lido localmente para ignorar o eco devolvido pelo host.
++                if side == ClipboardSide::Client {
++                    if let Some(sig) = nextec_signature(&clipboards.clipboards) {
++                        crate::nextec_clipboard_dedup::enviado(sig);
++                    }
++                }
+                 msg.set_multi_clipboards(clipboards.clone());
+                 return Some((msg, clipboards));
+             }
+@@ -302,8 +308,39 @@ pub fn set_text_clipboard_with_owner_sync(text: &str, side: ClipboardSide) -> Re
+     clipboard_ctx.set_with_owner_marker_for_linux(&data)
+ }
+ 
++// Nextec: assinatura do conteudo ignorando itens especiais (marcador de dono etc).
++#[cfg(not(target_os = "android"))]
++fn nextec_signature(items: &[Clipboard]) -> Option<u64> {
++    let mut sig = crate::nextec_clipboard_dedup::Assinatura::novo();
++    for c in items {
++        sig.item(
++            c.format.value(),
++            c.compress,
++            c.width,
++            c.height,
++            &c.special_name,
++            &c.content[..],
++        );
++    }
++    sig.fim()
++}
++
+ #[cfg(not(target_os = "android"))]
+ pub fn update_clipboard(multi_clipboards: Vec<Clipboard>, side: ClipboardSide) {
++    // Nextec: o host devolve de 3 a 5 vezes o que o cliente acabou de enviar; cada regravacao vira uma
++    // entrada nova no historico do Windows (Win+V). Eco ja enviado ou ja aplicado nao e regravado.
++    if side == ClipboardSide::Client {
++        if let Some(sig) = nextec_signature(&multi_clipboards) {
++            if !crate::nextec_clipboard_dedup::deve_aplicar(sig) {
++                log::debug!(
++                    "{} update on {} ignored, same content as the last one",
++                    CLIPBOARD_NAME,
++                    side
++                );
++                return;
++            }
++        }
++    }
+     std::thread::spawn(move || {
+         update_clipboard_(multi_clipboards, side);
+     });
+diff --git a/src/lib.rs b/src/lib.rs
+index 649f3ef..a99badd 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -41,6 +41,7 @@ use common::*;
+ mod auth_2fa;
+ #[cfg(not(target_os = "ios"))]
+ mod clipboard;
++mod nextec_clipboard_dedup;
+ #[cfg(not(any(target_os = "android", target_os = "ios")))]
+ pub mod core_main;
+ mod custom_server;

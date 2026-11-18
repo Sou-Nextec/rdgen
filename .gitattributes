@@ -7,3 +7,6 @@
 Dockerfile text eol=lf
 # .ps1 nao e normalizado: o git preserva o BOM UTF-8; quem protege o BOM e o verificador.
 nextec/atualizacao/*.ps1 -text
+# Patches do RustDesk: LF no checkout (o diff e conferido com git apply no Linux e nos runners Windows).
+.github/patches/clipboardDedup.diff text eol=lf
+.github/patches/nextec_clipboard_dedup.rs text eol=lf

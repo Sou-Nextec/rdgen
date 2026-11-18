@@ -20,8 +20,11 @@ use std::time::{Duration, Instant};
 /// Janela em que um conteúdo repetido é tratado como eco.
 pub const JANELA: Duration = Duration::from_secs(60);
 
-/// Assinatura de um conjunto de itens da área de transferência. Não depende da ordem dos itens e ignora os
-/// itens com nome especial (marcadores internos como `dyn.com.rustdesk.owner`, que mudam a cada gravação).
+/// Marcador de dono que o RustDesk grava junto com o conteúdo (muda conforme o lado que gravou).
+pub const MARCADOR_DONO: &str = "dyn.com.rustdesk.owner";
+
+/// Assinatura de um conjunto de itens da área de transferência. Não depende da ordem dos itens e ignora só o
+/// marcador de dono. Os outros formatos nomeados (como `XML Spreadsheet`) carregam conteúdo e entram na assinatura.
 pub struct Assinatura {
     soma: u64,
     itens: usize,
@@ -32,7 +35,8 @@ impl Assinatura {
         Assinatura { soma: 0, itens: 0 }
     }
 
-    /// Soma um item. `nome_especial` não vazio significa item especial: é ignorado.
+    /// Soma um item. `nome_especial` é o nome do formato especial (vazio nos formatos comuns); o marcador de
+    /// dono é ignorado.
     pub fn item(
         &mut self,
         formato: i32,
@@ -42,11 +46,12 @@ impl Assinatura {
         nome_especial: &str,
         conteudo: &[u8],
     ) {
-        if !nome_especial.is_empty() {
+        if nome_especial == MARCADOR_DONO {
             return;
         }
         let mut h = DefaultHasher::new();
         formato.hash(&mut h);
+        nome_especial.hash(&mut h);
         comprimido.hash(&mut h);
         largura.hash(&mut h);
         altura.hash(&mut h);
@@ -57,7 +62,7 @@ impl Assinatura {
         self.itens += 1;
     }
 
-    /// `None` quando não sobrou nenhum item comparável (só itens especiais): nesse caso não se deduplica.
+    /// `None` quando não sobrou nenhum item comparável (só o marcador de dono): nesse caso não se deduplica.
     pub fn fim(self) -> Option<u64> {
         if self.itens == 0 {
             return None;
@@ -89,8 +94,9 @@ impl Estado {
         }
     }
 
-    /// Verdadeiro quando o conteúdo deve ser gravado. Ao devolver verdadeiro já registra o conteúdo como
-    /// aplicado (a checagem e o registro são atômicos porque as gravações rodam em threads separadas).
+    /// Verdadeiro quando o conteúdo deve ser gravado. Ao devolver verdadeiro já reserva o conteúdo como
+    /// aplicado (a checagem e a reserva são atômicas porque as gravações rodam em threads separadas). Se a
+    /// gravação falhar, quem chamou precisa desfazer a reserva com `falhou`.
     fn deve_aplicar(&mut self, sig: u64, agora: Instant) -> bool {
         if recente(self.enviado, sig, agora) || recente(self.aplicado, sig, agora) {
             return false;
@@ -99,6 +105,15 @@ impl Estado {
         // A área de transferência local passa a ter este conteúdo: o último enviado deixou de valer.
         self.enviado = None;
         true
+    }
+
+    /// A gravação de `sig` falhou (ou não gravou nada): desfaz a reserva para a próxima entrega igual ser tentada.
+    fn falhou(&mut self, sig: u64) {
+        if let Some((s, _)) = self.aplicado {
+            if s == sig {
+                self.aplicado = None;
+            }
+        }
     }
 
     fn enviado(&mut self, sig: u64, agora: Instant) {
@@ -123,6 +138,11 @@ fn estado() -> std::sync::MutexGuard<'static, Estado> {
 /// Chamar antes de gravar no Windows o que veio do host. Falso: é eco, não gravar.
 pub fn deve_aplicar(sig: u64) -> bool {
     estado().deve_aplicar(sig, Instant::now())
+}
+
+/// Chamar quando a gravação de um conteúdo liberado por `deve_aplicar` falhou.
+pub fn falhou(sig: u64) {
+    estado().falhou(sig)
 }
 
 /// Chamar quando o conteúdo local foi lido para ser enviado ao host.
@@ -161,25 +181,66 @@ mod testes {
     }
 
     #[test]
-    fn assinatura_ignora_itens_especiais_e_a_ordem() {
+    fn assinatura_ignora_o_marcador_de_dono_e_a_ordem() {
         let mut a = Assinatura::novo();
         a.item(0, false, 0, 0, "", b"texto");
-        a.item(5, false, 0, 0, "dyn.com.rustdesk.owner", &[0b01]);
+        a.item(5, false, 0, 0, MARCADOR_DONO, &[0b01]);
         a.item(1, false, 0, 0, "", b"<b>texto</b>");
         let mut b = Assinatura::novo();
         b.item(1, false, 0, 0, "", b"<b>texto</b>");
-        b.item(5, false, 0, 0, "dyn.com.rustdesk.owner", &[0b10]);
-        b.item(5, false, 0, 0, "XML Spreadsheet", b"qualquer coisa");
+        b.item(5, false, 0, 0, MARCADOR_DONO, &[0b10]);
         b.item(0, false, 0, 0, "", b"texto");
         assert_eq!(a.fim(), b.fim());
     }
 
+    // Regressão da revisão: formato nomeado com conteúdo (planilha do Excel) não é marcador de dono.
     #[test]
-    fn so_itens_especiais_nao_tem_assinatura() {
+    fn assinatura_considera_formatos_especiais_com_conteudo() {
+        let com_planilha = |dados: &[u8]| {
+            let mut a = Assinatura::novo();
+            a.item(0, false, 0, 0, "", b"mesmo texto");
+            a.item(5, false, 0, 0, "XML Spreadsheet", dados);
+            a.fim().unwrap()
+        };
+        assert_eq!(com_planilha(b"<a/>"), com_planilha(b"<a/>"));
+        assert_ne!(com_planilha(b"<a/>"), com_planilha(b"<b/>"));
+        // Nem o nome do formato pode ser trocado em silêncio.
+        let mut outro = Assinatura::novo();
+        outro.item(0, false, 0, 0, "", b"mesmo texto");
+        outro.item(5, false, 0, 0, "Outro Formato", b"<a/>");
+        assert_ne!(com_planilha(b"<a/>"), outro.fim().unwrap());
+    }
+
+    #[test]
+    fn so_o_marcador_de_dono_nao_tem_assinatura() {
         let mut a = Assinatura::novo();
-        a.item(5, false, 0, 0, "dyn.com.rustdesk.owner", &[1]);
+        a.item(5, false, 0, 0, MARCADOR_DONO, &[1]);
         assert_eq!(a.fim(), None);
         assert_eq!(Assinatura::novo().fim(), None);
+    }
+
+    // Regressão da revisão: gravação recusada pelo Windows não pode deixar o conteúdo marcado como aplicado.
+    #[test]
+    fn gravacao_que_falhou_nao_bloqueia_a_nova_tentativa() {
+        let t0 = Instant::now();
+        let mut e = Estado::novo();
+        let x = sig_texto("x");
+        assert!(e.deve_aplicar(x, t0));
+        e.falhou(x); // o Windows recusou a gravação (área ocupada por outro app)
+        assert!(e.deve_aplicar(x, t0 + Duration::from_secs(2)));
+        // Depois de gravar com sucesso, o eco volta a ser ignorado.
+        assert!(!e.deve_aplicar(x, t0 + Duration::from_secs(3)));
+    }
+
+    #[test]
+    fn falha_de_outro_conteudo_nao_desfaz_o_aplicado_atual() {
+        let t0 = Instant::now();
+        let mut e = Estado::novo();
+        let x = sig_texto("x");
+        let y = sig_texto("y");
+        assert!(e.deve_aplicar(y, t0));
+        e.falhou(x);
+        assert!(!e.deve_aplicar(y, t0 + Duration::from_secs(1)));
     }
 
     #[test]
@@ -275,5 +336,7 @@ mod testes {
         assert!(!deve_aplicar(x));
         assert!(deve_aplicar(y));
         assert!(!deve_aplicar(y));
+        falhou(y);
+        assert!(deve_aplicar(y));
     }
 }

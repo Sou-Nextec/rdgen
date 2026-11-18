@@ -1,5 +1,5 @@
 diff --git a/src/clipboard.rs b/src/clipboard.rs
-index 9a1bd60..7b7faad 100644
+index 9a1bd60..a876502 100644
 --- a/src/clipboard.rs
 +++ b/src/clipboard.rs
 @@ -106,6 +106,12 @@ fn read_clipboard_message(
@@ -15,11 +15,56 @@ index 9a1bd60..7b7faad 100644
                  msg.set_multi_clipboards(clipboards.clone());
                  return Some((msg, clipboards));
              }
-@@ -302,8 +308,39 @@ pub fn set_text_clipboard_with_owner_sync(text: &str, side: ClipboardSide) -> Re
+@@ -247,16 +253,16 @@ pub fn check_clipboard_cm() -> ResultType<MultiClipboards> {
+ }
+ 
+ #[cfg(not(target_os = "android"))]
+-fn update_clipboard_(multi_clipboards: Vec<Clipboard>, side: ClipboardSide) {
++fn update_clipboard_(multi_clipboards: Vec<Clipboard>, side: ClipboardSide) -> bool {
+     let to_update_data = proto::from_multi_clipboards(multi_clipboards);
+     if to_update_data.is_empty() {
+-        return;
++        return false;
+     }
+-    do_update_clipboard_(to_update_data, side);
++    do_update_clipboard_(to_update_data, side)
+ }
+ 
+ #[cfg(not(target_os = "android"))]
+-fn do_update_clipboard_(mut to_update_data: Vec<ClipboardData>, side: ClipboardSide) {
++fn do_update_clipboard_(mut to_update_data: Vec<ClipboardData>, side: ClipboardSide) -> bool {
+     let mut ctx = CLIPBOARD_CTX.lock().unwrap();
+     if ctx.is_none() {
+         match ClipboardContext::new() {
+@@ -265,7 +271,7 @@ fn do_update_clipboard_(mut to_update_data: Vec<ClipboardData>, side: ClipboardS
+             }
+             Err(e) => {
+                 log::error!("Failed to create clipboard context: {}", e);
+-                return;
++                return false;
+             }
+         }
+     }
+@@ -273,10 +279,13 @@ fn do_update_clipboard_(mut to_update_data: Vec<ClipboardData>, side: ClipboardS
+         to_update_data = append_owner_marker(to_update_data, side);
+         if let Err(e) = ctx.set(&to_update_data) {
+             log::debug!("Failed to set clipboard: {}", e);
++            return false;
+         } else {
+             log::debug!("{} updated on {}", CLIPBOARD_NAME, side);
++            return true;
+         }
+     }
++    false
+ }
+ 
+ #[cfg(not(target_os = "android"))]
+@@ -302,10 +311,50 @@ pub fn set_text_clipboard_with_owner_sync(text: &str, side: ClipboardSide) -> Re
      clipboard_ctx.set_with_owner_marker_for_linux(&data)
  }
  
-+// Nextec: assinatura do conteudo ignorando itens especiais (marcador de dono etc).
++// Nextec: assinatura do conteudo ignorando so o marcador de dono (os demais formatos, como
++// "XML Spreadsheet", entram na assinatura).
 +#[cfg(not(target_os = "android"))]
 +fn nextec_signature(items: &[Clipboard]) -> Option<u64> {
 +    let mut sig = crate::nextec_clipboard_dedup::Assinatura::novo();
@@ -40,21 +85,32 @@ index 9a1bd60..7b7faad 100644
  pub fn update_clipboard(multi_clipboards: Vec<Clipboard>, side: ClipboardSide) {
 +    // Nextec: o host devolve de 3 a 5 vezes o que o cliente acabou de enviar; cada regravacao vira uma
 +    // entrada nova no historico do Windows (Win+V). Eco ja enviado ou ja aplicado nao e regravado.
-+    if side == ClipboardSide::Client {
-+        if let Some(sig) = nextec_signature(&multi_clipboards) {
-+            if !crate::nextec_clipboard_dedup::deve_aplicar(sig) {
-+                log::debug!(
-+                    "{} update on {} ignored, same content as the last one",
-+                    CLIPBOARD_NAME,
-+                    side
-+                );
-+                return;
-+            }
++    let nextec_sig = if side == ClipboardSide::Client {
++        nextec_signature(&multi_clipboards)
++    } else {
++        None
++    };
++    if let Some(sig) = nextec_sig {
++        if !crate::nextec_clipboard_dedup::deve_aplicar(sig) {
++            log::debug!(
++                "{} update on {} ignored, same content as the last one",
++                CLIPBOARD_NAME,
++                side
++            );
++            return;
 +        }
 +    }
      std::thread::spawn(move || {
-         update_clipboard_(multi_clipboards, side);
+-        update_clipboard_(multi_clipboards, side);
++        // Se a gravacao falhar, o conteudo nao conta como aplicado: a proxima entrega igual e tentada.
++        if !update_clipboard_(multi_clipboards, side) {
++            if let Some(sig) = nextec_sig {
++                crate::nextec_clipboard_dedup::falhou(sig);
++            }
++        }
      });
+ }
+ 
 diff --git a/src/lib.rs b/src/lib.rs
 index 649f3ef..a99badd 100644
 --- a/src/lib.rs

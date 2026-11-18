@@ -1,0 +1,120 @@
+diff --git a/src/clipboard.rs b/src/clipboard.rs
+index 9a1bd60..200b216 100644
+--- a/src/clipboard.rs
++++ b/src/clipboard.rs
+@@ -106,6 +106,12 @@ fn read_clipboard_message(
+             if !content.is_empty() {
+                 let mut msg = Message::new();
+                 let clipboards = proto::create_multi_clipboards(content);
++                // Nextec: lembra o que foi lido localmente para ignorar o eco devolvido pelo host.
++                if side == ClipboardSide::Client {
++                    if let Some(sig) = nextec_signature(&clipboards.clipboards) {
++                        crate::nextec_clipboard_dedup::enviado(sig);
++                    }
++                }
+                 msg.set_multi_clipboards(clipboards.clone());
+                 return Some((msg, clipboards));
+             }
+@@ -163,7 +169,7 @@ pub fn check_clipboard_files(
+ pub fn update_clipboard_files(files: Vec<String>, side: ClipboardSide) {
+     if !files.is_empty() {
+         std::thread::spawn(move || {
+-            do_update_clipboard_(vec![ClipboardData::FileUrl(files)], side);
++            do_update_clipboard_(vec![ClipboardData::FileUrl(files)], side, None);
+         });
+     }
+ }
+@@ -248,15 +254,25 @@ pub fn check_clipboard_cm() -> ResultType<MultiClipboards> {
+ 
+ #[cfg(not(target_os = "android"))]
+ fn update_clipboard_(multi_clipboards: Vec<Clipboard>, side: ClipboardSide) {
++    // Nextec: assinatura do que chegou do host (so lado Client), calculada antes de converter o conteudo.
++    let nextec_sig = if side == ClipboardSide::Client {
++        nextec_signature(&multi_clipboards)
++    } else {
++        None
++    };
+     let to_update_data = proto::from_multi_clipboards(multi_clipboards);
+     if to_update_data.is_empty() {
+         return;
+     }
+-    do_update_clipboard_(to_update_data, side);
++    do_update_clipboard_(to_update_data, side, nextec_sig);
+ }
+ 
+ #[cfg(not(target_os = "android"))]
+-fn do_update_clipboard_(mut to_update_data: Vec<ClipboardData>, side: ClipboardSide) {
++fn do_update_clipboard_(
++    mut to_update_data: Vec<ClipboardData>,
++    side: ClipboardSide,
++    nextec_sig: Option<u64>,
++) {
+     let mut ctx = CLIPBOARD_CTX.lock().unwrap();
+     if ctx.is_none() {
+         match ClipboardContext::new() {
+@@ -270,11 +286,28 @@ fn do_update_clipboard_(mut to_update_data: Vec<ClipboardData>, side: ClipboardS
+         }
+     }
+     if let Some(ctx) = ctx.as_mut() {
++        // Nextec: o host devolve de 3 a 5 vezes o que o cliente acabou de enviar; cada regravacao vira uma
++        // entrada nova no historico do Windows (Win+V). A checagem e o registro ficam com o lock da area de
++        // transferencia segurado: entregas iguais sao serializadas e, se a gravacao falhar, nada e registrado
++        // e a entrega seguinte e tentada.
++        if let Some(sig) = nextec_sig {
++            if !crate::nextec_clipboard_dedup::deve_aplicar(sig) {
++                log::debug!(
++                    "{} update on {} ignored, same content as the last one",
++                    CLIPBOARD_NAME,
++                    side
++                );
++                return;
++            }
++        }
+         to_update_data = append_owner_marker(to_update_data, side);
+         if let Err(e) = ctx.set(&to_update_data) {
+             log::debug!("Failed to set clipboard: {}", e);
+         } else {
+             log::debug!("{} updated on {}", CLIPBOARD_NAME, side);
++            if let Some(sig) = nextec_sig {
++                crate::nextec_clipboard_dedup::aplicado(sig);
++            }
+         }
+     }
+ }
+@@ -302,6 +335,24 @@ pub fn set_text_clipboard_with_owner_sync(text: &str, side: ClipboardSide) -> Re
+     clipboard_ctx.set_with_owner_marker_for_linux(&data)
+ }
+ 
++// Nextec: assinatura do conteudo ignorando so o marcador de dono (os demais formatos, como
++// "XML Spreadsheet", entram na assinatura).
++#[cfg(not(target_os = "android"))]
++fn nextec_signature(items: &[Clipboard]) -> Option<u64> {
++    let mut sig = crate::nextec_clipboard_dedup::Assinatura::novo();
++    for c in items {
++        sig.item(
++            c.format.value(),
++            c.compress,
++            c.width,
++            c.height,
++            &c.special_name,
++            &c.content[..],
++        );
++    }
++    sig.fim()
++}
++
+ #[cfg(not(target_os = "android"))]
+ pub fn update_clipboard(multi_clipboards: Vec<Clipboard>, side: ClipboardSide) {
+     std::thread::spawn(move || {
+diff --git a/src/lib.rs b/src/lib.rs
+index 649f3ef..a99badd 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -41,6 +41,7 @@ use common::*;
+ mod auth_2fa;
+ #[cfg(not(target_os = "ios"))]
+ mod clipboard;
++mod nextec_clipboard_dedup;
+ #[cfg(not(any(target_os = "android", target_os = "ios")))]
+ pub mod core_main;
+ mod custom_server;

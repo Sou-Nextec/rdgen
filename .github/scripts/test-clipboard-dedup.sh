@@ -29,7 +29,7 @@ cmp "$patches/nextec_clipboard_dedup.rs" "$tmp/rustdesk/src/nextec_clipboard_ded
 grep -q '^mod nextec_clipboard_dedup;$' "$tmp/rustdesk/src/lib.rs"
 grep -q 'nextec_clipboard_dedup::deve_aplicar' "$tmp/rustdesk/src/clipboard.rs"
 grep -q 'nextec_clipboard_dedup::enviado' "$tmp/rustdesk/src/clipboard.rs"
-grep -q 'nextec_clipboard_dedup::falhou' "$tmp/rustdesk/src/clipboard.rs"
+grep -q 'nextec_clipboard_dedup::aplicado' "$tmp/rustdesk/src/clipboard.rs"
 
 echo "== 4. diff so em lib.rs e clipboard.rs"
 alterados=$(grep '^diff --git' "$patches/clipboardDedup.diff" | sed 's|^diff --git a/\(.*\) b/.*|\1|' | sort | tr '\n' ' ')

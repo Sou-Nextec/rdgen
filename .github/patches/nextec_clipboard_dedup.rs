@@ -8,6 +8,10 @@
 // último ENVIADO (lido localmente e mandado ao host). Se o host devolve algo com a mesma assinatura dentro de
 // 60 s, a gravação é ignorada.
 //
+// Uso no RustDesk (ver clipboardDedup.diff): a checagem (`deve_aplicar`) e o registro (`aplicado`) acontecem
+// com o lock da área de transferência segurado, em torno da gravação. Entregas iguais são serializadas: a
+// segunda só checa depois que a primeira terminou. Se a primeira falhou, nada foi registrado e a segunda grava.
+//
 // Este arquivo só usa `std`: o CI roda `rustc --test` nele sem compilar o RustDesk. O arquivo vai para
 // `src/nextec_clipboard_dedup.rs` do RustDesk e é ligado por `.github/patches/clipboardDedup.diff`.
 #![allow(dead_code)]
@@ -94,26 +98,16 @@ impl Estado {
         }
     }
 
-    /// Verdadeiro quando o conteúdo deve ser gravado. Ao devolver verdadeiro já reserva o conteúdo como
-    /// aplicado (a checagem e a reserva são atômicas porque as gravações rodam em threads separadas). Se a
-    /// gravação falhar, quem chamou precisa desfazer a reserva com `falhou`.
-    fn deve_aplicar(&mut self, sig: u64, agora: Instant) -> bool {
-        if recente(self.enviado, sig, agora) || recente(self.aplicado, sig, agora) {
-            return false;
-        }
+    /// Só consulta (não registra nada): verdadeiro quando o conteúdo deve ser gravado.
+    fn deve_aplicar(&self, sig: u64, agora: Instant) -> bool {
+        !(recente(self.enviado, sig, agora) || recente(self.aplicado, sig, agora))
+    }
+
+    /// Registra o conteúdo como aplicado, depois de a gravação dar certo.
+    fn aplicado(&mut self, sig: u64, agora: Instant) {
         self.aplicado = Some((sig, agora));
         // A área de transferência local passa a ter este conteúdo: o último enviado deixou de valer.
         self.enviado = None;
-        true
-    }
-
-    /// A gravação de `sig` falhou (ou não gravou nada): desfaz a reserva para a próxima entrega igual ser tentada.
-    fn falhou(&mut self, sig: u64) {
-        if let Some((s, _)) = self.aplicado {
-            if s == sig {
-                self.aplicado = None;
-            }
-        }
     }
 
     fn enviado(&mut self, sig: u64, agora: Instant) {
@@ -135,14 +129,15 @@ fn estado() -> std::sync::MutexGuard<'static, Estado> {
     ESTADO.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Chamar antes de gravar no Windows o que veio do host. Falso: é eco, não gravar.
+/// Chamar antes de gravar no Windows o que veio do host, com o lock da área de transferência segurado.
+/// Falso: é eco, não gravar. Não registra nada: quem grava chama `aplicado` se a gravação der certo.
 pub fn deve_aplicar(sig: u64) -> bool {
     estado().deve_aplicar(sig, Instant::now())
 }
 
-/// Chamar quando a gravação de um conteúdo liberado por `deve_aplicar` falhou.
-pub fn falhou(sig: u64) {
-    estado().falhou(sig)
+/// Chamar depois de a gravação de um conteúdo liberado por `deve_aplicar` dar certo.
+pub fn aplicado(sig: u64) {
+    estado().aplicado(sig, Instant::now())
 }
 
 /// Chamar quando o conteúdo local foi lido para ser enviado ao host.
@@ -158,6 +153,17 @@ mod testes {
         let mut a = Assinatura::novo();
         a.item(0, false, 0, 0, "", t.as_bytes());
         a.fim().unwrap()
+    }
+
+    /// Mesmo fluxo do RustDesk: checa e, se liberado, grava (`grava_ok`) e só então registra.
+    fn entrega(e: &mut Estado, sig: u64, agora: Instant, grava_ok: bool) -> bool {
+        if !e.deve_aplicar(sig, agora) {
+            return false;
+        }
+        if grava_ok {
+            e.aplicado(sig, agora);
+        }
+        true
     }
 
     #[test]
@@ -219,42 +225,18 @@ mod testes {
         assert_eq!(Assinatura::novo().fim(), None);
     }
 
-    // Regressão da revisão: gravação recusada pelo Windows não pode deixar o conteúdo marcado como aplicado.
-    #[test]
-    fn gravacao_que_falhou_nao_bloqueia_a_nova_tentativa() {
-        let t0 = Instant::now();
-        let mut e = Estado::novo();
-        let x = sig_texto("x");
-        assert!(e.deve_aplicar(x, t0));
-        e.falhou(x); // o Windows recusou a gravação (área ocupada por outro app)
-        assert!(e.deve_aplicar(x, t0 + Duration::from_secs(2)));
-        // Depois de gravar com sucesso, o eco volta a ser ignorado.
-        assert!(!e.deve_aplicar(x, t0 + Duration::from_secs(3)));
-    }
-
-    #[test]
-    fn falha_de_outro_conteudo_nao_desfaz_o_aplicado_atual() {
-        let t0 = Instant::now();
-        let mut e = Estado::novo();
-        let x = sig_texto("x");
-        let y = sig_texto("y");
-        assert!(e.deve_aplicar(y, t0));
-        e.falhou(x);
-        assert!(!e.deve_aplicar(y, t0 + Duration::from_secs(1)));
-    }
-
     #[test]
     fn conteudo_novo_e_aplicado_e_repetido_dentro_da_janela_e_ignorado() {
         let t0 = Instant::now();
         let mut e = Estado::novo();
         let x = sig_texto("x");
-        assert!(e.deve_aplicar(x, t0));
-        assert!(!e.deve_aplicar(x, t0 + Duration::from_secs(1)));
-        assert!(!e.deve_aplicar(x, t0 + Duration::from_secs(59)));
+        assert!(entrega(&mut e, x, t0, true));
+        assert!(!entrega(&mut e, x, t0 + Duration::from_secs(1), true));
+        assert!(!entrega(&mut e, x, t0 + Duration::from_secs(59), true));
         // Fora da janela volta a gravar.
-        assert!(e.deve_aplicar(x, t0 + Duration::from_secs(61)));
+        assert!(entrega(&mut e, x, t0 + Duration::from_secs(61), true));
         // Conteúdo diferente sempre grava.
-        assert!(e.deve_aplicar(sig_texto("y"), t0 + Duration::from_secs(62)));
+        assert!(entrega(&mut e, sig_texto("y"), t0 + Duration::from_secs(62), true));
     }
 
     // Regressão do defeito: cada cópia local virava 3 a 5 gravações do eco devolvido pelo host.
@@ -265,11 +247,11 @@ mod testes {
         let x = sig_texto("print do cliente");
         e.enviado(x, t0);
         let gravacoes = (1..=5u64)
-            .filter(|i| e.deve_aplicar(x, t0 + Duration::from_millis(300 * i)))
+            .filter(|i| entrega(&mut e, x, t0 + Duration::from_millis(300 * i), true))
             .count();
         assert_eq!(gravacoes, 0, "o eco do conteúdo enviado não pode ser regravado");
         // Passada a janela, o mesmo conteúdo vindo do host volta a ser aceito.
-        assert!(e.deve_aplicar(x, t0 + JANELA + Duration::from_secs(1)));
+        assert!(entrega(&mut e, x, t0 + JANELA + Duration::from_secs(1), true));
     }
 
     #[test]
@@ -278,9 +260,33 @@ mod testes {
         let mut e = Estado::novo();
         let y = sig_texto("copiado no host");
         let gravacoes = (0..5u64)
-            .filter(|i| e.deve_aplicar(y, t0 + Duration::from_millis(200 * i)))
+            .filter(|i| entrega(&mut e, y, t0 + Duration::from_millis(200 * i), true))
             .count();
         assert_eq!(gravacoes, 1);
+    }
+
+    // Regressão da revisão: gravação recusada pelo Windows não pode deixar o conteúdo marcado como aplicado,
+    // nem a entrega igual que vem logo depois (serializada pelo lock) pode ser descartada.
+    #[test]
+    fn gravacao_que_falhou_nao_bloqueia_a_entrega_igual_seguinte() {
+        let t0 = Instant::now();
+        let mut e = Estado::novo();
+        let x = sig_texto("x");
+        // Primeira entrega: liberada, mas o Windows recusou (área ocupada por outro app).
+        assert!(entrega(&mut e, x, t0, false));
+        // Segunda entrega igual, logo depois: precisa ser tentada.
+        assert!(entrega(&mut e, x, t0 + Duration::from_millis(50), true));
+        // Gravou: o eco seguinte volta a ser ignorado.
+        assert!(!entrega(&mut e, x, t0 + Duration::from_millis(100), true));
+    }
+
+    #[test]
+    fn consultar_nao_registra_nada() {
+        let t0 = Instant::now();
+        let e = Estado::novo();
+        let x = sig_texto("x");
+        assert!(e.deve_aplicar(x, t0));
+        assert!(e.deve_aplicar(x, t0));
     }
 
     #[test]
@@ -290,9 +296,9 @@ mod testes {
         let x = sig_texto("x");
         let y = sig_texto("y");
         e.enviado(x, t0);
-        assert!(e.deve_aplicar(y, t0 + Duration::from_secs(1)));
+        assert!(entrega(&mut e, y, t0 + Duration::from_secs(1), true));
         // A área local agora tem y: o host copiar x de novo precisa ser gravado.
-        assert!(e.deve_aplicar(x, t0 + Duration::from_secs(2)));
+        assert!(entrega(&mut e, x, t0 + Duration::from_secs(2), true));
     }
 
     #[test]
@@ -301,10 +307,10 @@ mod testes {
         let mut e = Estado::novo();
         let x = sig_texto("x");
         let y = sig_texto("y");
-        assert!(e.deve_aplicar(x, t0));
+        assert!(entrega(&mut e, x, t0, true));
         e.enviado(y, t0 + Duration::from_secs(1));
         // A área local agora tem y: o host copiar x de novo precisa ser gravado.
-        assert!(e.deve_aplicar(x, t0 + Duration::from_secs(2)));
+        assert!(entrega(&mut e, x, t0 + Duration::from_secs(2), true));
     }
 
     #[test]
@@ -312,10 +318,10 @@ mod testes {
         let t0 = Instant::now();
         let mut e = Estado::novo();
         let x = sig_texto("x");
-        assert!(e.deve_aplicar(x, t0));
+        assert!(entrega(&mut e, x, t0, true));
         // O monitor local leu de volta o que acabou de ser gravado e o enviou.
         e.enviado(x, t0 + Duration::from_millis(100));
-        assert!(!e.deve_aplicar(x, t0 + Duration::from_millis(500)));
+        assert!(!entrega(&mut e, x, t0 + Duration::from_millis(500), true));
     }
 
     #[test]
@@ -324,7 +330,7 @@ mod testes {
         let mut e = Estado::novo();
         let x = sig_texto("x");
         e.enviado(x, t0 + Duration::from_secs(5));
-        assert!(!e.deve_aplicar(x, t0));
+        assert!(!entrega(&mut e, x, t0, true));
     }
 
     #[test]
@@ -335,8 +341,8 @@ mod testes {
         enviado(x);
         assert!(!deve_aplicar(x));
         assert!(deve_aplicar(y));
+        assert!(deve_aplicar(y), "consultar não registra");
+        aplicado(y);
         assert!(!deve_aplicar(y));
-        falhou(y);
-        assert!(deve_aplicar(y));
     }
 }
